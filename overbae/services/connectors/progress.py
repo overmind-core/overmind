@@ -94,9 +94,9 @@ def prepare_backfill_progress(credential, client, state, windows, anchor):
     credential.backfill_total = snapshot["total"]
 
 
-def checkpoint_progress(credential, snapshot, *, done):
-    """Record unique persisted source traces, never attempted or repeated rows."""
-    imported = _scoped_imported(credential, snapshot)
+def checkpoint_progress(credential, snapshot, *, gained, done):
+    """Add source traces new to this chunk; completion recounts the persisted spans once."""
+    imported = _scoped_imported(credential, snapshot) if done else snapshot["imported"] + gained
     if imported > snapshot["imported"]:
         snapshot["last_progress_at"] = timezone.now().isoformat()
     snapshot.update(imported=imported, done=done)
@@ -115,17 +115,17 @@ def sync_progress(credential) -> SyncProgress | None:
     elapsed = (now - datetime.fromisoformat(snapshot["started_at"])).total_seconds()
     gained = max(0, snapshot["imported"] - snapshot["baseline"])
     stale = (now - last).total_seconds() > 300 if last else elapsed > 300
-    waiting = bool(credential.sync_error) or stale
     done = snapshot.get("done", False)
+    waiting = bool(credential.sync_error) or (stale and not done)
     rate = gained / elapsed if gained and elapsed > 0 and not waiting and not done else None
     total = snapshot.get("total")
     # A root estimate can be too low. Never claim zero seconds before exhaustion.
     remaining = max(0, total - snapshot["imported"]) if total is not None else None
     eta = ceil(remaining / rate) if rate and remaining else None
-    if done:
-        state = "complete"
-    elif waiting:
+    if waiting:
         state = "waiting"
+    elif done:
+        state = "complete"
     elif rate:
         state = "importing"
     else:
@@ -136,7 +136,7 @@ def sync_progress(credential) -> SyncProgress | None:
         observations_total=snapshot.get("observations"),
         imported=snapshot["imported"],
         traces_per_second=rate,
-        estimated_seconds_remaining=0 if done else eta,
+        estimated_seconds_remaining=0 if state == "complete" else eta,
         counted_at=snapshot.get("counted_at"),
         last_progress_at=last,
         retry_at=credential.next_poll_at if credential.sync_error else None,

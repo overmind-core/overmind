@@ -47,6 +47,7 @@ from overbae.services.codebase.flow import (
     capability_input_keys,
     capability_tool_names,
 )
+from overbae.services.connectors.progress import sync_progress
 from overbae.services.datasets import use as dataset_use
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.services.deployment import deployment_progress
@@ -2284,8 +2285,6 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ConnectorSyncProgressSerializer(allow_null=True))
     def get_sync_progress(self, obj):
-        from overbae.services.connectors.progress import sync_progress
-
         progress = sync_progress(obj)
         return progress.model_dump(mode="json") if progress else None
 

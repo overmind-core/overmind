@@ -43,6 +43,12 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _within_bound(watermark: str | None, bound: datetime) -> str | None:
+    """A completed tree can start after the backfill bound; live polling must not skip that gap."""
+    parsed = _parse_iso(watermark)
+    return bound.isoformat() if parsed and parsed > bound else watermark
+
+
 class LangfuseAdapter:
     source = LANGFUSE.source
     capabilities = LANGFUSE_CAPABILITIES
@@ -193,7 +199,7 @@ class LangfuseAdapter:
         else:
             units, newest = self._collect_window(window.start, window.end)
             next_cursor = None
-        newest = max((ts for ts in (newest, watermark) if ts), default=None)
+        newest = _within_bound(max((ts for ts in (newest, watermark) if ts), default=None), anchor)
         self._persist_api_version()
         if next_cursor:
             return Page(

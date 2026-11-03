@@ -6,13 +6,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import time_machine
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from factories import make_connector, sync_until_live
+from factories import make_connector, make_project, sync_until_live
 from fakes.vendors import LangfuseAPI, Step
 
+from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.models import ConnectorCredential, Span
 from overbae.services.connectors.feedforward import save_sync_config
+from overbae.services.connectors.progress import sync_progress
 from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
+from overbae.services.mcp.resources import connector_resource_payload
 from overbae.tasks import connector_sync
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
@@ -300,8 +305,6 @@ def test_source_count_and_eta_include_waits_and_survive_page_resume(
 ):
     clock = time_machine
     clock.move_to("2026-01-03T00:00:00Z", tick=False)
-    from overbae.services.connectors.progress import sync_progress
-
     _traces(langfuse, 6)
     langfuse.page_size = 2
     _chunk(credential)
@@ -331,8 +334,6 @@ def test_source_count_and_eta_include_waits_and_survive_page_resume(
 
 
 def test_source_count_persists_when_a_data_page_is_throttled(credential, langfuse):
-    from overbae.services.connectors.progress import sync_progress
-
     _traces(langfuse, 3)
     langfuse.page_size = 1
     _chunk(credential)
@@ -350,9 +351,6 @@ def test_source_count_persists_when_a_data_page_is_throttled(credential, langfus
 
 
 def test_unavailable_count_does_not_block_import_and_is_retried(credential, langfuse, time_machine):
-    from overbae.api.serializers import ConnectorCredentialSerializer
-    from overbae.services.connectors.progress import sync_progress
-
     time_machine.move_to("2026-01-03T00:00:00Z", tick=False)
     _traces(langfuse, 4)
     langfuse.page_size = 1
@@ -369,8 +367,6 @@ def test_unavailable_count_does_not_block_import_and_is_retried(credential, lang
     assert progress["total_estimate"] == 4
     assert progress["imported"] == 2
     assert progress["estimated_seconds_remaining"] == 301
-    from overbae.services.mcp.resources import connector_resource_payload
-
     resource = connector_resource_payload(
         credential.project, credential, "overmind://connectors/test"
     )
@@ -378,8 +374,6 @@ def test_unavailable_count_does_not_block_import_and_is_retried(credential, lang
 
 
 def test_empty_backfill_reports_completion_instead_of_estimating(credential, langfuse):
-    from overbae.services.connectors.progress import sync_progress
-
     _chunk(credential)
     credential.refresh_from_db()
     progress = sync_progress(credential)
@@ -402,3 +396,39 @@ def test_metrics_quota_wait_does_not_block_trace_pages_or_retry_early(
     _chunk(credential)
     assert len([call for call in langfuse.requests if "/v2/metrics" in call.url]) == 1
     assert _spans(credential) == 2
+
+
+def test_totals_and_progress_count_the_target_project(credential, langfuse):
+    target = make_project()
+    save_sync_config(credential, target_project=target)
+    _traces(langfuse, 3)
+    credential = sync_until_live(credential)
+    assert Span.objects.filter(project=target).count() == 3
+    assert (credential.total_spans_imported, credential.total_traces_imported) == (3, 3)
+    assert sync_progress(credential).imported == 3
+
+
+def test_a_failed_live_poll_after_a_finished_backfill_is_not_complete(credential, langfuse):
+    _traces(langfuse, 1)
+    credential = sync_until_live(credential)
+    assert sync_progress(credential).state == "complete"
+    retry = timezone.now() + timedelta(minutes=5)
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_error="Langfuse rate limited", next_poll_at=retry
+    )
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.state == "waiting"
+    assert progress.retry_at == retry
+    assert progress.estimated_seconds_remaining is None
+
+
+def test_a_middle_chunk_does_not_count_the_whole_import(credential, langfuse):
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    with CaptureQueriesContext(connection) as queries:
+        _chunk(credential)
+    credential.refresh_from_db()
+    assert credential.total_traces_imported == 2
+    assert not [q["sql"] for q in queries if "COUNT(" in q["sql"] and "resource_attrs" in q["sql"]]

@@ -32,7 +32,10 @@ def connector_imported_spans(credential):
     from overbae.models import Span
 
     cred_id = str(credential.id)
-    qs = Span.objects.filter(project=credential.project)
+    config = credential.active_config()
+    qs = Span.objects.filter(
+        project=(config.target_project if config else None) or credential.project
+    )
     if connection.features.supports_json_field_contains:
         return qs.filter(resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: cred_id})
     ids = [

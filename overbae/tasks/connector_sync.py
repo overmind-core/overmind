@@ -9,7 +9,7 @@ from typing import Any
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from overbae.api.otlp import enqueue_scoring
@@ -243,6 +243,13 @@ def _schedule_next_chunk(credential, *, delay: int = 2) -> None:
     sync_connector_chunk.apply_async(args=[str(credential.id)], countdown=delay)
 
 
+def _add_imported(credential, spans: int, traces: int) -> None:
+    type(credential).objects.filter(pk=credential.pk).update(
+        total_spans_imported=F("total_spans_imported") + spans,
+        total_traces_imported=F("total_traces_imported") + traces,
+    )
+
+
 def _run_adapter_chunk(credential, cursor: dict) -> dict:
     """Provider-blind chunk: adapter.fetch_page → upsert → checkpoint cursor."""
     from overbae.models import ConnectorCredential, ConnectorSyncRun
@@ -260,7 +267,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     # Empty backfill completion (no windows left) — flip to LIVE without a run row.
     if page.mode == "backfill" and page.done and not page.units and page.window_from is None:
         if page.next_state.get("progress"):
-            checkpoint_progress(credential, page.next_state["progress"], done=True)
+            checkpoint_progress(credential, page.next_state["progress"], gained=0, done=True)
         _save_sync_state(
             credential,
             sync_status=ConnectorCredential.SyncStatus.LIVE,
@@ -282,6 +289,9 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
 
     imported = 0
     traces_seen = 0
+    # A source trace is new only when none of its spans existed. Pages can repeat a
+    # tree and chunks can retry, so counting visits would inflate the total.
+    gained = 0
     try:
         for unit in page.units:
             traces_seen += 1
@@ -290,7 +300,9 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
                 credential=credential,
                 project=target_project,
             )
-            imported += _upsert_spans(target_project, span_dicts, credential=credential)
+            created = _upsert_spans(target_project, span_dicts, credential=credential)
+            imported += created
+            gained += bool(span_dicts) and created == len(span_dicts)
     except Exception as exc:
         run.status = ConnectorSyncRun.Status.FAILED
         run.error = str(exc)[:1000]
@@ -298,6 +310,7 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
         run.traces_seen = traces_seen
         run.spans_created = imported
         run.save()
+        _add_imported(credential, imported, gained)
         raise
 
     run.status = ConnectorSyncRun.Status.COMPLETED
@@ -306,18 +319,21 @@ def _run_adapter_chunk(credential, cursor: dict) -> dict:
     run.spans_created = imported
     run.save()
 
+    _add_imported(credential, imported, gained)
+    if page.mode == "backfill" and page.done:
+        # A chunk killed by the hard time limit leaves its spans uncounted; settle once.
+        persisted = connector_imported_spans(credential)
+        type(credential).objects.filter(pk=credential.pk).update(
+            total_spans_imported=persisted.count(),
+            total_traces_imported=persisted.values(f"attributes__{adapter.source}.trace_id")
+            .distinct()
+            .count(),
+        )
     credential.refresh_from_db()
-    # Complete trees can occur in several provider pages or in a retried chunk.
-    # Report the persisted source identities, not the number of visits.
-    persisted = connector_imported_spans(credential)
-    new_traces = persisted.values(f"attributes__{adapter.source}.trace_id").distinct().count()
-    type(credential).objects.filter(pk=credential.pk).update(
-        total_spans_imported=persisted.count(),
-        total_traces_imported=new_traces,
-    )
+    new_traces = credential.total_traces_imported
 
     if page.mode == "backfill" and page.next_state.get("progress"):
-        checkpoint_progress(credential, page.next_state["progress"], done=page.done)
+        checkpoint_progress(credential, page.next_state["progress"], gained=gained, done=page.done)
 
     if page.done:
         _save_sync_state(

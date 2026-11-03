@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -80,8 +81,6 @@ def test_count_and_discovery_prefer_explicit_bounds(api):
 
     adapter.count(lookback_days=30, window_from=start, window_to=end)
     adapter.sample_units(lookback_days=30, window_from=start, window_to=end)
-
-    import json
 
     query = json.loads(api.calls[0].params["query"])
     assert query["fromTimestamp"].startswith("2026-08-01T00:00:00")
@@ -175,3 +174,18 @@ def test_rate_limited_sampling_returns_without_background_retry_waits(api):
     with pytest.raises(LangFuseError):
         _adapter().sample_units(lookback_days=1)
     assert len(api.calls) == 1
+
+
+def test_backfill_watermark_stops_at_its_bound(api, clock):
+    late = (_START + timedelta(hours=2)).isoformat()
+    api.reply(
+        json_body={
+            "data": [{"id": "o1", "traceId": "t1", "startTime": late, "name": "n", "type": "SPAN"}],
+            "meta": {},
+        }
+    )
+    adapter = _adapter()
+    page = adapter.fetch_page({})
+    while not page.done:
+        page = adapter.fetch_page(page.next_state)
+    assert page.next_state["watermark"] == _START.isoformat()
