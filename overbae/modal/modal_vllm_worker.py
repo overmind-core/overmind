@@ -317,8 +317,10 @@ class _BaseVLLMWorker:
         # URL params in parametrized classes.
         full_path = f"{WEIGHTS_MOUNT}/{self.model_path}"
 
-        # Exception stacks to inference clients only outside prod.
-        _os.environ["VLLM_SERVER_DEV_MODE"] = "1" if self.snapshot_weights or not IS_PROD else "0"
+        # /sleep and /wake_up exist only in dev mode, and a snapshot engine calls both.
+        # Dev mode also returns exception stacks to clients.
+        needs_dev_routes = self.snapshot_weights or getattr(self, "snapshot_engine", False)
+        _os.environ["VLLM_SERVER_DEV_MODE"] = "1" if needs_dev_routes or not IS_PROD else "0"
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
