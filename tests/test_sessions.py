@@ -289,8 +289,7 @@ def test_an_imported_langfuse_session_groups_its_traces(scripted, slept):
         for i in range(2)
     ]
     api.reply(json_body={"data": observations, "meta": {}})
-    for observation in observations:
-        api.reply(json_body={"data": [observation], "meta": {}})
+    api.reply(json_body={"data": observations, "meta": {}})
 
     connector_sync.sync_connector_chunk(str(credential.pk))
 
