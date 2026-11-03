@@ -6,7 +6,7 @@ from datetime import timedelta
 from itertools import pairwise
 
 from django.db.models import Aggregate, Avg, Count, F, FloatField, Max, Q, Sum
-from django.db.models.functions import Cast, Substr, Trunc
+from django.db.models.functions import Cast, NullIf, Substr, Trunc
 from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
@@ -32,6 +32,27 @@ MONITORING_PERIODS = {
     "all": None,
 }
 MONITORING_SOURCES = ("all", "application")
+
+
+def recent_traffic_annotations() -> dict:
+    end = timezone.now()
+    recent = Q(
+        inference_calls__created_at__gte=end - MONITORING_PERIODS["24h"],
+        inference_calls__created_at__lte=end,
+        inference_calls__source="application",
+    )
+    successful = Q(inference_calls__outcome="succeeded")
+    return {
+        "recent_requests": Count("inference_calls", filter=recent),
+        "recent_success_rate": 100.0
+        * Count("inference_calls", filter=recent & ~Q(inference_calls__outcome="failed"))
+        / NullIf(Count("inference_calls", filter=recent), 0),
+        "recent_latency": Median("inference_calls__end_to_end_ms", filter=recent & successful),
+        "recent_speed": Median(
+            "inference_calls__tokens_per_second",
+            filter=recent & successful & Q(inference_calls__is_cold=False),
+        ),
+    }
 
 
 def monitoring_options(period="all", source="all") -> dict:

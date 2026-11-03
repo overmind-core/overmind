@@ -2,7 +2,19 @@ import logging
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import (
+    Avg,
+    Count,
+    Exists,
+    FloatField,
+    Max,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+)
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Coalesce
@@ -99,6 +111,7 @@ from overbae.models import (
     ConnectorCredential,
     Conversation,
     Dataset,
+    DedicatedDeployment,
     DeployedModel,
     Feedback,
     FinetuningJob,
@@ -119,7 +132,12 @@ from overbae.services.finetuning_checkpoints import (
 )
 from overbae.services.finetuning_runs import ordered_training_runs
 from overbae.services.inference_live import live_worker_stats
-from overbae.services.inference_metrics import Median, model_activity, model_metrics
+from overbae.services.inference_metrics import (
+    Median,
+    model_activity,
+    model_metrics,
+    recent_traffic_annotations,
+)
 from overbae.services.training_cancellation import cancel as cancel_training
 from overbae.services.training_preparation import (
     live_progress_for_job,
@@ -1931,6 +1949,10 @@ class DeployedModelViewSet(
     filterset_class = DeployedModelFilter
     search_fields = ["model_id", "base_model_id", "finetuning_job__name"]
     ordering_fields = [
+        "recent_requests",
+        "recent_success_rate",
+        "recent_latency",
+        "recent_speed",
         "avg_latency_ms",
         "avg_tokens_per_second",
         "finetuning_job__name",
@@ -1955,10 +1977,15 @@ class DeployedModelViewSet(
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         queryset = DeployedModel.objects.filter(project_id__in=_user_project_ids(self.request.user))
         if self.action == "list":
-            queryset = queryset.filter(finetuning_job__isnull=False)
+            queryset = queryset.alias(
+                has_dedicated=Exists(
+                    DedicatedDeployment.objects.filter(deployed_model_id=OuterRef("pk"))
+                )
+            ).filter(Q(finetuning_job__isnull=False) | Q(has_dedicated=True))
         return (
             queryset.select_related("finetuning_job", "finetuning_job__capability")
             .annotate(
+                **recent_traffic_annotations(),
                 request_count=Count("inference_calls"),
                 last_active_at=Max("inference_calls__created_at"),
                 total_tokens=Sum("inference_calls__prompt_tokens")

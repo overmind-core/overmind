@@ -619,6 +619,9 @@ the focus layer; nested popups do not accumulate blur. Tooltips do not activate
 it. Reduced-motion preferences disable the fade. The trace inspector retains
 its hover-only blur when no popup is open.
 
+The inference list has a transparent 16px scroll-edge blur below its toolbar,
+fading sharply to clear. It adds no background fill and does not intercept input.
+
 The inspector is a flat continuation of the panel, separated by thin rules.
 Its compact span heading precedes Preview, Attributes, Scores and Events tabs.
 Preview leads with input and output; evaluation results stay in Scores.

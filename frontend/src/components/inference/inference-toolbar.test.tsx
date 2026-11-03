@@ -5,8 +5,6 @@ import type { ComponentProps } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DeployedModelsListStatusEnum } from "@/openapi";
-
 // Radix Select needs a layout engine jsdom lacks. The trigger keeps its label
 // so the tests can tell the two selects apart.
 vi.mock("@/components/ui/select", () => ({
@@ -49,21 +47,16 @@ const renderToolbar = (props: Partial<ComponentProps<typeof InferenceToolbar>> =
       onClearFilters={vi.fn()}
       onSearchChange={vi.fn()}
       onSearchClear={vi.fn()}
-      onStatusFilterChange={vi.fn()}
       projectId="proj-1"
       search=""
       {...props}
     />
   );
 
-const STATUS_OPTION_VALUES = new Set<string>(Object.values(DeployedModelsListStatusEnum));
-
 const capabilityOptions = () =>
   [...document.querySelectorAll("[data-value]")]
     .filter((el) => {
       const value = el.getAttribute("data-value") ?? "";
-      if (STATUS_OPTION_VALUES.has(value)) return false;
-      // Status select's "all" is "All statuses"; capability select is "All capabilities".
       if (value === "all") return el.textContent === "All capabilities";
       return true;
     })

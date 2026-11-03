@@ -220,13 +220,11 @@ function RedeployBanner({ model }: { model: DeployedModel }) {
     <div
       className={cn(
         "flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border px-4 py-3",
-        failed ? "border-destructive/40 bg-destructive/10" : "border-border bg-wash-raised"
+        "border-border bg-wash-raised"
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className={cn("text-sm font-semibold", failed && "text-destructive")}>
-          {failed ? "Deployment failed" : "Not deployed"}
-        </p>
+        <p className="text-sm font-semibold">{failed ? "Deployment failed" : "Not deployed"}</p>
         <p className="text-sm leading-snug break-words text-muted-foreground">
           {failed
             ? model.errorMessage || "The deploy pipeline did not finish."

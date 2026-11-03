@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { ApiSnippetDialog } from "@/components/inference/api-snippet-dialog";
 import { DedicatedStartupProgress } from "@/components/inference/dedicated-startup";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -126,35 +127,40 @@ function Hint({ label, text }: { label: string; text: string }) {
 export function DedicatedDeploymentSection({
   model,
   projectId,
+  render,
 }: {
   model: DeployedModel;
   projectId?: string;
+  render?: (
+    controls: ReactNode,
+    deployment: DedicatedDeployment | null,
+    loading: boolean,
+    error: boolean
+  ) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [snippetOpen, setSnippetOpen] = useState(false);
   const [confirmStart, setConfirmStart] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const start = useStartDedicatedMutation(model.id);
   const stop = useStopDedicatedMutation(model.id);
   const ready = model.status === "ready";
-  const deployment = useDedicatedDeploymentQuery(model.id, ready);
+  const deployment = useDedicatedDeploymentQuery(model.id, true);
   const gpus = useDedicatedGpusQuery(model.id, ready && (open || confirmStart));
   const row = deployment.data ?? null;
   const startRate = gpus.data?.find((gpu) => gpu.gpuType === row?.gpuType)?.creditsPerGpuHour;
   const active = row != null && ACTIVE.has(row.status ?? "");
   const stopping = row?.status === "shutting_down";
   const pending = start.isPending || stop.isPending;
-  const toggleDeployment = () => {
-    if (!row) return;
-    if (active) {
-      stop.mutate(undefined, {
-        onError: (error) => notify.error(error, "Couldn't stop the deployment"),
-      });
-    } else {
-      setConfirmStart(true);
-    }
+  const stopDeployment = () => {
+    if (!row || !active || stopping || pending || deployment.error) return;
+    stop.mutate(undefined, {
+      onError: (error) => notify.error(error, "Couldn't stop the deployment"),
+      onSuccess: () => setConfirmStop(false),
+    });
   };
   const startDeployment = () => {
-    if (!row) return;
+    if (!row || !ready) return;
     start.mutate(
       {
         gpuType: row.gpuType,
@@ -166,104 +172,147 @@ export function DedicatedDeploymentSection({
       { onError: (error) => notify.error(error, "Couldn't start the deployment") }
     );
   };
-  if (!ready) return null;
-  return (
-    <>
-      <Dialog onOpenChange={setOpen} open={open}>
-        <Card aria-label="Dedicated endpoint" className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2">
-            <div className="flex shrink-0 items-center gap-3">
-              <h2 className="text-sm font-medium">Dedicated endpoint</h2>
-              {row && STARTING.has(row.status ?? "") ? null : (
-                <EndpointStatus
-                  label={
-                    deployment.isLoading
-                      ? "Loading"
-                      : deployment.error
-                        ? "Unavailable"
-                        : row
-                          ? STATUS_LABEL[row.status ?? "offline"]
-                          : "Not deployed"
-                  }
-                  state={
-                    deployment.error || row?.status === "failed"
-                      ? "error"
-                      : deployment.isLoading || (active && row?.status !== "online")
-                        ? "busy"
-                        : row?.status === "online"
-                          ? "online"
-                          : "offline"
-                  }
-                />
-              )}
-            </div>
-            {row && STARTING.has(row.status ?? "") ? <DedicatedStartupProgress row={row} /> : null}
-            <div className="inline-flex shrink-0 items-center gap-2">
-              {row ? (
-                <Button
-                  aria-label="Dedicated API snippet"
-                  onClick={() => setSnippetOpen(true)}
-                  size="sm"
-                  variant="secondary"
-                >
-                  <Icon.terminal />
-                  <span className="hidden lg:inline">Dedicated API snippet</span>
-                </Button>
-              ) : null}
-              <div
-                aria-label="GPU controls"
-                className="inline-flex shrink-0 items-center"
-                role="group"
-              >
-                <DialogTrigger asChild>
-                  <Button
-                    className={row ? "rounded-r-none" : undefined}
-                    disabled={stopping || pending || deployment.isLoading || !!deployment.error}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    Configure GPU
-                  </Button>
-                </DialogTrigger>
-                {row ? (
+  const controls =
+    ready || row ? (
+      <div
+        className={
+          render ? "inline-flex shrink-0 items-center" : "inline-flex shrink-0 items-center gap-2"
+        }
+      >
+        {row && !render ? (
+          <Button
+            aria-label="Dedicated API snippet"
+            onClick={() => setSnippetOpen(true)}
+            size="sm"
+            variant="secondary"
+          >
+            <Icon.terminal />
+            <span className="hidden lg:inline">Dedicated API snippet</span>
+          </Button>
+        ) : null}
+        <div aria-label="GPU controls" className="inline-flex shrink-0 items-center" role="group">
+          <DialogTrigger asChild>
+            <Button
+              className={
+                render
+                  ? `rounded-l-none border-l-border ${row ? "rounded-r-none" : ""}`
+                  : row
+                    ? "rounded-r-none"
+                    : undefined
+              }
+              disabled={!ready || stopping || pending || deployment.isLoading || !!deployment.error}
+              size="sm"
+              variant="secondary"
+            >
+              {render && !row ? "Configure" : "Configure GPU"}
+            </Button>
+          </DialogTrigger>
+          {row ? (
+            active ? (
+              <Popover onOpenChange={setConfirmStop} open={confirmStop}>
+                <PopoverTrigger asChild>
                   <Button
                     className="rounded-l-none border-l-border"
                     disabled={stopping || pending || !!deployment.error}
-                    onClick={toggleDeployment}
                     size="sm"
-                    variant="secondary"
+                    variant="destructive"
                   >
-                    {pending || stopping ? (
-                      <Spinner size="sm" />
-                    ) : active ? (
-                      <Icon.stop />
-                    ) : (
-                      <Icon.play />
-                    )}
-                    {stopping || stop.isPending
-                      ? "Stopping"
-                      : start.isPending
-                        ? "Starting"
-                        : active
-                          ? "Stop"
-                          : "Start"}
+                    {stopping || stop.isPending ? <Spinner size="sm" /> : <Icon.stop />}
+                    {stopping || stop.isPending ? "Stopping" : "Stop"}
                   </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          <div className="px-4 py-3">
-            {deployment.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading deployment</p>
-            ) : deployment.error ? (
-              <p className="text-sm text-destructive">Could not load deployment</p>
-            ) : row ? (
-              <DeploymentStatus row={row} />
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  aria-label="Stop dedicated inference"
+                  className="w-72 space-y-3 p-4"
+                >
+                  <p className="text-sm font-medium">Stop dedicated inference?</p>
+                  <p className="text-xs text-muted-foreground">
+                    Dedicated replicas will shut down.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <Button onClick={() => setConfirmStop(false)} size="sm" variant="secondary">
+                      Cancel
+                    </Button>
+                    <Button
+                      disabled={pending || stopping || !active || !!deployment.error}
+                      onClick={stopDeployment}
+                      size="sm"
+                      variant="destructive"
+                    >
+                      {stop.isPending ? <Spinner size="sm" /> : <Icon.stop />}
+                      {stop.isPending ? "Stopping" : "Stop dedicated"}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             ) : (
-              <p className="text-sm text-muted-foreground">No dedicated GPU deployed</p>
-            )}
-          </div>
-        </Card>
+              <Button
+                className="rounded-l-none border-l-border"
+                disabled={!ready || pending || !!deployment.error}
+                onClick={() => setConfirmStart(true)}
+                size="sm"
+                variant="secondary"
+              >
+                {start.isPending ? <Spinner size="sm" /> : <Icon.play />}
+                {start.isPending ? "Starting" : "Start"}
+              </Button>
+            )
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+  return (
+    <>
+      <Dialog onOpenChange={setOpen} open={open}>
+        {render ? (
+          render(controls, row, deployment.isLoading, !!deployment.error)
+        ) : (
+          <Card aria-label="Dedicated endpoint" className="overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2">
+              <div className="flex shrink-0 items-center gap-3">
+                <h2 className="text-sm font-medium">Dedicated endpoint</h2>
+                {row && STARTING.has(row.status ?? "") ? null : (
+                  <EndpointStatus
+                    label={
+                      deployment.isLoading
+                        ? "Loading"
+                        : deployment.error
+                          ? "Unavailable"
+                          : row
+                            ? STATUS_LABEL[row.status ?? "offline"]
+                            : "Not deployed"
+                    }
+                    state={
+                      deployment.error || row?.status === "failed"
+                        ? "error"
+                        : deployment.isLoading || (active && row?.status !== "online")
+                          ? "busy"
+                          : row?.status === "online"
+                            ? "online"
+                            : "offline"
+                    }
+                  />
+                )}
+              </div>
+              {row && STARTING.has(row.status ?? "") ? (
+                <DedicatedStartupProgress row={row} />
+              ) : null}
+              {controls}
+            </div>
+            <div className="px-4 py-3">
+              {deployment.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading deployment</p>
+              ) : deployment.error ? (
+                <p className="text-sm text-muted-foreground">Could not load deployment</p>
+              ) : row ? (
+                <DeploymentStatus row={row} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No dedicated GPU deployed</p>
+              )}
+            </div>
+          </Card>
+        )}
         <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Dedicated GPU</DialogTitle>
@@ -274,9 +323,9 @@ export function DedicatedDeploymentSection({
               <p className="text-sm text-muted-foreground">Loading GPUs</p>
             ) : null}
             {gpus.error ? (
-              <p className="text-sm text-destructive">GPU options could not load</p>
+              <p className="text-sm text-muted-foreground">GPU options could not load</p>
             ) : null}
-            {deployment.isFetched && gpus.data && row?.status !== "shutting_down" ? (
+            {ready && deployment.isFetched && gpus.data && row?.status !== "shutting_down" ? (
               <GpuMenu
                 decision={model.inferenceContract === "decision"}
                 gpus={gpus.data}
@@ -343,7 +392,9 @@ function DeploymentStatus({ row }: { row: DedicatedDeployment }) {
           </div>
         ))}
       </dl>
-      {row.errorMessage ? <p className="text-sm text-destructive">{row.errorMessage}</p> : null}
+      {row.errorMessage ? (
+        <p className="text-sm text-muted-foreground">{row.errorMessage}</p>
+      ) : null}
     </div>
   );
 }
@@ -526,7 +577,7 @@ function GpuMenu({
         </Button>
       </div>
       {minimum != null && maxCount != null && minimum > maxCount ? (
-        <p className="text-xs text-destructive">Minimum replicas exceeds maximum</p>
+        <p className="text-xs text-muted-foreground">Minimum replicas exceeds maximum</p>
       ) : null}
       {hourWarning ? <p className="text-sm text-warning">{hourWarning}</p> : null}
     </div>

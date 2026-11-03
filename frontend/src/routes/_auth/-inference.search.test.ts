@@ -38,6 +38,8 @@ describe("Inference route search", () => {
   it("keeps a deep-linked page and page size, coerced from the URL's strings", () => {
     expect(parse({ page: "3", page_size: "10", projectId: "proj-1" })).toEqual({
       inf_capability: "all",
+      inf_deployment: "all",
+      inf_ordering: "-created_at",
       inf_search: "",
       page: 3,
       page_size: 10,
@@ -55,6 +57,8 @@ describe("Model detail route search", () => {
   it("carries the list's filters and page through the detail route", () => {
     const deepLink = {
       inf_capability: "capability-1",
+      inf_deployment: "dedicated",
+      inf_ordering: "-recent_requests",
       inf_search: "llama",
       page: "3",
       page_size: "10",
@@ -63,6 +67,8 @@ describe("Model detail route search", () => {
 
     expect(parseDetail(deepLink)).toEqual({
       inf_capability: "capability-1",
+      inf_deployment: "dedicated",
+      inf_ordering: "-recent_requests",
       inf_search: "llama",
       page: 3,
       page_size: 10,

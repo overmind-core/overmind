@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 import pytest
 from conftest import frozen_dataset
 from django.urls import reverse
+from django.utils import timezone
 from factories import auth_client, make_capability, make_member, make_project, make_user
 from rest_framework import status
 
@@ -15,7 +17,7 @@ from overbae.models import (
     FinetuningJob,
     Project,
 )
-from overbae.models.inference import DeployedModel, InferenceCall
+from overbae.models.inference import DedicatedDeployment, DeployedModel, InferenceCall
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
@@ -248,3 +250,87 @@ def test_metrics_separate_failures_end_to_end_and_warm_engine_latency():
     assert response.data["avg_latency_ms"] == 10
     assert response.data["end_to_end_p50_ms"] == 300
     assert response.data["latest_failure"]["id"] == str(failed.pk)
+
+
+def test_inference_deployment_filter_scopes_pagination():
+    user = make_user()
+    project = make_project()
+    make_member(user, project)
+    serverless = _deployed_model(project, _job(project))
+    dedicated = _deployed_model(project)
+    _deployed_model(project)
+    foreign_project = make_project()
+    foreign = _deployed_model(foreign_project, _job(foreign_project))
+    for model, state in [(dedicated, "online"), (dedicated, "offline"), (foreign, "offline")]:
+        DedicatedDeployment.objects.create(
+            project=model.project,
+            deployed_model=model,
+            gpu_type="L4",
+            serving_shape="lora_bf16",
+            status=state,
+            rate_usd_per_gpu_hour="1",
+            credits_per_gpu_hour="100",
+        )
+    client = auth_client(user)
+    for params, expected in [
+        ({"deployment_type": "serverless"}, [str(serverless.id)]),
+        ({"deployment_type": "dedicated"}, [str(dedicated.id)]),
+        ({"deployment_type": "dedicated", "search": serverless.model_id}, []),
+    ]:
+        response = client.get(reverse("deployedmodel-list"), {**params, "page_size": 1})
+        assert response.status_code == 200
+        assert response.data["count"] == len(expected)
+        assert [str(row["id"]) for row in response.data["results"]] == expected
+    for params in [{"deployment_type": "invalid"}]:
+        assert client.get(reverse("deployedmodel-list"), params).status_code == 400
+
+
+def test_inference_metric_ordering_uses_recent_application_traffic_and_nulls_last():
+    user, project = make_user(), make_project()
+    make_member(user, project)
+    busy = _deployed_model(project, _job(project))
+    quiet = _deployed_model(project, _job(project))
+    empty = _deployed_model(project, _job(project))
+    for model, latency, speed, outcome in [
+        (busy, 300, 20, "succeeded"),
+        (busy, 900, 5, "failed"),
+        (quiet, 100, 40, "succeeded"),
+    ]:
+        InferenceCall.objects.create(
+            project=project,
+            deployed_model=model,
+            source="application",
+            end_to_end_ms=latency,
+            tokens_per_second=speed,
+            outcome=outcome,
+        )
+    InferenceCall.objects.create(
+        project=project,
+        deployed_model=quiet,
+        source="evaluation",
+        end_to_end_ms=9000,
+        tokens_per_second=1,
+    )
+    old = InferenceCall.objects.create(
+        project=project,
+        deployed_model=quiet,
+        source="application",
+        end_to_end_ms=9000,
+        tokens_per_second=1,
+    )
+    InferenceCall.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=2))
+    client = auth_client(user)
+    for ordering, expected in [
+        ("-recent_requests", busy),
+        ("recent_requests", empty),
+        ("recent_latency", quiet),
+        ("-recent_latency", busy),
+        ("recent_speed", busy),
+        ("-recent_speed", quiet),
+        ("recent_success_rate", busy),
+        ("-recent_success_rate", quiet),
+    ]:
+        response = client.get(reverse("deployedmodel-list"), {"ordering": ordering, "page_size": 1})
+        assert response.status_code == 200
+        assert response.data["count"] == 3
+        assert str(response.data["results"][0]["id"]) == str(expected.pk)
