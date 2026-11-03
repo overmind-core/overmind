@@ -19,12 +19,26 @@ from datetime import UTC, datetime, timedelta
 from statistics import mean, median
 from typing import Any, ClassVar
 
-from django.db.models import Func, IntegerField, Sum, TextField, Window
+from asgiref.sync import sync_to_async
+from django.db.models import (
+    DateTimeField,
+    Exists,
+    ExpressionWrapper,
+    Func,
+    IntegerField,
+    OuterRef,
+    Q,
+    Sum,
+    TextField,
+    Value,
+    Window,
+)
 from django.db.models.functions import Cast, Coalesce
 from django.utils import timezone
 
 from overbae.innermind import evidence
 from overbae.innermind.evals import JevEvaluator
+from overbae.innermind.issues import IssueOccurrence, record_occurrences
 from overbae.innermind.metrics import (
     FAIL_BELOW,
     REASON_BELOW,
@@ -35,12 +49,21 @@ from overbae.innermind.metrics import (
     score_of,
 )
 from overbae.innermind.span_processor import MAX_ATTEMPTS
-from overbae.models import SignalEvent, SignalSubscription, Span
+from overbae.innermind.traffic import hour_of, rollup_hours
+from overbae.models import EvalScore, Project, SignalCursor, SignalEvent, SignalSubscription, Span
 
 logger = logging.getLogger(__name__)
 
-WINDOW = timedelta(days=1)
-PROJECT_SPAN_CAP = 20_000
+# Arrival order isn't commit order, so each run re-reads a little behind its cursor.
+OVERLAP = timedelta(minutes=1)
+# Idle-session and missing-root checks fire as time passes, not as spans arrive, so each run
+# gives them the band of spans old enough to have just crossed their thresholds.
+TIME_BASED_FROM = timedelta(minutes=35)
+TIME_BASED_TO = timedelta(minutes=10)
+PAGE = 5_000
+# Rollups cost a scan of the hours touched, so they run per batch of pages, not per page.
+PAGES_PER_ROLLUP = 20
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 SIGNAL_BATCH_BYTES = 8 * 1024 * 1024
 SIGNAL_BATCH_ROWS = 256
 EVIDENCE_SPANS = 10
@@ -53,6 +76,16 @@ SENSITIVE_PATTERNS: dict[str, re.Pattern] = {
     "email": re.compile(r"\b[\w.+-]+@[\w-]+\.[A-Za-z]{2,}\b"),
     "card number": re.compile(r"\b(?:\d[ -]?){13,15}\d\b"),
 }
+
+
+ISSUE_TITLE = 300
+# Tool errors the model caused through its arguments, not the tool failing on its own.
+MODEL_ERROR = re.compile(
+    r"\b(?:invalid|validation|schema|missing (?:required )?(?:argument|parameter|field)"
+    r"|unknown (?:tool|argument|parameter|field))\b",
+    re.IGNORECASE,
+)
+VOLATILE = re.compile(r"\b[0-9a-f]{8,}\b|\d+(?:\.\d+)?")
 
 
 class SignalInputTooLargeError(ValueError):
@@ -117,6 +150,19 @@ def redact(text: str) -> str:
 
 def clip(text: str) -> str:
     return redact(text)[:EVIDENCE_TEXT]
+
+
+def normalize(text: str) -> str:
+    """Collapses ids and numbers so repeats of one failure share a fingerprint."""
+    return VOLATILE.sub("#", " ".join(text.lower().split()))
+
+
+def group_bytes(group: list[tuple]) -> int:
+    return sum(item[1] for item in group)
+
+
+def span_end(span: Span) -> datetime:
+    return datetime.fromtimestamp((span.end_time_ns or span.start_time_ns) / 1e9, tz=UTC)
 
 
 def failed_metrics(span: Span) -> list[dict]:
@@ -195,6 +241,14 @@ class Signal:
     # Ranks insights: "high" for exposed data, failures and falling quality, "low" for
     # latency, spend and scoring gaps.
     severity: ClassVar[str] = "medium"
+    # What the failure needs: "model" behaviour is trainable, "system" and "data" are fixed.
+    cause: ClassVar[str] = "system"
+    # The span reason names the failure, so distinct reasons are distinct issues.
+    reason_names_issue: ClassVar[bool] = False
+    # A check about what followed an error reports its own failure, not the error's.
+    error_names_issue: ClassVar[bool] = True
+    # Fires as time passes with no new span, so it also reads spans that didn't change.
+    time_based: ClassVar[bool] = False
 
     def __init__(self, project_id: str, config: dict | None = None):
         self.project_id = str(project_id)
@@ -209,7 +263,11 @@ class Signal:
 
     def actions(self, trace_ids: list[str], capability_id) -> list[dict[str, str]]:
         traces = f"{len(trace_ids)} trace{'s' if len(trace_ids) != 1 else ''}"
-        actions = [{"kind": "fix", "label": self.remedy}] if self.remedy else []
+        actions = []
+        if self.cause == "model" and capability_id:
+            actions.append({"kind": "train_model", "label": "Train a model for this capability"})
+        if self.remedy:
+            actions.append({"kind": "fix", "label": self.remedy})
         actions.append({"kind": "inspect_traces", "label": f"Inspect {traces}"})
         actions.append({"kind": "create_dataset", "label": f"Create a dataset from {traces}"})
         if self.scored:
@@ -219,6 +277,75 @@ class Signal:
                 {"kind": "open_optimiser", "label": "Optimise the capability on that dataset"}
             )
         return actions
+
+    def issue_identity(self, span: Span, reason: str) -> tuple[tuple, str, str]:
+        """The failure a span shows, independent of which check saw it, so one root cause
+        raised by several checks lands on one issue."""
+        if self.error_names_issue and evidence.status(span) == "error" and span.status_message:
+            message = " ".join(span.status_message.split())
+            cause = "model" if MODEL_ERROR.search(message) else "system"
+            return ("error", span.name, normalize(message)), f"{span.name}: {message}", cause
+        if self.scored and (failed := failed_metrics(span)):
+            named = [metric["expectation"] or metric["name"] for metric in failed]
+            expectation = next((text for text in named if text in reason), named[0])
+            return ("expectation", expectation), f"Fails: {expectation}", "model"
+        if self.reason_names_issue:
+            return (self.name, normalize(reason)), reason[:1].upper() + reason[1:], self.cause
+        # An output repeats up the trace, so only a tool's name separates failures.
+        description = self.description.rstrip(".")
+        if evidence.is_tool(span):
+            return (self.name, span.name), f"{span.name}: {description}", self.cause
+        return (self.name, ""), description, self.cause
+
+    def occurrences(
+        self, finding: SignalFinding, capability_id, group: list[Span]
+    ) -> list[IssueOccurrence]:
+        started = {}
+        for span in group:
+            if span.start_time_ns:
+                first = started.get(span.trace_id)
+                started[span.trace_id] = (
+                    min(first, span.start_time_ns) if first else span.start_time_ns
+                )
+        # A retry's successful attempts are not failures when another attempt errored.
+        errored_traces = {
+            span.trace_id for span, _ in finding.spans if evidence.status(span) == "error"
+        }
+        # A root that errors because a step errored is the same failure, named by the step.
+        step_errors = {
+            span.trace_id
+            for span, _ in finding.spans
+            if evidence.status(span) == "error" and not span.is_root
+        }
+        found = {}
+        for span, reason in finding.spans:
+            if span.trace_id in errored_traces and evidence.status(span) != "error":
+                continue
+            if span.is_root and span.trace_id in step_errors:
+                continue
+            key, title, cause = self.issue_identity(span, reason)
+            scope = str(capability_id or span.capability_id or "")
+            fingerprint = hashlib.sha256(json.dumps([scope, *key]).encode()).hexdigest()
+            family = hashlib.sha256(json.dumps(list(key)).encode()).hexdigest()
+            found.setdefault(
+                (fingerprint, span.trace_id),
+                IssueOccurrence(
+                    fingerprint=fingerprint,
+                    family=family,
+                    title=redact(title)[:ISSUE_TITLE],
+                    cause=cause,
+                    capability_id=capability_id or span.capability_id,
+                    trace_id=span.trace_id,
+                    span_id=span.span_id,
+                    conversation_id=span.conversation_id,
+                    signal_type=self.name,
+                    reason=clip(reason),
+                    occurred_at=datetime.fromtimestamp(
+                        started.get(span.trace_id, span.start_time_ns) / 1e9, tz=UTC
+                    ),
+                ),
+            )
+        return list(found.values())
 
     def details(self, finding: SignalFinding, group: list[Span], key: str, capability_id) -> dict:
         offending = [span for span, _ in finding.spans]
@@ -245,6 +372,7 @@ class Signal:
 
 class LowScoresSignal(Signal):
     name = "low_scores"
+    cause = "model"
     severity = "high"
     description = "The last scored spans all fall below the failing score."
     params = ("run",)
@@ -268,6 +396,7 @@ class LowScoresSignal(Signal):
 
 class ScoreDropSignal(Signal):
     name = "score_drop"
+    cause = "model"
     severity = "high"
     description = "The mean of the most recent scores falls against the earlier mean."
     params = ("window", "drop")
@@ -303,6 +432,7 @@ class ScoreDropSignal(Signal):
 
 class RepeatedFailureSignal(Signal):
     name = "repeated_failure"
+    cause = "model"
     severity = "high"
     description = "One expectation fails repeatedly."
     params = ("times",)
@@ -330,8 +460,33 @@ class RepeatedFailureSignal(Signal):
         )
 
 
+class FailedExpectationSignal(Signal):
+    name = "failed_expectation"
+    cause = "model"
+    severity = "high"
+    description = "A span fails an expectation."
+    remedy = "Train on the traces that meet this expectation"
+    scored = True
+
+    async def evaluate(self, spans):
+        failures = [
+            (span, f'failed "{metric["expectation"] or metric["name"]}"')
+            for span in spans
+            for metric in failed_metrics(span)
+        ]
+        if failures:
+            return SignalFinding(
+                message=f"{len(failures)} failed expectations in {len(spans)} spans",
+                why="An expectation was judged not met or scored below the failing score.",
+                spans=failures,
+                measurements={"failures": len(failures)},
+            )
+        return None
+
+
 class HiddenFailureSignal(Signal):
     name = "hidden_failure"
+    cause = "model"
     severity = "high"
     description = "A step fails under a root answer that passes."
     remedy = "Fix the failing step; the passing answer hides it"
@@ -366,6 +521,7 @@ class HiddenFailureSignal(Signal):
 
 class UnscorableSignal(Signal):
     name = "unscorable"
+    cause = "data"
     severity = "low"
     description = "Expectations error on spans and leave them without a score."
     params = ("rate",)
@@ -527,6 +683,8 @@ class SwallowedErrorSignal(Signal):
 
 class AbandonedSignal(Signal):
     name = "abandoned"
+    time_based = True
+    cause = "data"
     description = "A trace has no root span long after its first span arrived."
     params = ("minutes",)
     remedy = "Check that the root span ends and is exported"
@@ -553,6 +711,7 @@ class AbandonedSignal(Signal):
 
 class LoopSignal(Signal):
     name = "loop"
+    cause = "model"
     description = "A tool is called repeatedly with the same input in one trace."
     params = ("times",)
     remedy = "Stop the agent repeating the same tool call"
@@ -583,6 +742,7 @@ class LoopSignal(Signal):
 
 class RunawayTraceSignal(Signal):
     name = "runaway_trace"
+    cause = "model"
     description = "A trace has many times the usual number of spans."
     params = ("factor",)
     remedy = "Bound the steps the agent can take"
@@ -621,6 +781,7 @@ class PlanDriftSignal(Signal):
     a judge that keeps failing stops after ``MAX_ATTEMPTS``."""
 
     name = "plan_drift"
+    cause = "model"
     default_enabled = False
     description = "Jev judges steps as not working toward the intent."
     remedy = "Keep the drifting steps on the stated intent"
@@ -682,6 +843,8 @@ class PlanDriftSignal(Signal):
 
 class AbandonedSessionSignal(Signal):
     name = "abandoned_session"
+    time_based = True
+    error_names_issue = False
     description = "A conversation goes idle after a failing or errored span."
     params = ("minutes",)
     remedy = "Fix the failure the user left on"
@@ -706,6 +869,7 @@ class AbandonedSessionSignal(Signal):
 
 class RepeatedInputSignal(Signal):
     name = "repeated_input"
+    cause = "model"
     description = "The user repeats their previous message."
     remedy = "Fix the answer the user had to ask for again"
 
@@ -729,6 +893,7 @@ class RepeatedInputSignal(Signal):
 
 class FrustrationSignal(Signal):
     name = "frustration"
+    cause = "model"
     description = "The user corrects the agent."
     remedy = "Fix the answer the user corrected"
     pattern = re.compile(
@@ -851,6 +1016,7 @@ class CostSpikeSignal(SpikeSignal):
 
 class ModelChangeSignal(Signal):
     name = "model_change"
+    cause = "model"
     description = "Scores fall after the model changes."
     params = ("drop",)
     remedy = "Compare the two models on an eval set before keeping the switch"
@@ -893,6 +1059,8 @@ class ModelChangeSignal(Signal):
 
 class LeakSignal(Signal):
     name = "leak"
+    cause = "model"
+    reason_names_issue = True
     severity = "high"
     description = "Outputs contain an API key, an email address or a card number."
     remedy = "Strip sensitive data from the outputs"
@@ -918,6 +1086,7 @@ class LeakSignal(Signal):
 
 class RefusalSignal(Signal):
     name = "refusal"
+    cause = "model"
     description = "Outputs refuse the task."
     remedy = "Fix the prompt or tools behind the refusals"
     pattern = re.compile(
@@ -944,6 +1113,7 @@ class RefusalSignal(Signal):
 
 class BrokenJsonSignal(Signal):
     name = "broken_json"
+    cause = "model"
     description = "Outputs open as JSON but do not parse."
     remedy = "Use structured output or validate the JSON before returning it"
 
@@ -968,6 +1138,8 @@ class BrokenJsonSignal(Signal):
 
 class HallucinatedToolSignal(Signal):
     name = "hallucinated_tool"
+    cause = "model"
+    reason_names_issue = True
     description = "An LLM requests a tool that never runs in the trace."
     remedy = "Align the declared tools with the tools the agent runs"
 
@@ -998,6 +1170,7 @@ class SignalFactory:
             LowScoresSignal,
             ScoreDropSignal,
             RepeatedFailureSignal,
+            FailedExpectationSignal,
             HiddenFailureSignal,
             UnscorableSignal,
             ErrorsSignal,
@@ -1085,39 +1258,110 @@ def dedupe_key(subscription: SignalSubscription, key: str, day: str) -> str:
 
 
 class SignalRunner:
-    """Runs defaults and explicit overrides over one project's last day of spans."""
+    """Reads every span and late score since the project's cursor, runs the checks over each
+    group they touch and rolls up the hours they fall in. It pages, so a backlog of any size
+    finishes, and a stopped run resumes from the last finished page."""
 
     def __init__(self, project_id):
         self.project_id = project_id
+        self.hours: set[datetime] = set()
 
-    async def batches(self):
-        recent = (
-            Span.objects.filter(
-                project_id=self.project_id, received_at__gte=timezone.now() - WINDOW
+    async def changed_spans(self, since, until):
+        """Pages of (received_at, span_id, trace_id, conversation_id, start_time_ns)."""
+        rows = Span.objects.filter(project_id=self.project_id, received_at__lt=until)
+        if since:
+            rows = rows.filter(received_at__gte=since)
+        rows = rows.order_by("received_at", "span_id").values_list(
+            "received_at", "span_id", "trace_id", "conversation_id", "start_time_ns"
+        )
+        last = None
+        while True:
+            page = rows
+            if last:
+                page = rows.filter(
+                    Q(received_at__gt=last[0]) | Q(received_at=last[0], span_id__gt=last[1])
+                )
+            found = [row async for row in page[:PAGE]]
+            if not found:
+                return
+            yield found
+            last = found[-1]
+
+    async def rescored_spans(self, since, until):
+        """Pages of (created_at, spans touched by the scores written in that page)."""
+        scores = EvalScore.objects.filter(
+            project_id=self.project_id,
+            run__isnull=True,
+            source_type__in=[EvalScore.SourceType.SPAN, EvalScore.SourceType.TRAJECTORY],
+            created_at__lt=until,
+        ).order_by("created_at", "id")
+        if since:
+            scores = scores.filter(created_at__gt=since)
+        scores = scores.values_list("created_at", "id", "source_type", "source_id")
+        last = None
+        while True:
+            page = scores
+            if last:
+                page = scores.filter(
+                    Q(created_at__gt=last[0]) | Q(created_at=last[0], id__gt=last[1])
+                )
+            found = [row async for row in page[:PAGE]]
+            if not found:
+                return
+            span_ids = [r[3] for r in found if r[2] == EvalScore.SourceType.SPAN]
+            trace_ids = [r[3] for r in found if r[2] == EvalScore.SourceType.TRAJECTORY]
+            touched = Span.objects.filter(project_id=self.project_id).filter(
+                Q(span_id__in=span_ids) | Q(trace_id__in=trace_ids)
             )
-            .order_by("-start_time_ns", "span_id")
+            yield (
+                found[-1][0],
+                [
+                    row
+                    async for row in touched.values_list(
+                        "received_at", "span_id", "trace_id", "conversation_id", "start_time_ns"
+                    )
+                ],
+            )
+            last = found[-1]
+
+    async def batches(self, rows):
+        """Every group the rows touch, whole, in batches under the byte limit. A conversation
+        too large for one batch is checked trace by trace."""
+        conversations = {row[3] for row in rows if row[3]}
+        traces = {row[2] for row in rows if not row[3]}
+        spans = (
+            Span.objects.filter(project_id=self.project_id)
+            .filter(
+                Q(conversation_id__in=conversations)
+                | Q(conversation__isnull=True, trace_id__in=traces)
+            )
             .annotate(signal_bytes=span_payload_bytes())
-            .values_list("span_id", "conversation_id", "trace_id", "signal_bytes")[
-                :PROJECT_SPAN_CAP
-            ]
+            .order_by("start_time_ns", "span_id")
+            .values_list("span_id", "conversation_id", "trace_id", "signal_bytes")
         )
         groups = defaultdict(list)
-        async for span_id, conversation_id, trace_id, size in recent:
+        async for span_id, conversation_id, trace_id, size in spans:
             key = f"conversation:{conversation_id}" if conversation_id else f"trace:{trace_id}"
-            groups[key].append((span_id, size))
+            groups[key].append((span_id, size, trace_id))
+        for key in [
+            key for key, group in groups.items() if group_bytes(group) > SIGNAL_BATCH_BYTES
+        ]:
+            if key.startswith("conversation:"):
+                for span_id, size, trace_id in groups.pop(key):
+                    groups[f"trace:{trace_id}"].append((span_id, size, trace_id))
         ids, size, oversized = {}, 0, 0
         for key, group in groups.items():
-            group_size = sum(item[1] for item in group)
-            if group_size > SIGNAL_BATCH_BYTES:
+            total = group_bytes(group)
+            if total > SIGNAL_BATCH_BYTES:
                 oversized += 1
                 continue
             if ids and (
-                size + group_size > SIGNAL_BATCH_BYTES or len(ids) + len(group) > SIGNAL_BATCH_ROWS
+                size + total > SIGNAL_BATCH_BYTES or len(ids) + len(group) > SIGNAL_BATCH_ROWS
             ):
                 yield ids
                 ids, size = {}, 0
             ids.update((item[0], key) for item in group)
-            size += group_size
+            size += total
         if ids:
             yield ids
         if oversized:
@@ -1126,30 +1370,77 @@ class SignalRunner:
                 "those groups were not checked or truncated"
             )
 
-    async def run(self) -> int:
-        configured = [
-            s async for s in SignalSubscription.objects.filter(project_id=self.project_id)
-        ]
-        subscriptions = effective_subscriptions(self.project_id, configured)
-        day = timezone.now().date().isoformat()
-        count = 0
-        rejected = 0
-        errors = []
+    async def read(self, rows, configured, subscriptions, errors) -> int:
+        count = rejected = 0
         try:
-            async for ids in self.batches():
+            async for ids in self.batches(rows):
                 try:
-                    count += await self.run_batch(ids, configured, subscriptions, day)
+                    count += await self.run_batch(ids, configured, subscriptions)
                 except SignalInputTooLargeError:
                     rejected += len(set(ids.values()))
         except SignalInputTooLargeError as exc:
             errors.append(str(exc))
         if rejected:
             errors.append(f"{rejected} signal groups changed or exceeded the batch byte limit")
+        self.hours.update(hour_of(row[4]) for row in rows if row[4])
+        return count
+
+    async def settle(self, cursor, **through) -> None:
+        """A cursor only moves past what the rollups already counted."""
+        await sync_to_async(rollup_hours)(self.project_id, self.hours)
+        self.hours = set()
+        for field_name, value in through.items():
+            setattr(cursor, field_name, value)
+        await cursor.asave(update_fields=list(through))
+
+    async def run(self) -> int:
+        configured = [
+            s async for s in SignalSubscription.objects.filter(project_id=self.project_id)
+        ]
+        subscriptions = effective_subscriptions(self.project_id, configured)
+        cursor, _ = await SignalCursor.objects.aget_or_create(project_id=self.project_id)
+        until = timezone.now()
+        previous = cursor.spans_through
+        count = 0
+        errors = []
+        pages = 0
+        last = None
+        since = previous - OVERLAP if previous else None
+        async for page in self.changed_spans(since, until):
+            count += await self.read(page, configured, subscriptions, errors)
+            last = page[-1][0]
+            pages += 1
+            if pages % PAGES_PER_ROLLUP == 0:
+                await self.settle(cursor, spans_through=last)
+        if last:
+            await self.settle(cursor, spans_through=last)
+
+        pages = 0
+        last = None
+        async for through, page in self.rescored_spans(cursor.scores_through, until):
+            count += await self.read(page, configured, subscriptions, errors)
+            last = through
+            pages += 1
+            if pages % PAGES_PER_ROLLUP == 0:
+                await self.settle(cursor, scores_through=last)
+        if last:
+            await self.settle(cursor, scores_through=last)
+
+        if previous:
+            timed = [
+                subscription
+                for subscription in subscriptions
+                if signal_factory.signals[subscription.signal_type].time_based
+            ]
+            async for page in self.changed_spans(previous - TIME_BASED_FROM, until - TIME_BASED_TO):
+                count += await self.read(page, configured, timed, errors)
+            await sync_to_async(rollup_hours)(self.project_id, self.hours)
+            self.hours = set()
         if errors:
             raise SignalInputTooLargeError("; ".join(errors))
         return count
 
-    async def run_batch(self, ids, configured, subscriptions, day):
+    async def run_batch(self, ids, configured, subscriptions):
         # Recheck the complete batch in SQL so concurrent payload growth cannot bypass admission.
         selected = (
             Span.objects.filter(project_id=self.project_id, span_id__in=ids)
@@ -1158,9 +1449,12 @@ class SignalRunner:
             .order_by("start_time_ns", "span_id")
         )
         spans = [span async for span in selected.aiterator(chunk_size=16)]
-        if len(spans) != len(ids) or any(group_key(span) != ids[span.pk] for span in spans):
+        if len(spans) != len(ids) or any(
+            ids[span.pk] not in (group_key(span), f"trace:{span.trace_id}") for span in spans
+        ):
             raise SignalInputTooLargeError("Signal inputs changed or exceeded the batch byte limit")
         events = []
+        occurrences = []
         for subscription in subscriptions:
             if not subscription.enabled:
                 continue
@@ -1179,7 +1473,7 @@ class SignalRunner:
                 )
             ]
             signal = signal_factory.get_signal(subscription)
-            for key, group in group_by(scoped, group_key).items():
+            for key, group in group_by(scoped, lambda span: ids[span.pk]).items():
                 try:
                     finding = await signal.evaluate(group)
                     if not finding:
@@ -1187,9 +1481,12 @@ class SignalRunner:
                     last = finding.spans[-1][0] if finding.spans else group[-1]
                     capability_id = subscription.capability_id or last.capability_id
                     details = signal.details(finding, group, key, capability_id)
+                    occurrences += signal.occurrences(finding, capability_id, group)
                 except Exception as exc:  # noqa: BLE001 — one signal never blocks the others
                     logger.warning("Signal %s failed on %s: %s", signal.name, key, exc)
                     continue
+                # When it failed, not when the check ran: a backfill keeps its own dates.
+                occurred_at = span_end(last)
                 events.append(
                     SignalEvent(
                         project_id=self.project_id,
@@ -1200,17 +1497,29 @@ class SignalRunner:
                         trace_id=last.trace_id,
                         message=finding.message,
                         details=details,
-                        dedupe_key=dedupe_key(subscription, key, day),
+                        dedupe_key=dedupe_key(subscription, key, occurred_at.date().isoformat()),
+                        occurred_at=occurred_at,
                     )
                 )
         created = await SignalEvent.objects.abulk_create(events, ignore_conflicts=True)
+        await sync_to_async(record_occurrences)(self.project_id, occurrences)
+        self.hours.update(hour_of(int(item.occurred_at.timestamp() * 1e9)) for item in occurrences)
         return len(created)
 
 
-def projects_with_recent_spans() -> list:
+def projects_with_changes() -> list:
+    behind = ExpressionWrapper(
+        Coalesce(OuterRef("signal_cursor__spans_through"), Value(EPOCH)) - Value(TIME_BASED_FROM),
+        output_field=DateTimeField(),
+    )
+    scored = Coalesce(OuterRef("signal_cursor__scores_through"), Value(EPOCH))
     return list(
-        Span.objects.filter(received_at__gte=timezone.now() - WINDOW)
-        .order_by()
-        .values_list("project_id", flat=True)
-        .distinct()
+        Project.objects.filter(
+            Exists(Span.objects.filter(project_id=OuterRef("pk"), received_at__gt=behind))
+            | Exists(
+                EvalScore.objects.filter(
+                    project_id=OuterRef("pk"), run__isnull=True, created_at__gt=scored
+                )
+            )
+        ).values_list("pk", flat=True)
     )

@@ -53,7 +53,8 @@ const flagOn = (flag: Flag | null): boolean => flag === null || featureFlags[fla
 
 const platformNavTree: NavLeaf[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
-  { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
+  { flag: null, icon: Icon.observability, label: "Observability", to: "/observe" },
+  { flag: null, icon: Icon.history, label: "Observability (old)", to: "/observability" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
   { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
   { flag: "finetuning", icon: Icon.training, label: "Training", to: "/training" },

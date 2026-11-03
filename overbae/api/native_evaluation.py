@@ -28,6 +28,7 @@ from overbae.services.native_evaluation import (
     reuse_predictions,
 )
 from overbae.services.native_evaluation_monitor import inspect
+from overbae.services.simulated_training import refuse_paid_work
 from overbae.tasks.native_evaluation import advance_plan
 
 logger = logging.getLogger(__name__)
@@ -351,7 +352,9 @@ class NativeEvaluationViewSet(
     @action(detail=True, methods=["post"], url_path="launch")
     def launch_evaluation(self, request, pk=None):
         require_credits(request.user)
-        plan = launch(self.get_object(), user=request.user)
+        plan = self.get_object()
+        refuse_paid_work(plan.project)
+        plan = launch(plan, user=request.user)
         return Response(NativeEvaluationSerializer(plan).data, status=202)
 
     @extend_schema(request=None, responses=NativeEvaluationSerializer)

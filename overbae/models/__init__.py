@@ -59,12 +59,18 @@ from .innermind import (
     EvalRunRow,
     EvalScore,
     EvalSet,
+    Issue,
+    IssueHour,
+    IssueTrace,
     LiveScoringProject,
     LiveScoringScheduler,
     LiveScoringWork,
+    ModelHour,
     ModelRef,
+    SignalCursor,
     SignalEvent,
     SignalSubscription,
+    TrafficHour,
 )
 from .mcp_oauth import MCPOAuthClient, MCPOAuthGrant, MCPOAuthToken
 from .mcp_operations import EvalMatrixRevision, MCPMutation
@@ -154,5 +160,11 @@ __all__ = [
     "EvalMatrix",
     "EvalScore",
     "SignalSubscription",
+    "TrafficHour",
+    "Issue",
+    "IssueHour",
+    "IssueTrace",
+    "ModelHour",
+    "SignalCursor",
     "SignalEvent",
 ]

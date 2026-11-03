@@ -53,6 +53,7 @@ from overbae.api.inference_requests import (
     InferenceRequestView,
     SystemOneView,
 )
+from overbae.api.issue_views import IssueViewSet
 from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
 from overbae.api.otlp import otlp_traces
@@ -138,6 +139,7 @@ router.register(r"eval-run-rows", EvalRunRowViewSet, basename="evalrunrow")
 router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
 router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
 router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
+router.register(r"issues", IssueViewSet, basename="issue")
 
 
 urlpatterns = []

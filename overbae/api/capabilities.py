@@ -3,7 +3,8 @@ at ``/api/agent/``. DELETE hides a capability; nothing here drops a row."""
 
 from __future__ import annotations
 
-from django.db.models import Count
+from django.db.models import Count, IntegerField, OuterRef, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -23,7 +24,7 @@ from overbae.api.serializers import (
     capability_products,
 )
 from overbae.api.sync import RepositorySnapshotSerializer
-from overbae.models import Capability, Project
+from overbae.models import Capability, Project, Span, TrafficHour
 from overbae.services.capabilities import graph, identity
 from overbae.services.capability_prompts import sync_capability_prompts
 
@@ -56,8 +57,28 @@ def _capabilities_for(request):
 
 
 def _annotated(qs):
+    # From the rollup: counting spans here blocked every page once a project had millions.
+    # Until the first rollup a capability has few spans, and a live count keeps it immediate.
+    rolled = (
+        TrafficHour.objects.filter(capability_id=OuterRef("pk"))
+        .order_by()
+        .values("capability_id")
+        .annotate(total=Sum("traces"))
+        .values("total")
+    )
+    live = (
+        Span.objects.filter(capability_id=OuterRef("pk"))
+        .order_by()
+        .values("capability_id")
+        .annotate(total=Count("trace_id", distinct=True))
+        .values("total")
+    )
     return capability_products(qs.select_related("activation")).annotate(
-        trace_count=Count("spans__trace_id", distinct=True)
+        trace_count=Coalesce(
+            Subquery(rolled, output_field=IntegerField()),
+            Subquery(live, output_field=IntegerField()),
+            Value(0),
+        )
     )
 
 
