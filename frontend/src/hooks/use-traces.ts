@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
@@ -430,7 +430,8 @@ export function useTraceDetail(
 ) {
   return useQuery({
     enabled: !!traceId && !!projectId,
-    placeholderData: retainPreviousData ? keepPreviousData : undefined,
+    placeholderData: (previous, query) =>
+      retainPreviousData && query?.queryKey[2] === projectId ? previous : undefined,
     queryFn: () => fetchTraceDetail(traceId!),
     queryKey: ["trace", traceId, projectId],
     refetchInterval: (query) =>

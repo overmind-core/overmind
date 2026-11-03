@@ -392,7 +392,7 @@ export function NewDatasetDialog({
                 </p>
               </div>
               {splitError && (
-                <p className="text-xs text-destructive" id="dataset-split-error" role="alert">
+                <p className="text-xs text-muted-foreground" id="dataset-split-error" role="alert">
                   {splitError}
                 </p>
               )}

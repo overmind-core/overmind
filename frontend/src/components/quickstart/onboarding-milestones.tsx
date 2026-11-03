@@ -112,6 +112,8 @@ export function OnboardingMilestones({
     return query.error ? <Alert variant="destructive">Couldn’t load setup progress.</Alert> : null;
   }
 
+  if (!steps.length) return <Alert>No setup progress reported.</Alert>;
+
   const completed = steps.filter((step) => step.completedAt).length;
   const current = steps.find((step) => !step.completedAt);
   const lastCompleted = steps.filter((step) => step.completedAt).at(-1);
@@ -174,20 +176,33 @@ export function OnboardingMilestones({
           className="flex gap-1 border border-border bg-background p-1"
           role="progressbar"
         >
-          {steps.flatMap((step, index) =>
-            [0, 1].map((half) => (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "h-3 min-w-0 flex-1 transition-colors duration-200 motion-reduce:transition-none",
-                  index < completed ? "bg-primary" : "bg-muted"
-                )}
-                key={`${step.kind}:${half}`}
-              />
-            ))
-          )}
+          {Array.from({ length: 32 }, (_, index) => (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "h-3 min-w-0 flex-1 transition-colors duration-200 motion-reduce:transition-none",
+                index < Math.floor((completed / steps.length) * 32) ? "bg-primary" : "bg-muted"
+              )}
+              key={index}
+            />
+          ))}
         </div>
       </Card>
+      <details className="rounded-md border border-border bg-card p-4 text-sm">
+        <summary className="cursor-pointer">
+          Setup checklist · {completed} of {steps.length}
+        </summary>
+        <ol className="mt-3 space-y-2">
+          {steps.map((step) => (
+            <li className="flex items-start justify-between gap-3" key={step.kind}>
+              <span>{step.label}</span>
+              <span className={step.completedAt ? "text-success" : "text-muted-foreground"}>
+                {step.completedAt ? "Complete" : "Not reported"}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </details>
       <Card aria-label="Onboarding results" className="text-xs">
         <div className="flex items-baseline justify-between gap-3 border-b border-border/70 px-4 py-3">
           <span className="text-muted-foreground">Project</span>
@@ -218,7 +233,7 @@ export function OnboardingMilestones({
         </dl>
       </Card>
       {current && (
-        <Card className="flex flex-row items-center justify-between gap-3 border-primary bg-primary px-3 py-2 text-primary-foreground">
+        <Card className="flex flex-row flex-wrap items-center justify-between gap-3 border-primary bg-primary px-3 py-2 text-primary-foreground">
           <p className="text-xs">Finish setup in your coding agent.</p>
           <PromptAgentActions defaultAgent={reporter?.actorKind} inverted prompt={prompt} />
         </Card>

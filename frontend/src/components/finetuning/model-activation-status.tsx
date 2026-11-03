@@ -43,7 +43,7 @@ export function ModelActivationStatus({
             Stage {index + 1}/{STEPS.length}: {STEPS[index]?.label}
             {failed ? " · Failed" : ""}
           </p>
-          {failed ? <p className="text-destructive">{activation.error}</p> : null}
+          {failed ? <p className="text-muted-foreground">{activation.error}</p> : null}
           {failed && target?.status === "ready" ? (
             <Button
               disabled={isPending}

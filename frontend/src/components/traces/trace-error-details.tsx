@@ -23,8 +23,8 @@ export function TraceErrorDetailsView({ details }: { details: TraceErrorDetails 
   const { copied, copy } = useCopy(text || "No error message captured");
   return (
     <section aria-label="Error details" className="max-h-[40vh] shrink-0 overflow-auto px-3 py-1">
-      <Alert className="gap-2 border-0 bg-destructive/5 px-3 py-2 text-xs" variant="destructive">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-destructive/10">
+      <Alert className="gap-2 px-3 py-2 text-xs" variant="destructive">
+        <span className="flex size-5 shrink-0 items-center justify-center text-warning">
           <Icon.warning className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1">

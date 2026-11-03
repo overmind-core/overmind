@@ -120,7 +120,7 @@ export function RunsTable({
   // Server returns the runs' distinct datasets, name-ordered — no client sort.
   const { data: datasetOptions = [] } = useEvalRunDatasetsQuery(projectId);
 
-  const { data, isLoading, error } = useEvalRunsQuery({
+  const { data, isLoading, error, refetch } = useEvalRunsQuery({
     capability: capabilityFilter !== "all" ? capabilityFilter : undefined,
     dataset: datasetFilter !== "all" ? datasetFilter : undefined,
     ordering,
@@ -564,6 +564,7 @@ export function RunsTable({
       }}
       onPageChange={(p) => onSearchChange({ page: p })}
       onPageSizeChange={(s) => onSearchChange({ page: 1, page_size: s })}
+      onRetry={() => refetch()}
       // Carry the whole search, not just `projectId`: the breadcrumb back out
       // rebuilds this URL from the detail page's search.
       onRowClick={(r) =>

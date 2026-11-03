@@ -156,7 +156,7 @@ function DatasetNavigation({ projectId, enabled }: { projectId?: string; enabled
         </ul>
         {enabled && query.isPending && <LoadingState className="p-2" label="Loading datasets" />}
         {query.isError && (
-          <div className="space-y-2 px-2 py-2 text-xs text-destructive">
+          <div className="space-y-2 px-2 py-2 text-xs text-muted-foreground">
             <p>Couldn't load datasets.</p>
             <Button onClick={() => void query.refetch()} size="xs" variant="secondary">
               Retry

@@ -474,6 +474,7 @@ export function JobsHistory({
       }}
       onPageChange={(p) => onSearchChange({ page: p })}
       onPageSizeChange={(s) => onSearchChange({ page: 1, page_size: s })}
+      onRetry={() => refetch()}
       onRowClick={onMonitorRun}
       onRowMouseEnter={(run) => {
         for (const key of finetuningUnseenKeys(run.jobs)) clearUnseenCompletion(key);

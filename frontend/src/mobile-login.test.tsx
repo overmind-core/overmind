@@ -19,10 +19,18 @@ vi.mock("@clerk/clerk-react", () => ({
   SignUp: (props: Record<string, string>) => (
     <div data-flow={props.oauthFlow} data-next={props.forceRedirectUrl} data-testid="clerk" />
   ),
+  useAuth: () => ({
+    getToken: async () => null,
+    isLoaded: true,
+    isSignedIn: false,
+    signOut: async () => {},
+  }),
+  useUser: () => ({ user: null }),
 }));
 
 const root = createRootRoute();
 let routeTree: AnyRoute;
+let AuthProvider: typeof import("@/contexts/auth-context").AuthProvider;
 
 beforeAll(async () => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "pk_test_mobile");
@@ -35,6 +43,7 @@ beforeAll(async () => {
     removeEventListener: () => {},
   })) as unknown as typeof window.matchMedia;
   const { Route } = await import("@/routes/login");
+  ({ AuthProvider } = await import("@/contexts/auth-context"));
   routeTree = root.addChildren([
     Route.update({ getParentRoute: () => root, id: "/login", path: "/login" } as never),
   ]);
@@ -77,7 +86,11 @@ describe.each(["signin", "signup"])("%s OAuth handoff", (mode) => {
       history: createMemoryHistory({ initialEntries: [url] }),
       routeTree,
     });
-    render(<RouterProvider router={router} />);
+    render(
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    );
     const clerk = await screen.findByTestId("clerk");
     expect(clerk.getAttribute("data-flow")).toBe(flow);
     expect(clerk.getAttribute("data-next")).toBe(next);

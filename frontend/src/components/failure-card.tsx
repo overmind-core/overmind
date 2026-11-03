@@ -24,15 +24,15 @@ export function FailureCard({
   className,
 }: FailureCardProps) {
   return (
-    <div className={cn("rounded-md border border-destructive/40 bg-destructive/10 p-3", className)}>
-      <p className="text-sm font-medium text-destructive">{title}</p>
+    <div className={cn("rounded-md border border-border bg-transparent p-3", className)}>
+      <p className="text-sm font-medium text-foreground">{title}</p>
       {error?.trim() && (
-        <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-destructive/90">
+        <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
           {error.trim()}
         </p>
       )}
       <div className="mt-3 flex items-center gap-2">
-        <Button disabled={retryPending} onClick={onRetry} size="sm">
+        <Button disabled={retryPending} onClick={onRetry} size="sm" variant="secondary">
           {retryPending ? <Spinner size="sm" /> : <Icon.refresh />}
           Retry
         </Button>

@@ -146,7 +146,6 @@ function LiveMetric({
 }
 
 function Stage({ call, stopped }: { call: NativeCallProgress; stopped: boolean }) {
-  const recovering = call.state === "retrying";
   const active = !stopped && ["running", "submitting", "retrying"].includes(call.state);
   const sourceAt =
     typeof call.progress?.source_at === "number" ? new Date(call.progress.source_at * 1000) : null;
@@ -170,11 +169,7 @@ function Stage({ call, stopped }: { call: NativeCallProgress; stopped: boolean }
         <p className="max-w-64 whitespace-normal text-warning">{call.progressError}</p>
       )}
       {call.error && (
-        <p
-          className={`max-w-64 whitespace-normal ${recovering ? "text-muted-foreground" : "text-destructive"}`}
-        >
-          {call.error}
-        </p>
+        <p className="max-w-64 whitespace-normal text-muted-foreground">{call.error}</p>
       )}
     </div>
   );
@@ -915,6 +910,7 @@ export function ProbabilityEvaluationMonitor({ plan }: { plan: NativeEvaluation 
             setPageSize(size);
             setPage(1);
           }}
+          onRetry={() => query.refetch()}
           onRowClick={(sample) => setSelected(sample.key)}
           page={page}
           pageSize={pageSize}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { toast } from "sonner";
 
@@ -23,6 +23,36 @@ const agents: { id: string; label: string; url?: string }[] = [
   { id: "opencode", label: "OpenCode" },
 ];
 
+const preferenceKey = "preferred-coding-agent";
+const preferenceEvent = "coding-agent-preference";
+
+function readPreference() {
+  try {
+    const value = localStorage.getItem(preferenceKey);
+    return agents.some((agent) => agent.id === value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function subscribePreference(listener: () => void) {
+  window.addEventListener("storage", listener);
+  window.addEventListener(preferenceEvent, listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener(preferenceEvent, listener);
+  };
+}
+
+function chooseAgent(value: string) {
+  try {
+    localStorage.setItem(preferenceKey, value);
+    window.dispatchEvent(new Event(preferenceEvent));
+  } catch {
+    toast.error("Couldn't save the coding-agent preference.");
+  }
+}
+
 export function PromptAgentActions({
   prompt,
   defaultAgent,
@@ -38,7 +68,7 @@ export function PromptAgentActions({
   onCopyFailed?: () => void;
   onOpenClicked?: (agent: string) => void;
 }) {
-  const [selectedAgent, setSelectedAgent] = useState<string>();
+  const selectedAgent = useSyncExternalStore(subscribePreference, readPreference, () => null);
   const agent = agents.find((option) => option.id === (selectedAgent ?? defaultAgent));
   // Agent links open desktop apps, so a phone can only copy.
   const mobile = isMobileBrowser();
@@ -108,7 +138,7 @@ export function PromptAgentActions({
               <DropdownMenuItem
                 aria-label={option.label}
                 key={option.id}
-                onSelect={() => setSelectedAgent(option.id)}
+                onSelect={() => chooseAgent(option.id)}
               >
                 <CodingAgentIcon kind={option.id} />
                 {option.label}

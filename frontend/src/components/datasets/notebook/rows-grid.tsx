@@ -474,7 +474,37 @@ export function RowsGrid({
           </Badge>
         )}
         <span className="flex-1" />
-        {data && narrowing && (
+        {rowsQuery.isError && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground" role="alert">
+            <HoverCard>
+              <HoverCardTrigger asChild>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  type="button"
+                >
+                  <Icon.warning className="size-3 text-warning" />
+                  {data ? "Update unavailable" : "Rows unavailable"}
+                  <span className="sr-only">
+                    : {errorMessage(rowsQuery.error, "Couldn't load rows.")}
+                  </span>
+                </button>
+              </HoverCardTrigger>
+              <HoverCardContent className="max-h-48 overflow-y-auto p-3 text-xs">
+                {errorMessage(rowsQuery.error, "Couldn't load rows.")}
+              </HoverCardContent>
+            </HoverCard>
+            <Button
+              disabled={rowsQuery.isFetching}
+              onClick={() => void rowsQuery.refetch()}
+              size="xs"
+              variant="secondary"
+            >
+              <Icon.refresh />
+              Retry rows
+            </Button>
+          </div>
+        )}
+        {data && narrowing && !rowsQuery.isPlaceholderData && (
           <span className="text-xs tabular-nums text-muted-foreground">
             {data.total.toLocaleString()} match
           </span>
@@ -487,9 +517,7 @@ export function RowsGrid({
         </span>
       )}
       <div className="nowheel min-h-0 flex-1 overflow-auto border-t border-border/70">
-        {rowsQuery.isError && !data ? (
-          <p className="p-2 text-xs text-muted-foreground">{errorMessage(rowsQuery.error)}</p>
-        ) : !rowsQuery.isPending && rows.length === 0 ? (
+        {!rowsQuery.isPending && !rowsQuery.isError && rows.length === 0 ? (
           <p className="p-2 text-xs text-muted-foreground">
             {narrowing ? "No rows match." : "No rows."}
           </p>
@@ -671,7 +699,7 @@ export function RowsGrid({
         )}
       </div>
 
-      {data && data.total > limit && (
+      {data && (data.total > 0 || page > 1) && (
         <div className="border-t border-border/60">
           <TablePagination
             count={data.total}

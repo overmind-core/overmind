@@ -107,20 +107,9 @@ function Finding({ check, report }: { check: DatasetAnalyticsCheck; report: Data
         )
       : [];
   return (
-    <section
-      aria-label={check.title}
-      className={`-mx-3 space-y-3 border-y px-3 py-4 ${
-        check.status === "error"
-          ? "border-destructive/40 bg-destructive/10"
-          : "border-warning/40 bg-warning/10"
-      }`}
-    >
-      <h3
-        className={`flex items-start gap-2 text-base font-medium ${
-          check.status === "error" ? "text-destructive" : "text-warning"
-        }`}
-      >
-        <Icon.warning className="mt-0.5 size-4 shrink-0" />
+    <section aria-label={check.title} className="-mx-3 space-y-3 border-y border-border px-3 py-4">
+      <h3 className="flex items-start gap-2 text-base font-medium text-foreground">
+        <Icon.warning className="mt-0.5 size-4 shrink-0 text-warning" />
         {families.length ? "Accuracy alone is misleading here" : check.title}
       </h3>
       {families.length ? (

@@ -444,12 +444,14 @@ export function DatasetsBrowser({
   setCapabilityFilter,
   isLoading,
   error,
+  onRetry,
   hideCapabilityColumn,
   fill = true,
   rowSearch,
 }: DatasetsFilterProps & {
   isLoading: boolean;
   error?: unknown;
+  onRetry?: () => unknown;
   hideCapabilityColumn?: boolean;
   fill?: boolean;
   rowSearch?: Record<string, string>;
@@ -540,6 +542,7 @@ export function DatasetsBrowser({
         setPageSize(s);
         setPage(1);
       }}
+      onRetry={onRetry}
       onRowClick={(ds) =>
         navigate({
           params: { datasetId: ds.id },

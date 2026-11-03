@@ -725,6 +725,15 @@ preserves the chosen zoom. The Agent trajectory's minimap treatment is available
 through the right-hand controls, hidden initially and remembered in this browser.
 The canvas shows the selected successful process and its recorded partition outputs. Corrections
 replace that process; there is no repair-history or restore view.
+Preparation and repair share coding-agent controls inside the applicable cell:
+the active cell for preparation, the failed run's source cell for repair, or the
+source landing card before publication. Controls sit inline in the cell's top strip;
+a compact error chip reveals the recorded problem on hover, focus or click. There is
+no separate preparation card. This applies to every source kind. The latest retained run supplies failure
+context independently of the active published version. A failure leaves that version
+visible and offers **Fix with coding agent** with exact run, source and fingerprint
+context; successful publication clears the failure. Resumable source imports retain
+their explicit **Resume import** action. A failed graph request is never an empty source.
 Live cell arrivals receive a bounded opacity reveal after graph placement; changed
 content or state briefly washes the existing frame with a neutral surface token.
 Cells never move independently of their connectors. Initial load, unchanged
@@ -798,6 +807,11 @@ preprocessing gate; model-specific preparation runs within the launched job.
 Overlap is advisory in setup.
 Unreadable data, invalid technical formats and incompatible model settings still
 block execution. There is no extra quality-approval step.
+
+Training setup flags incompatible data with a compact suitability warning; recorded
+findings expand inline without a card or coding-agent actions. Failed training jobs
+show a readable error and the existing manual retry. Technical validation still
+blocks invalid inputs; semantic quality remains advisory.
 
 Training setup lists **Training mode** (Decision or Generative) separately from
 **Task type**. The task uses its recorded classification and provenance; missing
@@ -933,6 +947,17 @@ popover surface and full-width header divider.
 Pointer clicks on graphs do not add a focus outline. Keyboard focus retains its
 indicator and chart navigation.
 
+### Error and recovery feedback
+
+Platform errors use compact, contextual feedback with muted readable copy and a
+small warning glyph where an icon is needed. Keep the surrounding content and
+controls visible; place recovery actions beside the affected operation. Do not
+use red panel backgrounds or red paragraphs for service, connection, validation
+or job failures. Long diagnostics belong in bounded, scrollable details.
+Shared Alert, QueryError, DismissibleAlert, FailureCard and toast components own
+this treatment. Destructive actions and recorded domain statuses retain their
+semantic colours. Failure wording and accessible announcements remain explicit.
+
 ### Loading and live updates
 
 Agent-attributed work uses the recorded coding agent logo instead of a spinner;
@@ -947,6 +972,14 @@ per region. Spinners and skeletons respect reduced motion.
 
 Background requests retain existing content, selections, expanded rows and canvas
 position. Loading indicators only replace content that has not arrived yet.
+Table refresh failures retain the last rows with a compact error and local retry.
+The status is muted text with a small warning icon, with diagnostic detail on hover
+or focus. Row grids place it beside their filters, without a red alert panel.
+Initial failures never read as empty results. Retry preserves filters and paging,
+and cannot restart while pending. Nested row controls own their clicks without
+opening the row. Missing pages offer a return to the first page. Dataset row grids
+retain page-size controls even when every row fits on one page. Placeholder data
+never carries across project boundaries.
 Workshop progress updates reuse the preparation query and mounted cells. Publication,
 metadata and operation events do not invalidate rows pinned to immutable cells.
 Operation notices float above the canvas without resizing it. Graph reflow anchors
@@ -955,7 +988,32 @@ reduced motion places them immediately. It never refits the camera on a backgrou
 update. Preparation refresh failures keep the last available graph beside a retry
 notice.
 
+### Authentication and application recovery
+
+Authentication loading uses the shared connection scene. A delayed load offers an
+explicit reload; it never invents progress. Route transitions preserve the full
+destination, including search and fragments, through client-side navigation.
+
+The authenticated transport owns credential renewal for generated, JSON and
+streaming requests. Concurrent failures share one renewal within a session. A
+request never retries under a later session, and sign-out invalidates outstanding
+responses and clears cached account data. Network and server failures retain
+credentials. A persistent authentication rejection opens one recovery dialog over
+the mounted page; the auth provider owns sign-out and identity, while the dialog
+only presents recovery actions. Queries do not retry session cancellations.
+
+Local recovery verifies the same account without discarding drafts. Cloud recovery
+offers reconnect or an explicit sign-in restart that identifies the loss of
+unsaved changes. Restoring a session never resubmits an action that has already
+returned an error to the UI; transport renewal permits only one retry of a 401.
+Application chunk failures reach the route boundary and offer an explicit refresh;
+they never reload the document automatically. Reduced motion applies to holding
+scenes and recovery dialogs.
+
 ### Onboarding
+
+Agent and Data are the only onboarding entry points. Other pages with no projects
+show a shared empty state linking to these routes; they do not embed onboarding.
 
 Initial onboarding is embedded in the landing page, using a white retro frame,
 striped title bar and Figma pixel eye without window controls. It introduces MCP
@@ -963,6 +1021,19 @@ and keeps the Agent/Data toggle with the setup prompt and upload form. The empty
 dataset inventory reuses the frame for data onboarding. A project without
 capabilities shows setup progress once its agent reports; a project with
 capabilities keeps its grid and shows a dismissible progress strip above it.
+
+The Data entry point opens the Data path. Switching paths keeps drafts and uploads
+mounted, and a reported agent connection never removes the Data path. The same
+rule applies to New project. Copying a prompt acknowledges only the clipboard
+write; it does not close New project or imply that a project exists. Coding-agent
+selection is a browser-local preference shared by setup and continuation controls.
+
+Progress fills continuously from the left using the completed-stage count. The
+expanded bar uses 32 blocks. The checklist retains individual milestone evidence,
+including out-of-order reports, and exposes incomplete stages as Not
+reported; an empty response never means setup succeeded. A failed progress fetch
+keeps setup actions available and offers retry. These milestones represent the
+existing activity contract, not independent verification of every reported step.
 
 ### Motion (system-wide)
 

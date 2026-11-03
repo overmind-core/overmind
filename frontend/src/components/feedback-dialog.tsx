@@ -169,7 +169,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                   value={feedback}
                 />
                 {submitState === "error" && (
-                  <p className="text-sm text-destructive">
+                  <p className="text-sm text-muted-foreground">
                     Something went wrong — please try again.
                   </p>
                 )}

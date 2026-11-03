@@ -8,6 +8,7 @@ import { NewDatasetDialog } from "@/components/datasets/new-dataset-dialog";
 import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { OnboardingWindow } from "@/components/onboarding/onboarding-window";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
+import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
@@ -30,7 +31,13 @@ function DatasetsIndexPage() {
   if (!projectId) {
     return (
       <PageShell header={null} variant="full">
-        <ProjectRequiredEmptyState />
+        <ProjectRequiredEmptyState
+          noProjects={
+            <div className="grid min-w-0 flex-1 place-items-center">
+              <QuickstartEmbed initialSource="data" />
+            </div>
+          }
+        />
       </PageShell>
     );
   }
@@ -89,7 +96,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
     <PageShell
       header={
         <PageHeader
-          count={query.isFetched ? datasets.length : undefined}
+          count={query.data ? datasets.length : undefined}
           description="Source data and step-by-step transformations for training and evaluation."
           icon={
             <img
@@ -129,6 +136,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
               query.isPending || (!datasets.length && projects.isPending && !query.isError)
             }
             key={JSON.stringify([ds_search, ds_role, ds_capability])}
+            onRetry={() => query.refetch()}
             rowSearch={{ projectId }}
           />
         </>

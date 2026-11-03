@@ -62,6 +62,7 @@ const dialogContentVariants = cva(
 
 function DialogContent({
   className,
+  overlayClassName,
   children,
   size,
   showCloseButton = true,
@@ -69,10 +70,11 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> &
   VariantProps<typeof dialogContentVariants> & {
     showCloseButton?: boolean;
+    overlayClassName?: string;
   }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         className={cn(dialogContentVariants({ className, size }))}
         data-slot="dialog-content"

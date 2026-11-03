@@ -2,9 +2,9 @@ import { SignIn, SignUp } from "@clerk/clerk-react";
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { ConnectionScene } from "@/components/connection-scene";
 import { LocalLoginForm } from "@/components/local-login-form";
 import { AuthenticationLoadingState } from "@/components/route-error";
-import { SplashBackground } from "@/components/splash-background";
 import { config } from "@/config";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useLoginGate } from "@/hooks/use-login-gate";
@@ -23,15 +23,16 @@ export const Route = createFileRoute("/login")({
 const CLERK_APPEARANCE = {
   elements: {
     card: "bg-transparent shadow-none",
-    cardBox: "rounded-md border border-auth-border bg-auth-panel/90 shadow-none",
+    cardBox: "w-full rounded-md border border-auth-border bg-auth-panel/90 shadow-none",
+    rootBox: "w-full max-w-sm",
   },
 };
 
 function RouteComponent() {
   const { refreshAuth } = useAuthContext();
-  const { mode } = Route.useSearch();
-  // `?next=` may carry its own query string, which TanStack's parsed search would mangle.
-  const safeNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+  const { mode, next } = Route.useSearch();
+  // The matched login search survives while the next route's code is loading.
+  const safeNext = safeNextPath(next);
   const gate = useLoginGate(safeNext);
   // Clerk ignores our `next` and lands on "/" unless told where to go, and the
   // sign-in/sign-up toggle would drop it.
@@ -43,35 +44,45 @@ function RouteComponent() {
 
   if (gate.kind === "loading") {
     return (
-      <SplashBackground>
+      <ConnectionScene>
         <AuthenticationLoadingState />
-      </SplashBackground>
+      </ConnectionScene>
     );
   }
 
-  if (gate.kind === "leaving") return null;
+  if (gate.kind === "leaving")
+    return (
+      <ConnectionScene>
+        <AuthenticationLoadingState label="Opening your workspace" />
+      </ConnectionScene>
+    );
 
   if (gate.kind === "home") {
-    return gate.dropProject ? (
-      <Navigate search={{ projectId: undefined }} to="/" />
-    ) : (
-      <Navigate to="/" />
+    return (
+      <ConnectionScene>
+        <AuthenticationLoadingState label="Opening your workspace" />
+        {gate.dropProject ? (
+          <Navigate search={{ projectId: undefined }} to="/" />
+        ) : (
+          <Navigate to="/" />
+        )}
+      </ConnectionScene>
     );
   }
 
   if (!config.clerkReady) {
     return (
-      <SplashBackground>
-        <div className="mx-4 flex w-full max-w-sm flex-col items-center justify-center gap-5">
+      <ConnectionScene>
+        <div className="flex w-full max-w-sm flex-col items-center justify-center gap-5">
           <LocalLoginForm onSignedIn={refreshAuth} />
         </div>
-      </SplashBackground>
+      </ConnectionScene>
     );
   }
 
   return (
-    <SplashBackground>
-      <div className="flex flex-col items-center justify-center gap-5">
+    <ConnectionScene>
+      <div className="flex w-full max-w-xl flex-col items-center justify-center gap-5">
         {mode === "signup" ? (
           <SignUp
             appearance={CLERK_APPEARANCE}
@@ -94,14 +105,14 @@ function RouteComponent() {
         <div className="flex flex-col items-center gap-2">
           {gate.offerDemo ? (
             <Link
-              className="animate-fade-in-up text-sm font-semibold text-auth-text/85 underline-offset-4 hover:text-auth-text hover:underline [animation-delay:500ms]"
+              className="text-sm font-semibold text-auth-text/85 underline-offset-4 hover:text-auth-text hover:underline"
               to="/demo"
             >
               Set up locally
             </Link>
           ) : null}
           <a
-            className="animate-fade-in-up text-sm font-semibold text-auth-text/85 underline-offset-4 hover:text-auth-text hover:underline [animation-delay:550ms]"
+            className="text-sm font-semibold text-auth-text/85 underline-offset-4 hover:text-auth-text hover:underline"
             href={PUBLIC_PRICING_URL}
             rel="noreferrer"
             target="_blank"
@@ -110,6 +121,6 @@ function RouteComponent() {
           </a>
         </div>
       </div>
-    </SplashBackground>
+    </ConnectionScene>
   );
 }

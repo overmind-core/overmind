@@ -64,8 +64,8 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
   // A guest runs on the stored JWT pair so client.ts can refresh it; Clerk's
   // getter would switch that flow off.
   useEffect(() => {
-    setAsyncTokenGetter(guestActive ? null : () => getToken());
-  }, [getToken, guestActive]);
+    setAsyncTokenGetter(guestActive ? null : getToken, clerkSignedIn ? (user?.id ?? null) : null);
+  }, [getToken, guestActive, clerkSignedIn, user?.id]);
 
   useEffect(() => {
     if (!clerkSignedIn || !guestActive || claimingRef.current) return;
@@ -89,7 +89,7 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
         if (settled) {
           // Synchronous, before the state flip: the re-render fires queries at
           // once, and they must carry the Clerk token, not nothing.
-          setAsyncTokenGetter(() => getToken());
+          setAsyncTokenGetter((options) => getToken(options));
           clearTokens();
           setGuestActive(false);
           void getContext().queryClient.invalidateQueries();
@@ -111,10 +111,11 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
       : null;
 
   const handleSignOut = useCallback(async () => {
+    await signOut();
     clearTokens();
     setGuestActive(false);
     resetUser();
-    await signOut();
+    getContext().queryClient.clear();
   }, [signOut]);
 
   const beginGuestSession = useCallback((access: string, refresh: string, projectId: string) => {
@@ -152,8 +153,10 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(readIsSignedIn);
   const [isGuest, setIsGuest] = useState(hasGuestSession);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const identityRequest = useRef(0);
 
   const refreshAuth = useCallback(() => {
+    const request = ++identityRequest.current;
     const signedIn = readIsSignedIn();
     setIsSignedIn(signedIn);
     setIsGuest(hasGuestSession());
@@ -164,6 +167,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
     void apiClient.auth
       .authMeRetrieve()
       .then((me) => {
+        if (request !== identityRequest.current) return;
         setUser({
           email: me.email,
           id: String(me.id),
@@ -172,7 +176,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
         });
       })
       .catch(() => {
-        setUser(null);
+        // A failed verification must not erase the identity needed for in-place recovery.
       });
   }, []);
 
@@ -186,11 +190,13 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
   const getToken = useCallback(async () => localStorage.getItem("jwt_access"), []);
 
   const handleSignOut = useCallback(async () => {
+    identityRequest.current++;
     clearTokens();
     setIsSignedIn(false);
     setIsGuest(false);
     setUser(null);
     resetUser();
+    getContext().queryClient.clear();
   }, []);
 
   const beginGuestSession = useCallback((access: string, refresh: string, projectId: string) => {

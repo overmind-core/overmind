@@ -126,6 +126,7 @@ export function BillingLedgerTable({ className }: { className?: string }) {
           setPage(1);
           setPageSize(s);
         }}
+        onRetry={() => query.refetch()}
         ordering={ordering}
         page={page}
         pageSize={pageSize}

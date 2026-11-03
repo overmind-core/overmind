@@ -198,7 +198,7 @@ export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
       {runs
         .filter((run) => run.error)
         .map((run) => (
-          <p className="text-sm text-destructive" key={run.id}>
+          <p className="text-sm text-muted-foreground" key={run.id}>
             {label(run)}: {run.error}
           </p>
         ))}
@@ -306,6 +306,7 @@ export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
             setPageSize(size);
             setPage(1);
           }}
+          onRetry={() => Promise.all(queries.map((query) => query.refetch()))}
           onRowClick={(row) => setSelected(row.key)}
           page={currentPage}
           pageSize={pageSize}
@@ -437,7 +438,9 @@ export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
                   </div>
                   {sample ? (
                     <>
-                      {sample.error && <p className="text-sm text-destructive">{sample.error}</p>}
+                      {sample.error && (
+                        <p className="text-sm text-muted-foreground">{sample.error}</p>
+                      )}
                       {sample.degraded && (
                         <p className="text-sm text-warning">
                           {sample.degradedReason || "Degraded result"}

@@ -17,15 +17,15 @@ export function QueryError({
   return (
     <div
       className={cn(
-        "flex min-w-0 items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive",
+        "flex min-w-0 flex-wrap items-center gap-2 py-2 text-sm text-muted-foreground",
         className
       )}
       role="alert"
     >
-      <Icon.warning className="mt-0.5 size-4 shrink-0" />
+      <Icon.warning className="size-3.5 shrink-0 text-warning" />
       <p className="min-w-0 flex-1">{errorMessage(error, fallback)}</p>
       {onRetry && (
-        <Button onClick={() => void onRetry()} size="sm" type="button" variant="secondary">
+        <Button onClick={() => void onRetry()} size="xs" type="button" variant="secondary">
           Try again
         </Button>
       )}

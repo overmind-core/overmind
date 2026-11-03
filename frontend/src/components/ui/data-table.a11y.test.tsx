@@ -312,3 +312,55 @@ describe("DataTable grouping", () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 });
+
+it("keeps nested controls independent from row navigation", () => {
+  const navigate = vi.fn();
+  const inspect = vi.fn();
+  renderTable({
+    columns: [
+      {
+        cell: () => (
+          <button onClick={inspect} type="button">
+            Inspect item
+          </button>
+        ),
+        id: "action",
+      },
+    ],
+    onRowClick: navigate,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Inspect item" }));
+  expect(inspect).toHaveBeenCalledOnce();
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it("reports a refresh failure without discarding the last rows", () => {
+  renderTable({ error: new Error("Connection interrupted") });
+  expect(screen.getByRole("alert").textContent).toContain("Connection interrupted");
+  expect(screen.getByText("a")).toBeTruthy();
+});
+
+it("does not restart a pending table retry", async () => {
+  let finish!: () => void;
+  const retry = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+  );
+  renderTable({ data: undefined, error: new Error("Connection interrupted"), onRetry: retry });
+  const button = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(retry).toHaveBeenCalledOnce();
+  expect(button.disabled).toBe(true);
+  await act(async () => finish());
+  expect(button.disabled).toBe(false);
+});
+
+it("offers a way back when a page disappears after rows are removed", () => {
+  const changePage = vi.fn();
+  renderTable({ data: { count: 1, results: [] }, onPageChange: changePage, page: 2 });
+  fireEvent.click(screen.getByRole("button", { name: "First page" }));
+  expect(changePage).toHaveBeenCalledWith(1);
+});

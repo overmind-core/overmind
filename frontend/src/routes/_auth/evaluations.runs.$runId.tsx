@@ -114,7 +114,7 @@ function EvalRunDetailPage() {
     <TooltipProvider delayDuration={200}>
       <PageShell header={header} variant="full">
         {run.error ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-md border border-border bg-transparent px-3 py-2 text-sm text-muted-foreground">
             {run.error}
           </div>
         ) : null}

@@ -8,10 +8,7 @@ import apiClient from "@/client";
 import { CapabilityBrowser } from "@/components/capability-grid";
 import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { CreateProjectDialog } from "@/components/create-project";
-import {
-  NoProjectsEmptyState,
-  ProjectRequiredEmptyState,
-} from "@/components/project-required-empty-state";
+import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
 import { RepositorySnapshot } from "@/components/repository-snapshot";
 import { Alert } from "@/components/ui/alert";
@@ -90,10 +87,10 @@ function OnboardingStrip({ projectId }: { projectId: string }) {
           className="hidden w-40 gap-0.5 border border-border bg-background p-0.5 sm:flex"
           role="progressbar"
         >
-          {steps.map((step) => (
+          {steps.map((step, index) => (
             <span
               aria-hidden="true"
-              className={cn("h-2 flex-1", step.completedAt ? "bg-primary" : "bg-muted")}
+              className={cn("h-2 flex-1", index < completed ? "bg-primary" : "bg-muted")}
               key={step.kind}
             />
           ))}
@@ -227,7 +224,7 @@ function AgentPage() {
         variant="scroll"
       >
         <div className="grid min-w-0 flex-1 place-items-center">
-          <NoProjectsEmptyState />
+          <QuickstartEmbed />
         </div>
         {createProjectDialog}
       </PageShell>

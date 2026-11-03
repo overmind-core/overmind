@@ -442,21 +442,18 @@ function CandidateRow({
       </div>
 
       {failedCommands.map((command) => (
-        <div
-          className="overflow-hidden rounded-md border border-destructive/40 bg-destructive/10"
-          key={command.id}
-        >
-          <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-destructive">
+        <div className="overflow-hidden rounded-md border border-border" key={command.id}>
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-muted-foreground">
             <Icon.failed className="size-3.5 shrink-0" />
             {commandPhase(command)} failed
           </div>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap border-t border-border/60 px-3 py-2 font-mono text-xs text-destructive">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap border-t border-border/60 px-3 py-2 font-mono text-xs text-muted-foreground">
             {command.error?.trim() || command.output?.trim() || "(no error output captured)"}
           </pre>
         </div>
       ))}
       {failedCommands.length === 0 && coverage.errors && coverage.errors.length > 0 && (
-        <Alert className="flex-col bg-destructive/10 px-3 py-2 text-xs" variant="destructive">
+        <Alert className="flex-col px-3 py-2 text-xs" variant="destructive">
           <p className="font-medium">Excluded output errors</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono">
             {coverage.errors.map((error) => (
@@ -466,7 +463,7 @@ function CandidateRow({
         </Alert>
       )}
       {candidate.status === "failed" && failedCommands.length === 0 && (
-        <Alert className="bg-destructive/10 px-3 py-2 text-xs" variant="destructive">
+        <Alert className="px-3 py-2 text-xs" variant="destructive">
           This candidate failed before producing a score. Its outputs were excluded from ranking.
         </Alert>
       )}
@@ -916,12 +913,12 @@ function OptimiserRunPage() {
   return (
     <PageShell header={header}>
       {experiment.failureReason && (
-        <Alert className="flex-col bg-destructive/10 px-3 py-2" variant="destructive">
-          <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-destructive">
+        <Alert className="flex-col px-3 py-2" variant="destructive">
+          <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
             <Icon.failed className="size-3" />
             Failure reason
           </p>
-          <pre className="max-h-48 w-full overflow-auto whitespace-pre-wrap font-mono text-xs text-destructive/90">
+          <pre className="max-h-48 w-full overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
             {experiment.failureReason}
           </pre>
         </Alert>

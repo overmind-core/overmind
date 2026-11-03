@@ -22,7 +22,7 @@ export function errorMessage(err: unknown, fallback = DEFAULT_FALLBACK): string 
     return fallback === DEFAULT_FALLBACK ? err.message : fallback;
   }
   if (isChunkLoadError(err)) {
-    return "A new version was deployed. Refresh the page to continue.";
+    return "Part of the app could not load. Check your connection and refresh the page.";
   }
   if (
     err instanceof TypeError &&

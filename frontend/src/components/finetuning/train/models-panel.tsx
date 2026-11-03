@@ -458,7 +458,9 @@ function ModelRow({
               {" · "}Estimated from eval data
             </p>
           )}
-          {incompatibility && <p className="mt-1.5 text-xs text-destructive">{incompatibility}</p>}
+          {incompatibility && (
+            <p className="mt-1.5 text-xs text-muted-foreground">{incompatibility}</p>
+          )}
           {servingContext?.warnings?.map((warning) => (
             <p className="mt-1.5 text-xs text-warning" key={warning}>
               {warning}
