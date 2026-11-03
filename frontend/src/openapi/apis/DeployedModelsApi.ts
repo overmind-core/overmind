@@ -114,6 +114,7 @@ export interface DeployedModelsInferenceCreateRequest {
 
 export interface DeployedModelsListRequest {
     capability?: string;
+    deploymentType?: DeployedModelsListDeploymentTypeEnum;
     ordering?: string;
     page?: number;
     pageSize?: number;
@@ -825,6 +826,10 @@ export class DeployedModelsApi extends runtime.BaseAPI {
             queryParameters['capability'] = requestParameters['capability'];
         }
 
+        if (requestParameters['deploymentType'] != null) {
+            queryParameters['deployment_type'] = requestParameters['deploymentType'];
+        }
+
         if (requestParameters['ordering'] != null) {
             queryParameters['ordering'] = requestParameters['ordering'];
         }
@@ -1219,6 +1224,14 @@ export const DeployedModelsActivityRetrieveSourceEnum = {
     application: 'application'
 } as const;
 export type DeployedModelsActivityRetrieveSourceEnum = typeof DeployedModelsActivityRetrieveSourceEnum[keyof typeof DeployedModelsActivityRetrieveSourceEnum];
+/**
+ * @export
+ */
+export const DeployedModelsListDeploymentTypeEnum = {
+    dedicated: 'dedicated',
+    serverless: 'serverless'
+} as const;
+export type DeployedModelsListDeploymentTypeEnum = typeof DeployedModelsListDeploymentTypeEnum[keyof typeof DeployedModelsListDeploymentTypeEnum];
 /**
  * @export
  */

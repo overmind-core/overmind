@@ -1,11 +1,12 @@
 import logging
 from collections import defaultdict
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db.models import Avg, Count, FloatField, Max, Min, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.expressions import RawSQL
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast, Coalesce
+from django.db.models.functions import Cast, Coalesce, NullIf
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -1930,6 +1931,10 @@ class DeployedModelViewSet(
     filterset_class = DeployedModelFilter
     search_fields = ["model_id", "base_model_id", "finetuning_job__name"]
     ordering_fields = [
+        "recent_requests",
+        "recent_success_rate",
+        "recent_latency",
+        "recent_speed",
         "avg_latency_ms",
         "avg_tokens_per_second",
         "finetuning_job__name",
@@ -1951,6 +1956,11 @@ class DeployedModelViewSet(
             return DeployedModel.objects.none()
         from django.utils import timezone
 
+        recent = Q(
+            inference_calls__created_at__gte=timezone.now() - timedelta(hours=24),
+            inference_calls__source="application",
+        )
+        successful = Q(inference_calls__outcome="succeeded")
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         queryset = DeployedModel.objects.filter(project_id__in=_user_project_ids(self.request.user))
         if self.action == "list":
@@ -1958,6 +1968,15 @@ class DeployedModelViewSet(
         return (
             queryset.select_related("finetuning_job", "finetuning_job__capability")
             .annotate(
+                recent_requests=Count("inference_calls", filter=recent),
+                recent_success_rate=100.0
+                * Count("inference_calls", filter=recent & ~Q(inference_calls__outcome="failed"))
+                / NullIf(Count("inference_calls", filter=recent), 0),
+                recent_latency=Median("inference_calls__end_to_end_ms", filter=recent & successful),
+                recent_speed=Median(
+                    "inference_calls__tokens_per_second",
+                    filter=recent & successful & Q(inference_calls__is_cold=False),
+                ),
                 request_count=Count("inference_calls"),
                 last_active_at=Max("inference_calls__created_at"),
                 total_tokens=Sum("inference_calls__prompt_tokens")

@@ -15,6 +15,7 @@ from overbae.api.span_ordering import (
 from overbae.models import (
     Capability,
     Conversation,
+    DedicatedDeployment,
     DeployedModel,
     EvalMatrix,
     EvalRun,
@@ -305,6 +306,14 @@ class DeployedModelFilter(filters.FilterSet):
     no capability FK — and also accepts ``NO_CAPABILITY``."""
 
     capability = filters.CharFilter(method="filter_capability")
+    deployment_type = filters.ChoiceFilter(
+        choices=[("serverless", "Serverless"), ("dedicated", "Dedicated")],
+        method="filter_deployment_type",
+    )
+
+    def filter_deployment_type(self, queryset, name, value):
+        rows = DedicatedDeployment.objects.filter(deployed_model_id=OuterRef("pk"))
+        return queryset.alias(has_dedicated=Exists(rows)).filter(has_dedicated=value == "dedicated")
 
     class Meta:
         model = DeployedModel

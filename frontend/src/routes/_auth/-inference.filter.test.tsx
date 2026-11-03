@@ -34,15 +34,6 @@ vi.mock("@/hooks/use-inference", () => ({
   useModelLiveQuery: () => ({ data: undefined }),
 }));
 
-// The table isn't under test — only the props it is handed.
-const tableProps = vi.hoisted(() => vi.fn());
-vi.mock("@/components/ui/data-table", () => ({
-  DataTable: (props: { toolbar?: ReactNode }) => {
-    tableProps(props);
-    return <div>{props.toolbar}</div>;
-  },
-}));
-
 vi.mock("@/hooks/use-evaluations", () => ({
   useProjectCapabilitiesQuery: () => ({
     data: { results: [{ id: "capability-1", name: "billing-bot" }] },
@@ -75,7 +66,7 @@ const renderPage = (search: Record<string, unknown>) => {
 };
 
 const lastQueryParams = () => deployedModelsQuery.mock.calls.at(-1)?.[0];
-const lastTableProps = () => tableProps.mock.calls.at(-1)?.[0];
+
 const searchBox = () => screen.getByLabelText<HTMLInputElement>("Search models");
 const type = (value: string) => act(() => fireEvent.change(searchBox(), { target: { value } }));
 
@@ -84,7 +75,6 @@ afterEach(() => {
   vi.useRealTimers();
   routeState.navigate.mockClear();
   deployedModelsQuery.mockClear();
-  tableProps.mockClear();
 });
 
 describe("Inference capability filter request scope", () => {
@@ -106,21 +96,6 @@ describe("Inference capability filter request scope", () => {
     renderPage({ inf_capability: "__none__" });
 
     expect(lastQueryParams()).toMatchObject({ capability: "__none__" });
-  });
-});
-
-describe("Inference capability filter table wiring", () => {
-  // A deep-linked page 3 outside the narrowed list would render as "no results".
-  it("returns to the first page when the filter changes", () => {
-    renderPage({ page: 3 });
-
-    lastTableProps().toolbar.props.onCapabilityFilterChange("capability-1");
-
-    const { search } = routeState.navigate.mock.calls[0][0];
-    expect(search({ inf_capability: "all", page: 3 })).toEqual({
-      inf_capability: "capability-1",
-      page: 1,
-    });
   });
 });
 
@@ -173,25 +148,25 @@ describe("Inference search request scope", () => {
     vi.useFakeTimers();
     renderPage({ inf_search: "llama", page: 3 });
 
-    act(() => lastTableProps().toolbar.props.onSearchClear());
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 
     const { search } = routeState.navigate.mock.calls[0][0];
     expect(search({ inf_search: "llama", page: 3 })).toEqual({ inf_search: "", page: 1 });
   });
 });
 
-describe("Inference search table wiring", () => {
+describe("Inference search card filtering", () => {
   // Without the flag a narrowed list falls to the "No deployed models" state,
   // which reads as data loss and offers no way back out.
   it.each([
     ["nothing", {}, false],
     ["a capability", { inf_capability: "capability-1" }, true],
     ["a committed search", { inf_search: "nope" }, true],
-    ["a status", { status: "failed" }, true],
+    ["a deployment type", { inf_deployment: "dedicated" }, true],
   ])("narrowed by %s: %o reads as filtered=%s", (_label, search, filtered) => {
     renderPage(search);
 
-    expect(lastTableProps().hasActiveFilters).toBe(filtered);
+    expect(screen.queryByText("No matching models") !== null).toBe(filtered);
   });
 
   it("counts an uncommitted draft, unless it is only whitespace", () => {
@@ -199,22 +174,23 @@ describe("Inference search table wiring", () => {
     renderPage({});
 
     type("   ");
-    expect(lastTableProps().hasActiveFilters).toBe(false);
+    expect(screen.queryByText("No matching models")).toBeNull();
 
     type("ll");
-    expect(lastTableProps().hasActiveFilters).toBe(true);
+    expect(screen.getByText("No matching models")).toBeTruthy();
   });
 
   it("clears a search and a capability filter together", () => {
     vi.useFakeTimers();
     renderPage({ inf_capability: "capability-1", inf_search: "llama", page: 3 });
 
-    expect(lastTableProps().hasActiveFilters).toBe(true);
-    act(() => lastTableProps().onClearFilters());
+    expect(screen.getByText("No matching models")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
 
     const { search } = routeState.navigate.mock.calls[0][0];
     expect(search({ inf_capability: "capability-1", inf_search: "llama", page: 3 })).toEqual({
       inf_capability: "all",
+      inf_deployment: "all",
       inf_search: "",
       page: 1,
     });
@@ -226,5 +202,14 @@ describe("Inference search table wiring", () => {
     renderPage({ inf_capability: "capability-1", inf_search: "llama" });
 
     expect(lastQueryParams()).toMatchObject({ capability: "capability-1", search: "llama" });
+  });
+});
+
+it("sends deployment type and metric ordering to the paginated query", () => {
+  renderPage({ inf_deployment: "dedicated", inf_ordering: "-recent_requests", page: 3 });
+  expect(lastQueryParams()).toMatchObject({
+    deploymentType: "dedicated",
+    ordering: "-recent_requests",
+    page: 3,
   });
 });

@@ -13,6 +13,7 @@ export const deployedModelsPollInterval = (models?: { status?: string }[]): numb
   !models || models.some((m) => !SETTLED_MODEL_STATUSES.has(m.status ?? "")) ? 10_000 : false;
 
 export type DeployedModelsQueryParams = {
+  deploymentType?: "serverless" | "dedicated";
   ordering?: string;
   projectId?: string;
   /** Capability id — resolved server-side through the model's fine-tuning job. */
@@ -27,6 +28,7 @@ export type DeployedModelsQueryParams = {
 /** Returns the DRF page as-is — scoping is the request's job, so `count` and
  *  `results` describe the same set. */
 export const useDeployedModelsQuery = ({
+  deploymentType,
   ordering,
   projectId,
   capability,
@@ -40,6 +42,7 @@ export const useDeployedModelsQuery = ({
     queryFn: () =>
       apiClient.deployedModels.deployedModelsList({
         capability: capability || undefined,
+        deploymentType,
         ordering,
         page,
         pageSize,
@@ -49,6 +52,7 @@ export const useDeployedModelsQuery = ({
       }),
     queryKey: [
       "deployed-models",
+      deploymentType ?? null,
       ordering,
       projectId || null,
       capability || null,
@@ -184,33 +188,7 @@ export const useDedicatedGpusQuery = (id: string | undefined, enabled: boolean) 
 
 const refreshDedicated = (qc: ReturnType<typeof useQueryClient>, id: string) => {
   qc.invalidateQueries({ queryKey: ["dedicated-deployment", id] });
-  qc.invalidateQueries({ queryKey: ["dedicated-deployments"] });
 };
-
-export const useDedicatedDeploymentsQuery = ({
-  page,
-  pageSize,
-  projectId,
-}: {
-  page?: number;
-  pageSize?: number;
-  projectId?: string;
-}) =>
-  useQuery({
-    enabled: !!projectId,
-    queryFn: () =>
-      apiClient.deployedModels.deployedModelsDedicatedList({
-        page,
-        pageSize,
-        project: projectId,
-      }),
-    queryKey: ["dedicated-deployments", projectId ?? null, page ?? null, pageSize ?? null],
-    refetchInterval: (q) =>
-      backoffPolling(
-        q,
-        q.state.data?.results.some((row) => DEDICATED_ACTIVE.has(row.status ?? "")) ? 5_000 : false
-      ),
-  });
 
 export const useStartDedicatedMutation = (id: string) => {
   const qc = useQueryClient();

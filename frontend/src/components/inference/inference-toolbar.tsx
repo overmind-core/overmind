@@ -10,22 +10,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
-import { humanizeKey } from "@/lib/label-case";
 import type { InferenceSearch } from "@/lib/schemas";
-import { DeployedModelsListStatusEnum } from "@/openapi";
 
 /** Agentless sentinel — the datasets list and the backend filter use this value too. */
 export const NO_CAPABILITY = "__none__";
 
-const STATUS_OPTIONS = Object.values(DeployedModelsListStatusEnum);
+const SORT_OPTIONS = [
+  ["-created_at", "Newest models"],
+  ["-recent_requests", "Requests: high to low"],
+  ["recent_requests", "Requests: low to high"],
+  ["-recent_success_rate", "Success rate: high to low"],
+  ["recent_success_rate", "Success rate: low to high"],
+  ["recent_latency", "Latency: low to high"],
+  ["-recent_latency", "Latency: high to low"],
+  ["-recent_speed", "Speed: high to low"],
+  ["recent_speed", "Speed: low to high"],
+] as const;
 
 export interface InferenceToolbarProps {
+  deploymentFilter?: InferenceSearch["inf_deployment"];
+  onDeploymentFilterChange?: (value: InferenceSearch["inf_deployment"]) => void;
+  ordering?: InferenceSearch["inf_ordering"];
+  onOrderingChange?: (value: InferenceSearch["inf_ordering"]) => void;
   projectId?: string;
   /** A capability id, `NO_CAPABILITY`, or `"all"`. */
   capabilityFilter: string;
   onCapabilityFilterChange: (value: string) => void;
-  statusFilter?: InferenceSearch["status"];
-  onStatusFilterChange: (value: InferenceSearch["status"]) => void;
   /** Draft text; the route debounces it into the URL. */
   search: string;
   onSearchChange: (value: string) => void;
@@ -37,11 +47,13 @@ export interface InferenceToolbarProps {
 
 /** Capability options come from the project, never the loaded page of rows. */
 export function InferenceToolbar({
+  deploymentFilter = "all",
+  onDeploymentFilterChange,
+  ordering = "-created_at",
+  onOrderingChange,
   projectId,
   capabilityFilter,
   onCapabilityFilterChange,
-  statusFilter,
-  onStatusFilterChange,
   search,
   onSearchChange,
   onSearchClear,
@@ -81,6 +93,23 @@ export function InferenceToolbar({
       }
       filters={
         <>
+          {onDeploymentFilterChange && (
+            <Select
+              onValueChange={(value) =>
+                onDeploymentFilterChange(value as InferenceSearch["inf_deployment"])
+              }
+              value={deploymentFilter}
+            >
+              <SelectTrigger aria-label="Filter by deployment type" className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All deployments</SelectItem>
+                <SelectItem value="serverless">Serverless</SelectItem>
+                <SelectItem value="dedicated">Dedicated</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           {showCapabilitySelect && (
             <Select onValueChange={onCapabilityFilterChange} value={capabilityFilter}>
               <SelectTrigger aria-label="Filter by capability" className="w-[160px]" size="default">
@@ -97,24 +126,23 @@ export function InferenceToolbar({
               </SelectContent>
             </Select>
           )}
-          <Select
-            onValueChange={(v) =>
-              onStatusFilterChange(v === "all" ? undefined : (v as DeployedModelsListStatusEnum))
-            }
-            value={statusFilter ?? "all"}
-          >
-            <SelectTrigger aria-label="Filter by status" className="w-[150px]" size="default">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {STATUS_OPTIONS.map((status) => (
-                <SelectItem key={status} value={status}>
-                  {humanizeKey(status)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {onOrderingChange && (
+            <Select
+              onValueChange={(value) => onOrderingChange(value as InferenceSearch["inf_ordering"])}
+              value={ordering}
+            >
+              <SelectTrigger aria-label="Sort models" className="w-[210px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </>
       }
       hasActiveFilters={hasActiveFilters}
@@ -125,7 +153,7 @@ export function InferenceToolbar({
           label="Search models"
           onChange={(e) => onSearchChange(e.target.value)}
           onClear={onSearchClear}
-          placeholder="Search models…"
+          placeholder="Search model name, base model or ID…"
           value={search}
         />
       }

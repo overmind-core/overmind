@@ -3,7 +3,7 @@ import json
 import pytest
 from overmind.client import Client, OvermindInferenceError
 
-from overbae.models import DedicatedDeployment, DeployedModel, Project
+from overbae.models import Dataset, DedicatedDeployment, DeployedModel, FinetuningJob, Project
 from overbae.services.provider_pricing import refresh_rates
 
 from .datasets import until
@@ -41,7 +41,14 @@ def test_serve(
     key = cli.project_key(sample_agent)
     mcp = mcp_for(key)
     project = Project.objects.get(pk=mcp.project()["id"])
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=Dataset.objects.create(project=project, name="Serving training data"),
+        base_model="Qwen/Qwen3-1.7B",
+        status="succeeded",
+    )
     DeployedModel.objects.create(
+        finetuning_job=job,
         project=project,
         model_id="ft-sdk-journey",
         status=DeployedModel.Status.READY,
@@ -83,13 +90,32 @@ def test_serve(
     assert dedicated.choices[0].message.content == "Order 42 left the depot."
     assert started["model_id"] in {model.id for model in client.models.list().data}
 
-    mcp.call("stop_dedicated_deployment", {"deployment": "ft-sdk-journey"})
+    console.goto(f"/inference?projectId={project.pk}")
+    console.press("Stop")
+    console.sees("Stop dedicated inference?")
+    console.press("Cancel")
+    assert status() == "online"
+    console.press("Stop")
+    console.press("Stop dedicated")
     fake_modal.worker_stats = {"num_total_runners": 0, "backlog": 0, "num_running_inputs": 0}
     until(beat, lambda: status() == "offline", DEPLOY)
     deployed = DeployedModel.objects.get(model_id="ft-sdk-journey")
     console.goto(f"/inference/{deployed.pk}?projectId={project.pk}")
     console.sees("Offline")
     console.sees("0 running · 1–1 configured")
+
+    console.goto(f"/inference?projectId={project.pk}")
+    console.choose('[aria-label="Filter by deployment type"]', "Dedicated")
+    console.choose('[aria-label="Sort models"]', "Requests: high to low")
+    console.sees("ft-sdk-journey")
+    console.press("Choose API snippet endpoint")
+    console.click("Dedicated API snippet")
+    console.sees("dedicated/ft-sdk-journey", exact=False)
+    console.press("Close")
+    console.press("Choose API snippet endpoint")
+    console.click("Serverless API snippet")
+    console.sees('"model": "ft-sdk-journey"', exact=False)
+    console.press("Close")
 
     scripted("http://inference.test").reply(json_body={"ok": True})
     assert client.models.delete("ft-sdk-journey").deleted is True
