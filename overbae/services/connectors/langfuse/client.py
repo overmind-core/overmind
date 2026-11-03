@@ -126,12 +126,7 @@ class LangFuseClient:
                 fromStartTime=_iso(day.start),
                 toStartTime=_iso(day.end),
             )
-            try:
-                self.volume(day)
-            except LangFuseError as exc:
-                if exc.status_code != 429:
-                    raise
-            self._api_version = "v2"
+            self._api_version = "v2" if self._v2_reads_data(day) else "v1"
         except LangFuseError as exc:
             msg = str(exc).lower()
             # 404 / "not found" / beta gate → fall back to v1 traces.
@@ -141,6 +136,16 @@ class LangFuseClient:
                 # Auth / network errors should surface, not silently downgrade.
                 raise
         return self._api_version
+
+    def _v2_reads_data(self, window: TimeWindow) -> bool:
+        attempts, self.retry_attempts = self.retry_attempts, 1
+        try:
+            self.volume(window)
+        except LangFuseError as exc:
+            return exc.status_code != 404
+        finally:
+            self.retry_attempts = attempts
+        return True
 
     def count(
         self,
@@ -311,30 +316,14 @@ class LangFuseClient:
         if not isinstance(rows, list):
             raise LangFuseError("Langfuse did not return a valid observations page.")
         trace_ids = dict.fromkeys(row["traceId"] for row in rows if row.get("traceId"))
-        trees = [self._v1_trace_tree(trace_id) for trace_id in trace_ids]
-        trees += [[_observation_from_row(row)] for row in rows if not row.get("traceId")]
+        trees = [tree for trace_id in trace_ids if (tree := self._v1_trace_tree(trace_id))]
+        trees += [[_observation_from_v1_row(row, {})] for row in rows if not row.get("traceId")]
         pages = (data.get("meta") or {}).get("totalPages") or page
         return trees, str(page + 1) if page < pages else None
 
     def _v1_trace_tree(self, trace_id: str) -> list[LangFuseObservation]:
         trace = self._get(f"/api/public/traces/{quote(trace_id, safe='')}")
-        return [
-            _observation_from_row(
-                {
-                    **row,
-                    "traceName": trace.get("name"),
-                    "tags": trace.get("tags"),
-                    "sessionId": trace.get("sessionId"),
-                    "userId": trace.get("userId"),
-                    "release": row.get("release") or trace.get("release"),
-                    "totalCost": row.get("totalCost", row.get("calculatedTotalCost")),
-                    "usageDetails": row.get("usageDetails")
-                    or {k: v for k, v in (row.get("usage") or {}).items() if k != "unit"},
-                    "isRootObservation": row.get("parentObservationId") is None,
-                }
-            )
-            for row in trace.get("observations") or []
-        ]
+        return [_observation_from_v1_row(row, trace) for row in trace.get("observations") or []]
 
 
 def _trace_batches(trace_ids: list[str]) -> Iterator[list[str]]:
@@ -380,6 +369,23 @@ def _retry_after_seconds(resp: httpx.Response) -> float:
     except (TypeError, ValueError, json.JSONDecodeError):
         pass
     return _DEFAULT_RETRY_AFTER
+
+
+def _observation_from_v1_row(row: dict[str, Any], trace: dict[str, Any]) -> LangFuseObservation:
+    return _observation_from_row(
+        {
+            **row,
+            "traceName": trace.get("name"),
+            "tags": trace.get("tags"),
+            "sessionId": trace.get("sessionId"),
+            "userId": trace.get("userId"),
+            "release": row.get("release") or trace.get("release"),
+            "totalCost": row.get("totalCost", row.get("calculatedTotalCost")),
+            "usageDetails": row.get("usageDetails")
+            or {k: v for k, v in (row.get("usage") or {}).items() if k != "unit"},
+            "isRootObservation": row.get("parentObservationId") is None,
+        }
+    )
 
 
 def _observation_from_row(raw: dict[str, Any]) -> LangFuseObservation:

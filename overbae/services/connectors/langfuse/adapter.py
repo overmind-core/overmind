@@ -130,13 +130,14 @@ class LangfuseAdapter:
         cursor = None
         seen: set[str] = set()
         while len(units) < limit:
+            before = len(units)
             groups, cursor = self._trace_page(window, cursor=cursor, limit=limit - len(units))
             for group in groups:
                 trace_id = group[0].trace_id or group[0].id
                 if trace_id not in seen:
                     units.append(group)
                     seen.add(trace_id)
-            if not cursor:
+            if not cursor or len(units) == before:
                 break
         return units[:limit]
 

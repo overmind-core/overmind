@@ -48,13 +48,15 @@ def test_probe_falls_back_to_v1_on_v2_404_without_probing_v1(api):
     "metrics,version",
     [
         ({"status": 404, "text": "The metrics v2 API is only available in a v4 write mode"}, "v1"),
-        ({"status": 429, "text": "quota", "headers": {"Retry-After": "3600"}}, "v2"),
+        ({"status": 429, "text": "quota"}, "v2"),
+        ({"status": 500, "text": "v2 not found upstream"}, "v2"),
     ],
 )
-def test_probe_reads_empty_v2_observations_through_their_metrics(api, metrics, version):
+def test_probe_reads_empty_v2_observations_through_their_metrics(api, slept, metrics, version):
     api.reply(json_body={"data": []})
     api.reply(**metrics)
     assert LangFuseClient("pk", "sk").probe_capabilities() == version
+    assert len(api.calls) == 2
 
 
 def test_probe_raises_on_v2_auth_error(api):
@@ -227,3 +229,13 @@ def test_v1_page_builds_trees_with_trace_fields_and_a_page_cursor(api):
     assert api.calls[0].path == "/api/public/observations"
     assert api.calls[0].params["limit"] == "100"
     assert api.calls[1].path == "/api/public/traces/t1"
+
+
+def test_v1_page_skips_empty_traces_and_keeps_usage_without_a_trace(api):
+    traced = {"id": "a", "traceId": "gone", "type": "SPAN"}
+    untraced = {"id": "b", "traceId": None, "type": "GENERATION", "usage": {"input": 3}}
+    api.reply(json_body={"data": [traced, untraced], "meta": {"page": 1, "totalPages": 1}})
+    api.reply(json_body={"name": "n", "observations": []})
+    ((only,),), cursor = LangFuseClient("pk", "sk").fetch_v1_trace_page(_WINDOW)
+    assert cursor is None
+    assert (only.id, only.usage_details) == ("b", {"input": 3})

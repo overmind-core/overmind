@@ -216,3 +216,14 @@ def test_a_server_without_v2_imports_through_v1_with_no_estimate(scripted, slept
     assert [unit.external_trace_id for unit in page.units] == ["t1"]
     assert page.next_state["next_cursor"] == "2"
     assert page.next_state["progress"]["total"] is None
+
+
+def test_preview_stops_when_a_page_adds_no_new_trace(scripted, slept):
+    api = scripted("https://cloud.langfuse.com")
+    row = {"id": "o1", "traceId": "t1", "type": "SPAN", "startTime": "2026-08-19T11:00:00Z"}
+    api.reply(json_body={"data": [row], "meta": {"cursor": "a"}})
+    api.reply(json_body={"data": [row], "meta": {}})
+    api.reply(json_body={"data": [row], "meta": {"cursor": "b"}})
+    api.reply(json_body={"data": [row], "meta": {}})
+    assert len(_adapter().sample_units(lookback_days=1, limit=10)) == 1
+    assert len(api.calls) == 4
