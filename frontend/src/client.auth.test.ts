@@ -6,6 +6,7 @@ import api, {
   clearTokens,
   fetchWithAuth,
   getAccessToken,
+  getLocalIdentity,
   request,
   setAsyncTokenGetter,
   setTokens,
@@ -177,4 +178,42 @@ describe("authentication recovery across clients", () => {
     expect(getAccessToken()).toBe("expired");
     expect(sessionRecoveryRequired()).toBe(false);
   });
+});
+
+const localToken = (id: string, nonce: string) =>
+  `header.${btoa(JSON.stringify({ nonce, user_id: id }))}.signature`;
+
+it.each([
+  false,
+  true,
+])("handles cross-tab token rotation with account change=%s", async (changed) => {
+  const before = localToken("1", "before");
+  const after = localToken(changed ? "2" : "1", "after");
+  setTokens(before, before, { email: "first@example.com", id: 1 });
+  let respond!: (response: Response) => void;
+  const fetch = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        respond = resolve;
+      })
+  );
+  vi.stubGlobal("fetch", fetch);
+  const result = request("/api/auth/me/");
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  localStorage.setItem("jwt_access", after);
+  window.dispatchEvent(
+    new StorageEvent("storage", {
+      key: "jwt_access",
+      newValue: after,
+      oldValue: before,
+    })
+  );
+  respond(json(200, { id: 1 }));
+  if (changed) {
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    expect(getLocalIdentity()).toBeNull();
+  } else {
+    await expect(result).resolves.toMatchObject({ id: 1 });
+    expect(getLocalIdentity()).toEqual({ email: "first@example.com", id: "1" });
+  }
 });

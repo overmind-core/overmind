@@ -306,7 +306,9 @@ export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
             setPageSize(size);
             setPage(1);
           }}
-          onRetry={() => Promise.all(queries.map((query) => query.refetch()))}
+          onRetry={() =>
+            Promise.all(queries.filter((query) => query.isError).map((query) => query.refetch()))
+          }
           onRowClick={(row) => setSelected(row.key)}
           page={currentPage}
           pageSize={pageSize}

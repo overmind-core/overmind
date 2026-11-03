@@ -358,9 +358,9 @@ it("does not restart a pending table retry", async () => {
   expect(button.disabled).toBe(false);
 });
 
-it("offers a way back when a page disappears after rows are removed", () => {
+it.each([0, 1])("offers a way back when a page disappears with %s remaining rows", (count) => {
   const changePage = vi.fn();
-  renderTable({ data: { count: 1, results: [] }, onPageChange: changePage, page: 2 });
+  renderTable({ data: { count, results: [] }, onPageChange: changePage, page: 2 });
   fireEvent.click(screen.getByRole("button", { name: "First page" }));
   expect(changePage).toHaveBeenCalledWith(1);
 });

@@ -29,7 +29,7 @@ export function LocalLoginForm({
       const res = await apiClient.auth.authLocalCreate({
         localSessionRequest: { email: email.trim(), password },
       });
-      setTokens(res.access, res.refresh);
+      setTokens(res.access, res.refresh, res.user);
       void getContext().queryClient.invalidateQueries();
       onSignedIn();
     } catch (err) {

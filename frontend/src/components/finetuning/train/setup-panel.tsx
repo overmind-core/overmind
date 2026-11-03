@@ -195,12 +195,12 @@ export function SetupPanel({
                 )}
 
                 {invalid && dataset && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-warning">
-                      Data may not be suitable for training
+                  <details className="text-xs" open>
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Dataset needs attention before training
                     </summary>
                     <div className="mt-2 max-h-24 space-y-1 overflow-y-auto">
-                      <Findings items={validation.errors} tone="warning" />
+                      <Findings items={validation.errors} tone="error" />
                       <Findings items={validation.warnings} tone="warning" />
                     </div>
                   </details>

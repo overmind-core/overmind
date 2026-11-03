@@ -68,6 +68,7 @@ export { ResponseError };
 const TOKEN_KEY = "jwt_access";
 const REFRESH_KEY = "jwt_refresh";
 const EMAIL_KEY = "auth_email";
+const IDENTITY_KEY = "auth_identity";
 
 // Set by auth-context when Clerk is active; its presence switches this module
 // off the localStorage refresh flow entirely.
@@ -103,9 +104,46 @@ export function getAccessToken(): string | null {
 export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_KEY);
 }
-export function setTokens(access: string, refresh: string) {
+// Token claims only bind cached UI identity; the API still verifies every credential.
+export function getLocalAccountId(token = getAccessToken()): string | null {
+  if (!token) return null;
+  try {
+    const claims = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof claims.user_id === "string" || typeof claims.user_id === "number"
+      ? String(claims.user_id)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberLocalIdentity(user: { id: string | number; email: string }) {
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify({ email: user.email, id: String(user.id) }));
+}
+
+export function getLocalIdentity(): { id: string; email: string } | null {
+  try {
+    const user = JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? "null");
+    return user &&
+      typeof user.id === "string" &&
+      typeof user.email === "string" &&
+      user.id === getLocalAccountId()
+      ? user
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setTokens(
+  access: string,
+  refresh: string,
+  user?: { id: string | number; email: string }
+) {
   changeSession();
   storeTokens(access, refresh);
+  if (user) rememberLocalIdentity(user);
+  else localStorage.removeItem(IDENTITY_KEY);
 }
 
 function storeTokens(access: string, refresh: string) {
@@ -117,11 +155,16 @@ export function clearTokens() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EMAIL_KEY);
+  localStorage.removeItem(IDENTITY_KEY);
   clearGuestSession();
 }
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.key === null || event.key === TOKEN_KEY || event.key === REFRESH_KEY) changeSession();
+    if (event.storageArea && event.storageArea !== localStorage) return;
+    if (event.key === null) changeSession();
+    if (event.key !== TOKEN_KEY && event.key !== REFRESH_KEY) return;
+    const previous = getLocalAccountId(event.oldValue);
+    if (!previous || previous !== getLocalAccountId(event.newValue)) changeSession();
   });
 }
 

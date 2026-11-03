@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // covers: console-logic
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PromptAgentActions } from "@/components/quickstart/prompt-agent-actions";
@@ -47,4 +47,17 @@ describe("PromptAgentActions", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button", { name: "Choose coding agent" })).toBeNull();
   });
+});
+
+it("applies an agent choice when persistence is unavailable", () => {
+  render(<PromptAgentActions defaultAgent="claude" prompt={prompt} />);
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Quota exceeded", "QuotaExceededError");
+  });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Choose coding agent" }), { key: "Enter" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Codex" }));
+  expect(screen.getByRole("link", { name: "Open in Codex" }).getAttribute("href")).toBe(
+    `codex://new?prompt=${encodeURIComponent(prompt)}`
+  );
+  fireEvent(window, new StorageEvent("storage", { key: "preferred-coding-agent" }));
 });

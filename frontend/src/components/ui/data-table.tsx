@@ -364,12 +364,20 @@ export function DataTable<T>({
   const toolbarNode = typeof toolbar === "function" ? toolbar(table) : toolbar;
 
   const emptyNode =
-    page > 1 && count > 0 ? (
+    page > 1 ? (
       <EmptyState
         action={
-          <Button onClick={() => onPageChange(1)} size="sm" variant="secondary">
-            First page
-          </Button>
+          <>
+            <Button onClick={() => onPageChange(1)} size="sm" variant="secondary">
+              First page
+            </Button>
+            {hasActiveFilters && onClearFilters && (
+              <Button onClick={onClearFilters} size="sm" variant="secondary">
+                <Icon.close />
+                Clear filters
+              </Button>
+            )}
+          </>
         }
         className="flex-1"
         size="section"

@@ -6,7 +6,10 @@ import { resetUser, trackEvent } from "@/analytics";
 import apiClient, {
   clearTokens,
   getAccessToken,
+  getLocalAccountId,
+  getLocalIdentity,
   ResponseError,
+  rememberLocalIdentity,
   setAsyncTokenGetter,
   setTokens,
 } from "@/client";
@@ -149,15 +152,28 @@ function readIsSignedIn(): boolean {
   return !!localStorage.getItem("jwt_access");
 }
 
+function readLocalUser(): AuthUser | null {
+  const identity = getLocalIdentity();
+  return identity ? { ...identity, name: identity.email, picture: null } : null;
+}
+
 function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(readIsSignedIn);
   const [isGuest, setIsGuest] = useState(hasGuestSession);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(readLocalUser);
   const identityRequest = useRef(0);
+  const accountId = useRef(getLocalAccountId());
 
   const refreshAuth = useCallback(() => {
     const request = ++identityRequest.current;
     const signedIn = readIsSignedIn();
+    const nextAccountId = getLocalAccountId();
+    if (accountId.current !== nextAccountId) {
+      getContext().queryClient.clear();
+      resetUser();
+    }
+    accountId.current = nextAccountId;
+    setUser((previous) => (previous?.id === nextAccountId ? previous : readLocalUser()));
     setIsSignedIn(signedIn);
     setIsGuest(hasGuestSession());
     if (!signedIn) {
@@ -168,6 +184,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
       .authMeRetrieve()
       .then((me) => {
         if (request !== identityRequest.current) return;
+        rememberLocalIdentity(me);
         setUser({
           email: me.email,
           id: String(me.id),

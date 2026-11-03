@@ -53,7 +53,7 @@ def test_train(
     drain(worker)
     project = workshop.project()["id"]
     console.goto(f"/training?projectId={project}&train=true&datasetId={train}")
-    console.sees("Data may not be suitable for training")
+    console.sees("Dataset needs attention before training")
     assert (
         console._browser.call(
             lambda: console._page.get_by_role("button", name="Copy prompt", exact=True).count()
@@ -61,7 +61,6 @@ def test_train(
         == 0
     )
     console.save_evidence("training-dataset-warning")
-    console.click("Data may not be suitable for training")
     console.sees("Example 1, message 3 (assistant):", exact=False)
     console.save_evidence("training-dataset-warning-details")
     source = workshop.call("inspect_dataset", {"dataset": train})["active"]
@@ -86,7 +85,14 @@ def test_train(
     )
     console.goto(f"/training?projectId={project}&train=true&datasetId={train}")
     console.wait_until(
-        """() => !document.body.innerText.includes("Data may not be suitable for training") && !document.querySelector('[aria-label="Validating dataset"]')"""
+        """() => !document.body.innerText.includes("Dataset needs attention before training") && !document.querySelector('[aria-label="Validating dataset"]')"""
+    )
+    console._browser.call(
+        lambda: (
+            console._page.locator("#train-dataset")
+            .get_by_text("train.jsonl", exact=True)
+            .wait_for()
+        )
     )
     console.save_evidence("training-repair-revalidated")
     evals = upload(

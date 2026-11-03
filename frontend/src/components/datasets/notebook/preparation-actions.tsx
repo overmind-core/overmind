@@ -75,7 +75,7 @@ export function PreparationActions({
             <button
               aria-label="Preparation error"
               className={badgeVariants({ size: "chip", variant: "error" })}
-              onClick={() => setErrorOpen((open) => !open)}
+              onClick={() => setErrorOpen(true)}
               type="button"
             >
               Preparation failed

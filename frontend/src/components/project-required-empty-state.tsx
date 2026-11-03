@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/spinner";
 import { useProjectsList } from "@/hooks/use-projects";
+import { featureFlags } from "@/lib/feature-flags";
 
 export function NoProjectsEmptyState() {
   return (
@@ -17,9 +18,11 @@ export function NoProjectsEmptyState() {
           <Button asChild>
             <Link to="/">Set up an agent</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link to="/datasets">Upload data</Link>
-          </Button>
+          {featureFlags.datasets && (
+            <Button asChild variant="outline">
+              <Link to="/datasets">Upload data</Link>
+            </Button>
+          )}
         </>
       }
       description="Set up an agent or upload data to create a project."

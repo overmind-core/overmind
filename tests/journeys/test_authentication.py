@@ -33,6 +33,16 @@ def test_unavailable_page_offers_recovery_without_reloading(console):
 
 def test_expired_session_restores_without_losing_a_draft(console, account):
     user, _ = account
+    identity_requests = []
+
+    def interrupt_first_identity(route):
+        identity_requests.append(route.request.url)
+        route.abort() if len(identity_requests) == 1 else route.continue_()
+
+    console._browser.call(console._page.route, "**/api/auth/me/", interrupt_first_identity)
+    console.goto("/onboarding")
+    console.sees("Agent")
+    console._browser.call(console._page.unroute, "**/api/auth/me/")
     console.press("Feedback")
     console.fill("#feedback-text", "Keep this unsent draft while I reconnect.")
     console._browser.call(

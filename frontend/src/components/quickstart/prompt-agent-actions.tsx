@@ -25,8 +25,10 @@ const agents: { id: string; label: string; url?: string }[] = [
 
 const preferenceKey = "preferred-coding-agent";
 const preferenceEvent = "coding-agent-preference";
+let unsavedPreference: string | null = null;
 
 function readPreference() {
+  if (unsavedPreference) return unsavedPreference;
   try {
     const value = localStorage.getItem(preferenceKey);
     return agents.some((agent) => agent.id === value) ? value : null;
@@ -36,10 +38,15 @@ function readPreference() {
 }
 
 function subscribePreference(listener: () => void) {
-  window.addEventListener("storage", listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && event.key !== preferenceKey) return;
+    unsavedPreference = null;
+    listener();
+  };
+  window.addEventListener("storage", onStorage);
   window.addEventListener(preferenceEvent, listener);
   return () => {
-    window.removeEventListener("storage", listener);
+    window.removeEventListener("storage", onStorage);
     window.removeEventListener(preferenceEvent, listener);
   };
 }
@@ -47,10 +54,12 @@ function subscribePreference(listener: () => void) {
 function chooseAgent(value: string) {
   try {
     localStorage.setItem(preferenceKey, value);
-    window.dispatchEvent(new Event(preferenceEvent));
+    unsavedPreference = null;
   } catch {
+    unsavedPreference = value;
     toast.error("Couldn't save the coding-agent preference.");
   }
+  window.dispatchEvent(new Event(preferenceEvent));
 }
 
 export function PromptAgentActions({
