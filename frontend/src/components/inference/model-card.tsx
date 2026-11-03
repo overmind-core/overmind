@@ -27,6 +27,7 @@ import {
   useModelLiveQuery,
   useModelMetricsQuery,
 } from "@/hooks/use-inference";
+import { cn } from "@/lib/utils";
 import type { DeployedModel } from "@/openapi";
 
 export function InferenceModelCard({
@@ -38,34 +39,42 @@ export function InferenceModelCard({
 }) {
   const [snippet, setSnippet] = useState<{ modelId: string; dedicated: boolean } | null>(null);
   const { data: live } = useModelLiveQuery(model.id, model.status === "ready");
+  const deleted = model.status === "deleting" || model.status === "deleted";
+  const identity = (
+    <FineTunedModelIdentity
+      baseModelId={model.baseModelId}
+      capabilityName={model.capabilityName}
+      displayName={model.finetuningJobName}
+      modelId={model.modelId}
+    />
+  );
   return (
     <>
       <DedicatedDeploymentSection
         model={model}
         projectId={projectId}
         render={(controls, deployment, loading, error) => (
-          <Card aria-label={model.modelId} className="overflow-hidden">
+          <Card
+            aria-label={model.modelId}
+            className={cn("overflow-hidden", deleted && "opacity-60")}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-2">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <Link
-                  className="min-w-0 hover:underline"
-                  params={{ modelId: model.id }}
-                  search={(prev) => ({ ...prev, projectId })}
-                  to="/inference/$modelId"
-                >
-                  <FineTunedModelIdentity
-                    baseModelId={model.baseModelId}
-                    capabilityName={model.capabilityName}
-                    displayName={model.finetuningJobName}
-                    modelId={model.modelId}
-                  />
-                </Link>
-                <ModelProviderChip compact model={model.baseModelId} />
-                {deployment ? (
-                  <DedicatedStatusBadge status={deployment.status ?? "offline"} />
+                {deleted ? (
+                  identity
                 ) : (
-                  <ServingStatusIndicator live={live} status={model.status} />
+                  <Link
+                    className="min-w-0 hover:underline"
+                    params={{ modelId: model.id }}
+                    search={(prev) => ({ ...prev, projectId })}
+                    to="/inference/$modelId"
+                  >
+                    {identity}
+                  </Link>
                 )}
+                <ModelProviderChip compact model={model.baseModelId} />
+                <ServingStatusIndicator live={live} status={model.status} />
+                {deployment && <DedicatedStatusBadge status={deployment.status ?? "offline"} />}
                 <Badge size="chip" variant="neutral">
                   {loading
                     ? "Loading deployment"
@@ -84,6 +93,7 @@ export function InferenceModelCard({
                 <Button
                   aria-label={deployment ? "Dedicated API snippet" : "Serverless API snippet"}
                   className="rounded-r-none"
+                  disabled={deleted && !deployment}
                   onClick={() =>
                     setSnippet({
                       dedicated: !!deployment,
@@ -117,6 +127,7 @@ export function InferenceModelCard({
                         Dedicated API snippet
                       </DropdownMenuItem>
                       <DropdownMenuItem
+                        disabled={deleted}
                         onSelect={() => setSnippet({ dedicated: false, modelId: model.modelId })}
                       >
                         Serverless API snippet

@@ -6,6 +6,7 @@
 // `-` prefix: not a route, per `routeFileIgnorePrefix`.
 import type { ReactNode } from "react";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,17 +22,31 @@ vi.mock("@tanstack/react-router", () => ({
     useNavigate: () => routeState.navigate,
     useSearch: () => routeState.search,
   }),
-  Link: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  Link: ({ children }: { children?: ReactNode }) => <a href="/model">{children}</a>,
   useNavigate: () => routeState.navigate,
 }));
 
 const deployedModelsQuery = vi.hoisted(() => vi.fn());
+const inference = vi.hoisted(() => ({
+  dedicated: null as Record<string, unknown> | null,
+  models: [] as Record<string, unknown>[],
+}));
 vi.mock("@/hooks/use-inference", () => ({
+  useDedicatedDeploymentQuery: () => ({ data: inference.dedicated, isLoading: false }),
+  useDedicatedGpusQuery: () => ({ data: undefined }),
   useDeployedModelsQuery: (params: unknown) => {
     deployedModelsQuery(params);
-    return { data: { count: 0, results: [] }, isLoading: false };
+    return {
+      data: { count: inference.models.length, results: inference.models },
+      isLoading: false,
+    };
   },
+  useModelActivityQuery: () => ({ data: undefined, isPending: false }),
   useModelLiveQuery: () => ({ data: undefined }),
+  useModelMetricsQuery: () => ({ data: undefined }),
+  useStartDedicatedMutation: () => ({ isPending: false, mutate: () => {} }),
+  useStopDedicatedMutation: () => ({ isPending: false, mutate: () => {} }),
+  useUpdateDedicatedMutation: () => ({ isPending: false, mutate: () => {} }),
 }));
 
 vi.mock("@/hooks/use-evaluations", () => ({
@@ -62,7 +77,11 @@ const renderPage = (search: Record<string, unknown>) => {
     projectId: "proj-1",
     ...search,
   };
-  return render(<InferencePage />);
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <InferencePage />
+    </QueryClientProvider>
+  );
 };
 
 const lastQueryParams = () => deployedModelsQuery.mock.calls.at(-1)?.[0];
@@ -75,6 +94,8 @@ afterEach(() => {
   vi.useRealTimers();
   routeState.navigate.mockClear();
   deployedModelsQuery.mockClear();
+  inference.dedicated = null;
+  inference.models = [];
 });
 
 describe("Inference capability filter request scope", () => {
@@ -211,5 +232,29 @@ it("sends deployment type and metric ordering to the paginated query", () => {
     deploymentType: "dedicated",
     ordering: "-recent_requests",
     page: 3,
+  });
+});
+
+describe("Inference model card", () => {
+  const model = { baseModelId: "base", id: "model-1", modelId: "ft-model", status: "ready" };
+
+  it("keeps a deleted model out of navigation and API snippets", () => {
+    inference.models = [{ ...model, status: "deleted" }];
+    renderPage({});
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Serverless API snippet" }).disabled
+    ).toBe(true);
+  });
+
+  it("shows a ready model's serving state beside a stopped dedicated deployment", () => {
+    inference.models = [model];
+    inference.dedicated = { gpuType: "L4", modelId: "dedicated/ft-model", status: "offline" };
+    renderPage({});
+
+    const card = screen.getByLabelText("ft-model");
+    expect(card.textContent).toContain("Offline");
+    expect(card.textContent).toContain("Unknown");
   });
 });
