@@ -60,7 +60,8 @@ def test_expired_session_restores_without_losing_a_draft(console, account):
     console.save_evidence("session-restored-unsent-draft")
 
 
-def test_sign_in_returns_to_a_deep_link_without_reloading(browser, console_url, account):
+def test_sign_in_returns_to_a_deep_link_without_reloading(browser, console_url, account, settings):
+    settings.CORS_ALLOWED_ORIGINS = [console_url]
     user, _ = account
     console = browser.page(console_url)
     try:
