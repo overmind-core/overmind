@@ -119,7 +119,7 @@ def test_live_pagination_pins_its_window_and_resumes(api, clock):
     assert second.next_state == {"mode": "live", "watermark": first.window_to.isoformat()}
     pages = [c.params for c in api.calls if "traceId" not in c.params]
     assert {(p["fromStartTime"], p["toStartTime"]) for p in pages} == {
-        ("2026-08-19T12:00:00Z", "2026-08-19T12:01:00Z")
+        ("2026-08-19T11:30:00Z", "2026-08-19T12:01:00Z")
     }
     assert pages[1]["cursor"] == "cursor-1"
     assert all(c.params["expandMetadata"] == "capability" for c in api.calls)
@@ -198,3 +198,32 @@ def test_backfill_watermark_compares_instants_across_formats(api, clock):
     api.reply(json_body={"data": [observation], "meta": {}})
     page = _adapter().fetch_page({"mode": "backfill", "watermark": later})
     assert page.next_state["watermark"] == later
+
+
+def test_a_server_without_v2_imports_through_v1_with_no_estimate(scripted, slept, clock):
+    api = scripted("https://cloud.langfuse.com")
+    missing = {"status": 404, "text": "not found"}
+    row = {"id": "o1", "traceId": "t1", "type": "SPAN", "startTime": "2026-08-19T11:00:00Z"}
+    api.reply(**missing)
+    api.reply(**missing)
+    api.reply(json_body={"data": [row], "meta": {"page": 1, "totalPages": 2}})
+    api.reply(json_body={"name": "n", "observations": [row]})
+    credential = make_connector("langfuse", source_project_id="src", api_secret="sk")
+    credential.api_version = "unknown"
+    adapter = LangfuseAdapter(credential)
+    assert adapter.count(lookback_days=1) is None
+    page = adapter.fetch_page({})
+    assert [unit.external_trace_id for unit in page.units] == ["t1"]
+    assert page.next_state["next_cursor"] == "2"
+    assert page.next_state["progress"]["total"] is None
+
+
+def test_preview_stops_when_a_page_adds_no_new_trace(scripted, slept):
+    api = scripted("https://cloud.langfuse.com")
+    row = {"id": "o1", "traceId": "t1", "type": "SPAN", "startTime": "2026-08-19T11:00:00Z"}
+    api.reply(json_body={"data": [row], "meta": {"cursor": "a"}})
+    api.reply(json_body={"data": [row], "meta": {}})
+    api.reply(json_body={"data": [row], "meta": {"cursor": "b"}})
+    api.reply(json_body={"data": [row], "meta": {}})
+    assert len(_adapter().sample_units(lookback_days=1, limit=10)) == 1
+    assert len(api.calls) == 4
