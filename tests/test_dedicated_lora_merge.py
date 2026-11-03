@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from overbae.modal import modal_vllm_worker as serving
+from overbae.services import dedicated_runtime
 from overbae.services.dedicated_runtime import chat, parameters, worker_class_name
 
 pytestmark = pytest.mark.covers("model-runtime")
@@ -88,3 +89,79 @@ def test_dedicated_worker_is_not_the_serverless_class():
     find = discovery._find_partial_methods_for_user_cls
     assert set(find(dedicated, flags.ENTER_PRE_SNAPSHOT)) == {"startup"}
     assert set(find(dedicated, flags.ENTER_POST_SNAPSHOT)) == {"wake"}
+
+
+def _decision(app="overmind-decision-serve-old"):
+    return SimpleNamespace(
+        id="dep-1",
+        gpu_type="A100-80GB",
+        max_replicas=1,
+        idle_shutdown_seconds=900,
+        deployed_model=SimpleNamespace(
+            inference_contract="decision",
+            serving_runtime={"app": app, "environment": "overmind-prod"},
+            weights_path="/weights/.decisions/abc",
+            checkpoint_hash="abc",
+            max_model_len=4096,
+        ),
+    )
+
+
+def test_older_decision_release_scales_without_pool(monkeypatch):
+    dedicated_runtime._unpooled_apps.clear()
+    seen = []
+
+    class Endpoint:
+        def __init__(self, **kwargs):
+            seen.append(kwargs)
+            self.kwargs = kwargs
+
+        def update_autoscaler(self, **_kwargs):
+            if "pool" in self.kwargs:
+                raise RuntimeError(
+                    "parameter names were provided but are not defined "
+                    "class modal.parameters for the class: pool"
+                )
+
+    class Remote:
+        def with_options(self, **_kwargs):
+            return Endpoint
+
+    monkeypatch.setattr(dedicated_runtime.modal.Cls, "from_name", lambda *_a, **_k: Remote())
+    dedicated_runtime.bind(_decision(), minimum=1, maximum=1, idle_seconds=900)
+    assert "pool" in seen[0]
+    assert "pool" not in seen[1]
+    dedicated_runtime._unpooled_apps.clear()
+
+
+def test_decision_predict_retries_when_the_release_rejects_pool(monkeypatch):
+    dedicated_runtime._unpooled_apps.clear()
+    deployment = _decision("overmind-decision-serve-other")
+    calls = []
+
+    class Instance:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+            class Predict:
+                def remote(self, _decisions):
+                    calls.append(kwargs)
+                    if "pool" in kwargs:
+                        raise RuntimeError(
+                            "parameter names were provided but are not defined "
+                            "class modal.parameters for the class: pool"
+                        )
+                    return {"predictions": [{"key": "0"}]}
+
+            self.predict = Predict()
+
+    monkeypatch.setattr(
+        dedicated_runtime,
+        "connect",
+        lambda row: Instance(**dedicated_runtime.parameters(row)),
+    )
+    result = dedicated_runtime.predict(Instance(**parameters(deployment)), [], deployment)
+    assert result["predictions"] == [{"key": "0"}]
+    assert "pool" in calls[0]
+    assert "pool" not in calls[1]
+    dedicated_runtime._unpooled_apps.clear()

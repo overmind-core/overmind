@@ -23,6 +23,9 @@ WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
 # min, max, and idle through update_autoscaler, or a GPU change leaves the old set running.
 _STABLE_MAX = 8
 _STABLE_WINDOW = 3600
+# Releases published before the pool parameter reject the name. Those dedicated
+# starts share one option set per artifact and GPU.
+_unpooled_apps: set[str] = set()
 
 
 def environment() -> str:
@@ -46,15 +49,34 @@ def worker_class_name(_deployed, gpu_type: str) -> str:
     return f"{token}_vllm_dedicated"
 
 
+def _app_name(deployed) -> str:
+    runtime = deployed.serving_runtime if isinstance(deployed.serving_runtime, dict) else {}
+    return str(runtime.get("app") or "")
+
+
+def _pool_rejected(exc: BaseException) -> bool:
+    text = str(exc)
+    return "pool" in text and "not defined" in text
+
+
+def _drop_pool(deployment, exc: BaseException) -> bool:
+    if deployment.deployed_model.inference_contract != "decision" or not _pool_rejected(exc):
+        return False
+    _unpooled_apps.add(_app_name(deployment.deployed_model))
+    return True
+
+
 def parameters(deployment) -> dict:
     deployed = deployment.deployed_model
     if deployed.inference_contract == "decision":
-        return {
+        params = {
             "weights_path": deployed.weights_path,
             "artifact_identity": deployed.checkpoint_hash,
             "max_model_len": deployed.max_model_len,
-            "pool": str(deployment.id),
         }
+        if _app_name(deployed) not in _unpooled_apps:
+            params["pool"] = str(deployment.id)
+        return params
     path = rel_weights_path(deployed.weights_path)
     params = {
         "model_path": path,
@@ -110,7 +132,7 @@ def _variant(cls, deployment, *, maximum: int, idle_seconds: int):
     return cls
 
 
-def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
+def _scale_once(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
     instance = cls(**parameters(deployment))
     method = getattr(instance, "update_autoscaler", None)
     if method is not None:
@@ -122,6 +144,19 @@ def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
             )
         )
     return instance
+
+
+def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
+    try:
+        return _scale_once(
+            cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
+        )
+    except Exception as exc:
+        if not _drop_pool(deployment, exc):
+            raise
+        return _scale_once(
+            cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
+        )
 
 
 def release(deployment, gpu_type: str) -> None:
@@ -383,11 +418,20 @@ def iter_chat_stream(instance, deployment, body: bytes):
             close()
 
 
-def predict(instance, decisions: list) -> dict:
+def _read_prediction(instance, decisions: list) -> dict:
     result = instance.predict.remote(decisions)
     if not isinstance(result, dict) or result.get("error_code"):
         raise InputValidationError(WORKER_UNAVAILABLE)
     return result
+
+
+def predict(instance, decisions: list, deployment=None) -> dict:
+    try:
+        return _read_prediction(instance, decisions)
+    except Exception as exc:
+        if deployment is None or not _drop_pool(deployment, exc):
+            raise
+        return _read_prediction(connect(deployment), decisions)
 
 
 def minute_usd(rate: Decimal, replicas: int) -> Decimal:
