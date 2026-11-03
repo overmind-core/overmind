@@ -23,6 +23,8 @@ const agents: { id: string; label: string; url?: string }[] = [
   { id: "opencode", label: "OpenCode" },
 ];
 
+// Cursor refuses a longer deeplink and Claude Desktop cuts the prompt; copy carries all of it.
+const MAX_LINK_LENGTH = 10_000;
 const preferenceKey = "preferred-coding-agent";
 const preferenceEvent = "coding-agent-preference";
 let unsavedPreference: string | null = null;
@@ -81,7 +83,8 @@ export function PromptAgentActions({
   const agent = agents.find((option) => option.id === (selectedAgent ?? defaultAgent));
   // Agent links open desktop apps, so a phone can only copy.
   const mobile = isMobileBrowser();
-  const url = !mobile && agent?.url;
+  const href = !mobile && agent?.url ? agent.url + encodeURIComponent(prompt) : undefined;
+  const url = href && href.length <= MAX_LINK_LENGTH ? href : undefined;
   const colors = inverted
     ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
     : "";
@@ -100,7 +103,7 @@ export function PromptAgentActions({
 
   return (
     <div aria-label="Coding agent actions" className="inline-flex shrink-0" role="group">
-      {url ? (
+      {url && agent ? (
         <>
           <Button
             aria-label="Copy prompt"
@@ -113,7 +116,7 @@ export function PromptAgentActions({
           <Button asChild className={cn("rounded-none", divider, colors)} size="sm">
             <a
               aria-label={`Open in ${agent.label}`}
-              href={url + encodeURIComponent(prompt)}
+              href={url}
               onClick={() => onOpenClicked?.(agent.id)}
             >
               <CodingAgentIcon kind={agent.id} />

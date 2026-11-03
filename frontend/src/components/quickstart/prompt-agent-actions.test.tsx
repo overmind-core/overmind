@@ -38,6 +38,12 @@ describe("PromptAgentActions", () => {
     expect(screen.getByRole("button", { name: "Copy prompt" })).toBeTruthy();
   });
 
+  it("offers copy when the prompt is too long for an app link", () => {
+    render(<PromptAgentActions defaultAgent="cursor" prompt={"x".repeat(10_000)} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy prompt" }).textContent).toBe("Copy prompt");
+  });
+
   it("offers only copy on a phone", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
