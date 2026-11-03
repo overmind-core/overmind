@@ -370,7 +370,7 @@ def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
         raise InputValidationError("This dedicated deployment is a chat model.")
     if row.status != DedicatedDeployment.Status.ONLINE:
         raise InputValidationError(NOT_ONLINE)
-    return dedicated_runtime.predict(dedicated_runtime.connect(row), decisions)
+    return dedicated_runtime.predict(dedicated_runtime.connect(row), decisions, row)
 
 
 def complete_request(payload: dict) -> dict:
