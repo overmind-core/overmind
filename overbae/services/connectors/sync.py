@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from django.db.models import Q
+
 from overbae.services.connectors.schema import CONNECTOR_CREDENTIAL_ID_ATTR
 
 
@@ -28,7 +30,6 @@ def will_recarve(credential) -> bool:
 
 def connector_imported_spans(credential):
     from django.db import connection
-    from django.db.models import Q
 
     from overbae.models import Span
 
