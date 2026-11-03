@@ -152,10 +152,10 @@ report "animate-spin (use Spinner)" \
 report "empty state returned instead of PageShell (put it inside)" \
   'return <(ProjectRequired|NoProjects)EmptyState' \
   'components/'
-# Blur is limited to the sheet focus treatment and the transparent inference scroll edge.
+# The opt-in sheet hover backdrop is the user-requested focus treatment.
 report "blur / gradient (flat surfaces only)" \
   'backdrop-blur|\bblur-(sm|md|lg|xl|2xl|3xl)\b|bg-gradient-|bg-(linear|radial|conic)-' \
-  'ui/sheet\.tsx:.*className="sheet-hover-backdrop .*backdrop-blur-\[2px\]|routes/_auth/inference\.tsx:.*className="pointer-events-none absolute inset-x-0 top-full h-4 backdrop-blur-sm \[mask-image:linear-gradient'
+  'ui/sheet\.tsx:.*className="sheet-hover-backdrop .*backdrop-blur-\[2px\]'
 
 if [[ "${MODE:-check}" == counts ]]; then
   exit 0
