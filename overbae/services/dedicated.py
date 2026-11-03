@@ -357,12 +357,12 @@ def _require_chat(row: DedicatedDeployment):
 
 def serve_chat(row: DedicatedDeployment, body: bytes):
     _require_chat(row)
-    return dedicated_runtime.chat(dedicated_runtime.connect(row), row, body)
+    return dedicated_runtime.chat(row, body)
 
 
 def serve_chat_stream(row: DedicatedDeployment, body: bytes):
     _require_chat(row)
-    return dedicated_runtime.iter_chat_stream(dedicated_runtime.connect(row), row, body)
+    return dedicated_runtime.iter_chat_stream(row, body)
 
 
 def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:

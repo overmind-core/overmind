@@ -57,6 +57,17 @@ def _from_vllm_openai(tag: str, *extra_pip: str, snapshot: bool = False) -> moda
 # LoRA get_mm_mapping (#53513) both need this release.
 _VLLM_TAG = "v0.30.0"
 vllm_image = _from_vllm_openai(_VLLM_TAG)
+# Dedicated pools only. The shared inference app stays on _VLLM_TAG.
+_DEDICATED_VLLM_TAG = "v0.33.0"
+dedicated_vllm_image = _from_vllm_openai(_DEDICATED_VLLM_TAG)
+# Latest SGLang release. Dedicated classes that measured faster on SGLang use this image.
+_DEDICATED_SGLANG_TAG = "v0.5.22"
+dedicated_sglang_image = attach_serving_args(
+    modal.Image.from_registry(
+        f"lmsysorg/sglang:{_DEDICATED_SGLANG_TAG}",
+        setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
+    ).entrypoint([])
+)
 
 SERVE_IMAGES: dict[str, modal.Image] = {
     SERVE_VLLM: vllm_image,
