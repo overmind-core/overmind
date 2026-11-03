@@ -97,6 +97,8 @@ class LangfuseAdapter:
         window_from: datetime | None = None,
         window_to: datetime | None = None,
     ) -> int | None:
+        if self._client.api_version != "v2":
+            return None
         end = window_to or timezone.now()
         start = window_from or (
             end - timedelta(days=int(lookback_days))
@@ -125,29 +127,18 @@ class LangfuseAdapter:
         # request through minutes of worker-style retries.
         self._client.retry_attempts = 1
         units: list[Any] = []
-        if self._client.api_version == "v2":
-            cursor = None
-            seen: set[str] = set()
-            while len(units) < limit:
-                groups, cursor = self._client.fetch_v2_trace_page(
-                    window,
-                    cursor=cursor,
-                    limit=min(limit - len(units), 1000),
-                    expand_metadata=self._expanded_metadata_key(),
-                )
-                for group in groups:
-                    trace_id = group[0].trace_id or group[0].id
-                    if trace_id not in seen:
-                        units.append(group)
-                        seen.add(trace_id)
-                if not cursor:
-                    break
-            return units[:limit]
-        for obs_list in self._client.iter_ingest_units(windows=[window]):
-            units.append(obs_list)
-            if len(units) >= limit:
+        cursor = None
+        seen: set[str] = set()
+        while len(units) < limit:
+            groups, cursor = self._trace_page(window, cursor=cursor, limit=limit - len(units))
+            for group in groups:
+                trace_id = group[0].trace_id or group[0].id
+                if trace_id not in seen:
+                    units.append(group)
+                    seen.add(trace_id)
+            if not cursor:
                 break
-        return units
+        return units[:limit]
 
     def fetch_page(self, state: dict[str, Any]) -> Page:
         page = self._fetch_page(state)
@@ -189,16 +180,12 @@ class LangfuseAdapter:
             )
 
         window = all_windows[0]
-        if self._client.api_version == "v2":
-            units, next_cursor = self._collect_v2_page(
-                window.start,
-                window.end,
-                cursor=state.get("next_cursor"),
-            )
-            newest = max((unit.newest_ts for unit in units if unit.newest_ts), default=None)
-        else:
-            units, newest = self._collect_window(window.start, window.end)
-            next_cursor = None
+        units, next_cursor = self._collect_page(
+            window.start,
+            window.end,
+            cursor=state.get("next_cursor"),
+        )
+        newest = max((unit.newest_ts for unit in units if unit.newest_ts), default=None)
         newest = _within_bound(
             max((ts for ts in (newest, watermark) if ts), key=_parse_iso, default=None), anchor
         )
@@ -258,29 +245,26 @@ class LangfuseAdapter:
             window_to = timezone.now()
             cursor = None
 
-        if self._client.api_version == "v2":
-            units, next_cursor = self._collect_v2_page(
-                window_from,
-                window_to,
-                cursor=cursor,
+        units, next_cursor = self._collect_page(
+            window_from,
+            window_to,
+            cursor=cursor,
+        )
+        if next_cursor:
+            return Page(
+                units=units,
+                next_state={
+                    "mode": "live",
+                    "watermark": state.get("watermark"),
+                    "next_cursor": next_cursor,
+                    "live_window_from": window_from.isoformat(),
+                    "live_window_to": window_to.isoformat(),
+                },
+                done=False,
+                window_from=window_from,
+                window_to=window_to,
+                mode="live",
             )
-            if next_cursor:
-                return Page(
-                    units=units,
-                    next_state={
-                        "mode": "live",
-                        "watermark": state.get("watermark"),
-                        "next_cursor": next_cursor,
-                        "live_window_from": window_from.isoformat(),
-                        "live_window_to": window_to.isoformat(),
-                    },
-                    done=False,
-                    window_from=window_from,
-                    window_to=window_to,
-                    mode="live",
-                )
-        else:
-            units, _ = self._collect_window(window_from, window_to)
 
         self._persist_api_version()
         return Page(
@@ -292,23 +276,31 @@ class LangfuseAdapter:
             mode="live",
         )
 
-    def _collect_window(
-        self, window_from: datetime, window_to: datetime
-    ) -> tuple[list[IngestUnit], str | None]:
-        single = TimeWindow(start=window_from, end=window_to)
-        return self._units_from_observation_groups(self._client.iter_ingest_units(windows=[single]))
+    def _trace_page(
+        self,
+        window: TimeWindow,
+        *,
+        cursor: str | None = None,
+        limit: int = 1000,
+    ) -> tuple[list[list[Any]], str | None]:
+        if self._client.api_version == "v2":
+            return self._client.fetch_v2_trace_page(
+                window,
+                cursor=cursor,
+                limit=limit,
+                expand_metadata=self._expanded_metadata_key(),
+            )
+        return self._client.fetch_v1_trace_page(window, cursor=cursor, limit=limit)
 
-    def _collect_v2_page(
+    def _collect_page(
         self,
         window_from: datetime,
         window_to: datetime,
         *,
         cursor: str | None,
     ) -> tuple[list[IngestUnit], str | None]:
-        groups, next_cursor = self._client.fetch_v2_trace_page(
-            TimeWindow(start=window_from, end=window_to),
-            cursor=cursor,
-            expand_metadata=self._expanded_metadata_key(),
+        groups, next_cursor = self._trace_page(
+            TimeWindow(start=window_from, end=window_to), cursor=cursor
         )
         units, _ = self._units_from_observation_groups(iter(groups))
         return units, next_cursor
