@@ -170,6 +170,20 @@ def test_batched_trace_completion_keeps_children_across_provider_pages(api):
     assert len(api.calls) == 3
 
 
+def test_long_trace_ids_split_the_batch_below_the_server_url_limit(api):
+    rows = [
+        {"id": f"o{n}", "traceId": f"{n:0100d}", "type": "SPAN", "isRootObservation": True}
+        for n in range(150)
+    ]
+    api.reply(json_body={"data": rows, "meta": {}})
+    api.reply(json_body={"data": rows[:109], "meta": {}})
+    api.reply(json_body={"data": rows[109:], "meta": {}})
+    groups, _ = LangFuseClient("pk", "sk").fetch_v2_trace_page(_WINDOW)
+    assert len(groups) == 150
+    assert len(api.calls) == 3
+    assert all(len(call.url) < 16_000 for call in api.calls)
+
+
 @pytest.mark.parametrize("returned", [[], [{"id": "unexpected", "traceId": "other"}]])
 def test_incomplete_or_unfiltered_batch_responses_are_not_imported(api, returned):
     api.reply(json_body={"data": [{"id": "root", "traceId": "wanted"}], "meta": {}})

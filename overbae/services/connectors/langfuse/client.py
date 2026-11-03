@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import isfinite
 from typing import Any, Literal
+from urllib.parse import quote
 
 import httpx
 
@@ -22,6 +23,7 @@ _DEFAULT_HOST = "https://cloud.langfuse.com"
 _V2_FIELDS = "core,basic,time,io,metadata,model,usage,prompt,metrics,trace_context"
 _V2_PAGE_SIZE = 1000
 _TRACE_FILTER_BATCH_SIZE = 150
+_TRACE_FILTER_MAX_URL_CHARS = 12_000
 _DEPRECATED_READ_PREFIXES = ("/api/public/traces", "/api/public/observations")
 _DEPRECATED_MIN_INTERVAL = 24.0  # Hobby deprecated-read bucket is 150/hour
 _429_ATTEMPTS = 4
@@ -283,8 +285,7 @@ class LangFuseClient:
         # parents and siblings can fall outside the discovery page's window.
         trace_ids = [tid for tid, group in by_trace.items() if all(o.trace_id for o in group)]
         complete: dict[str, list[LangFuseObservation]] = {}
-        for offset in range(0, len(trace_ids), _TRACE_FILTER_BATCH_SIZE):
-            batch = trace_ids[offset : offset + _TRACE_FILTER_BATCH_SIZE]
+        for batch in _trace_batches(trace_ids):
             if len(batch) == 1:
                 observations = self.fetch_trace_observations(
                     batch[0], expand_metadata=expand_metadata
@@ -347,6 +348,22 @@ class LangFuseClient:
             if _is_partial_tree(group):
                 group = self.fetch_trace_observations(tid) or group
             yield group
+
+
+def _trace_batches(trace_ids: list[str]) -> Iterator[list[str]]:
+    batch: list[str] = []
+    size = 0
+    for trace_id in trace_ids:
+        length = len(quote(json.dumps(trace_id), safe="")) + 4
+        if batch and (
+            len(batch) == _TRACE_FILTER_BATCH_SIZE or size + length > _TRACE_FILTER_MAX_URL_CHARS
+        ):
+            yield batch
+            batch, size = [], 0
+        batch.append(trace_id)
+        size += length
+    if batch:
+        yield batch
 
 
 def _iso(dt: datetime) -> str:
