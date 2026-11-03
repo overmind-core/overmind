@@ -24,6 +24,7 @@ from overbae.models import (
 )
 from overbae.services import inference_live, inference_requests
 from overbae.services.mcp.server import create_mcp_application
+from overbae.services.provider_pricing import refresh_rates
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
@@ -263,3 +264,46 @@ def test_job_poll_exposes_deployment_stage_and_status_change_time(serving):
     assert result["progress"]["stage"] == "warm"
     assert result["progress"]["deadline"] == serving.model.deployment_deadline.isoformat()
     assert result["updated_at"] == now.isoformat().replace("+00:00", "Z")
+
+
+@asgi_db
+def test_dedicated_output_ids_reach_every_dedicated_tool_and_the_deployment_resource(
+    serving, fake_modal
+):
+    refresh_rates()
+    started = rpc(
+        serving,
+        "tools/call",
+        {
+            "name": "start_dedicated_deployment",
+            "arguments": {"deployment": serving.model.model_id, "gpu_type": "H100"},
+        },
+    )["result"]["structuredContent"]
+
+    for reference in (started["id"], started["model_id"]):
+        offers = rpc(
+            serving,
+            "tools/call",
+            {"name": "list_dedicated_gpus", "arguments": {"deployment": reference}},
+        )["result"]["structuredContent"]
+        assert offers["deployment"] == str(serving.model.id)
+        contents = rpc(serving, "resources/read", {"uri": f"overmind://deployments/{reference}"})[
+            "result"
+        ]["contents"]
+        assert json.loads(contents[0]["text"])["id"] == str(serving.model.id)
+
+    updated = rpc(
+        serving,
+        "tools/call",
+        {
+            "name": "update_dedicated_deployment",
+            "arguments": {"deployment": started["model_id"], "max_replicas": 2},
+        },
+    )["result"]["structuredContent"]
+    assert updated["max_replicas"] == 2
+    stopped = rpc(
+        serving,
+        "tools/call",
+        {"name": "stop_dedicated_deployment", "arguments": {"deployment": started["id"]}},
+    )["result"]["structuredContent"]
+    assert stopped["status"] == "shutting_down"

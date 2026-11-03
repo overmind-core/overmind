@@ -17,23 +17,10 @@ from overbae.services.mcp.errors import MCPError
 
 
 def _deployed(context, value: str) -> DeployedModel:
-    query = DeployedModel.objects.filter(project=context.project)
-    row = query.filter(id=value).first() if _uuid(value) else None
-    if row is None:
-        row = query.filter(model_id=value).first()
+    row = dedicated.deployed_model(DeployedModel.objects.filter(project=context.project), value)
     if row is None:
         raise MCPError("not_found", "Deployment not found.")
     return row
-
-
-def _uuid(value: str) -> bool:
-    try:
-        from uuid import UUID
-
-        UUID(value)
-    except ValueError:
-        return False
-    return True
 
 
 def _output(row) -> DedicatedDeploymentOutput:
