@@ -61,6 +61,9 @@ export const STATUS_TONE = {
 
 const ACTIVE = new Set(["deploying", "warming", "online", "shutting_down"]);
 const STARTING = new Set(["deploying", "warming"]);
+const MAX_REPLICAS = 8;
+const MIN_IDLE_SECONDS = 300;
+const MAX_IDLE_SECONDS = 24 * 60 * 60;
 
 export function DedicatedStatusBadge({ status }: { status: string }) {
   return (
@@ -97,6 +100,25 @@ function digits(raw: string): string {
 
 function whole(raw: string): number | null {
   return /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
+function configProblem(
+  minimum: number | null,
+  maximum: number | null,
+  idleSeconds: number | null,
+  scaleToZero: boolean
+): string | null {
+  if (!scaleToZero && (minimum == null || minimum < 1 || minimum > MAX_REPLICAS)) {
+    return `Min replicas must be 1–${MAX_REPLICAS}`;
+  }
+  if (maximum == null || maximum < 1 || maximum > MAX_REPLICAS) {
+    return `Max replicas must be 1–${MAX_REPLICAS}`;
+  }
+  if (minimum != null && minimum > maximum) return "Minimum replicas exceeds maximum";
+  if (idleSeconds == null || idleSeconds < MIN_IDLE_SECONDS || idleSeconds > MAX_IDLE_SECONDS) {
+    return `Idle timeout must be ${MIN_IDLE_SECONDS}–${MAX_IDLE_SECONDS.toLocaleString("en-US")} seconds`;
+  }
+  return null;
 }
 
 function hourShortfall(balance: number, floor: number): string {
@@ -330,6 +352,7 @@ export function DedicatedDeploymentSection({
                 decision={model.inferenceContract === "decision"}
                 gpus={gpus.data}
                 model={model}
+                onDone={() => setOpen(false)}
                 row={row}
               />
             ) : null}
@@ -403,11 +426,13 @@ function GpuMenu({
   decision,
   gpus,
   model,
+  onDone,
   row,
 }: {
   decision: boolean;
   gpus: DedicatedGpu[];
   model: DeployedModel;
+  onDone: () => void;
   row: DedicatedDeployment | null;
 }) {
   const [gpuType, setGpuType] = useState(row?.gpuType || gpus[0]?.gpuType || "");
@@ -444,16 +469,8 @@ function GpuMenu({
     minReplicas: minimum ?? 0,
     scaleToZero,
   };
-  const invalid =
-    !gpuType ||
-    credits == null ||
-    minimum == null ||
-    maxCount == null ||
-    idleCount == null ||
-    minimum > maxCount ||
-    maxCount > 8 ||
-    idleCount < 300 ||
-    idleCount > 24 * 60 * 60;
+  const problem = configProblem(minimum, maxCount, idleCount, scaleToZero);
+  const invalid = !gpuType || credits == null || problem != null;
   const balanceCredits = balanceUsd == null ? null : usdToOvermindCredits(balanceUsd);
   const floorCredits = credits != null && minimum != null ? Math.round(minimum * credits) : null;
   const hourWarning =
@@ -467,13 +484,16 @@ function GpuMenu({
       : null;
 
   const submit = () => {
-    const onError = (error: unknown) =>
-      notify.error(
-        error,
-        active ? "Couldn't update the deployment" : "Couldn't start the deployment"
-      );
-    if (active) update.mutate(body, { onError });
-    else start.mutate(body, { onError });
+    const options = {
+      onError: (error: unknown) =>
+        notify.error(
+          error,
+          active ? "Couldn't update the deployment" : "Couldn't start the deployment"
+        ),
+      onSuccess: onDone,
+    };
+    if (active) update.mutate(body, options);
+    else start.mutate(body, options);
   };
 
   if (gpus.length === 0) {
@@ -566,19 +586,17 @@ function GpuMenu({
         </div>
       </TooltipProvider>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-4">
-        <span className="text-sm tabular-nums">
-          {credits != null && minimum != null && maxCount != null
-            ? `${(minimum * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}${minimum !== maxCount ? `–${(maxCount * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""} credits/hour`
-            : "Price unavailable"}
+        <span className={problem ? "text-sm text-warning" : "text-sm tabular-nums"}>
+          {problem ??
+            (credits != null && minimum != null && maxCount != null
+              ? `${(minimum * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}${minimum !== maxCount ? `–${(maxCount * credits).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""} credits/hour`
+              : "Price unavailable")}
         </span>
         <Button disabled={invalid || pending} onClick={submit} size="sm">
           <Icon.play />
           {pending ? "Saving" : active ? "Update" : "Deploy"}
         </Button>
       </div>
-      {minimum != null && maxCount != null && minimum > maxCount ? (
-        <p className="text-xs text-muted-foreground">Minimum replicas exceeds maximum</p>
-      ) : null}
       {hourWarning ? <p className="text-sm text-warning">{hourWarning}</p> : null}
     </div>
   );

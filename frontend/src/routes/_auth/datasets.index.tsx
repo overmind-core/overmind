@@ -9,10 +9,13 @@ import { DataProjectForm } from "@/components/onboarding/data-project-form";
 import { OnboardingWindow } from "@/components/onboarding/onboarding-window";
 import { ProjectRequiredEmptyState } from "@/components/project-required-empty-state";
 import { QuickstartEmbed } from "@/components/quickstart/quickstart-embed";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useProjectDatasetsQuery } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
+import { useGuestGate } from "@/hooks/use-guest-gate";
 import { useProjectsList } from "@/hooks/use-projects";
 import { datasetWorkspaces } from "@/lib/dataset-workspaces";
 import { featureFlags } from "@/lib/feature-flags";
@@ -52,6 +55,7 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
   const projects = useProjectsList();
   const project = projects.data?.projects.find((project) => project.id === projectId);
   const [createOpen, setCreateOpen] = useState(false);
+  const guard = useGuestGate();
   const datasets = datasetWorkspaces(query.data ?? []);
 
   useEffect(() => {
@@ -96,6 +100,14 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
     <PageShell
       header={
         <PageHeader
+          actions={
+            datasets.length > 0 ? (
+              <Button onClick={guard(() => setCreateOpen(true))} type="button">
+                <Icon.datasetAdd />
+                New dataset
+              </Button>
+            ) : undefined
+          }
           count={query.data ? datasets.length : undefined}
           description="Source data and step-by-step transformations for training and evaluation."
           icon={
