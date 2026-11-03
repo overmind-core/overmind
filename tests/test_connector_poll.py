@@ -110,6 +110,19 @@ def test_live_polling_pulls_only_what_arrived_since_the_watermark(credential, la
     assert credential.sync_cursor["watermark"] > watermark_before
 
 
+def test_a_trace_that_appears_after_its_poll_window_is_still_imported(credential, langfuse):
+    credential = sync_until_live(credential)
+    watermark = timezone.now()
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_cursor={"mode": "live", "watermark": watermark.isoformat()}
+    )
+    start = watermark - timedelta(minutes=10)
+    late = Step("late", "span", None, start=start, end=start + timedelta(seconds=1))
+    langfuse.record(uuid.uuid4().hex, [late])
+    _chunk(credential)
+    assert Span.objects.filter(project=credential.project, name="late").count() == 1
+
+
 def test_a_paged_live_poll_queues_the_next_chunk(credential, langfuse, continuations):
     _traces(langfuse, 3)
     sync_until_live(credential)

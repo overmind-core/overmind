@@ -119,7 +119,7 @@ def test_live_pagination_pins_its_window_and_resumes(api, clock):
     assert second.next_state == {"mode": "live", "watermark": first.window_to.isoformat()}
     pages = [c.params for c in api.calls if "traceId" not in c.params]
     assert {(p["fromStartTime"], p["toStartTime"]) for p in pages} == {
-        ("2026-08-19T12:00:00Z", "2026-08-19T12:01:00Z")
+        ("2026-08-19T11:30:00Z", "2026-08-19T12:01:00Z")
     }
     assert pages[1]["cursor"] == "cursor-1"
     assert all(c.params["expandMetadata"] == "capability" for c in api.calls)

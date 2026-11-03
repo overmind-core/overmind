@@ -34,6 +34,9 @@ LANGFUSE_CAPABILITIES = Capabilities(
 )
 
 
+_LIVE_INGESTION_OVERLAP = timedelta(minutes=30)
+
+
 def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -236,8 +239,11 @@ class LangfuseAdapter:
             window_from = _parse_iso(state.get("live_window_from"))
             window_to = _parse_iso(state.get("live_window_to"))
         else:
-            window_from = _parse_iso(state.get("watermark")) or (
-                timezone.now() - timedelta(hours=1)
+            watermark = _parse_iso(state.get("watermark"))
+            window_from = (
+                watermark - _LIVE_INGESTION_OVERLAP
+                if watermark
+                else timezone.now() - timedelta(hours=1)
             )
             window_to = timezone.now()
 
