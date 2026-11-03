@@ -58,6 +58,7 @@ from overbae.services import (
     training_monitoring,
 )
 from overbae.services.codebase.flow import build_capability_flow
+from overbae.services.connectors.progress import sync_progress
 from overbae.services.datasets import paths, pipeline_bindings, pipeline_packages, workbench
 from overbae.services.datasets.admission import status as landing_admission_status
 from overbae.services.datasets.imports import status as import_status
@@ -512,6 +513,7 @@ def connector_resource_payload(project, connector, uri: str) -> dict:
     config = connector.active_config()
     mapping, assignment_details = _connector_mapping(project, connector)
     runs = list(connector.runs.order_by("-started_at")[:51])
+    progress = sync_progress(connector)
     return {
         "uri": uri,
         "kind": "connector",
@@ -548,6 +550,7 @@ def connector_resource_payload(project, connector, uri: str) -> dict:
             "next_poll_at": connector.next_poll_at,
             "backfill_imported": connector.backfill_imported,
             "backfill_total": connector.backfill_total,
+            "progress": progress.model_dump(mode="json") if progress else None,
             "total_spans_imported": connector.total_spans_imported,
             "total_traces_imported": connector.total_traces_imported,
             "has_error": bool(connector.sync_error),

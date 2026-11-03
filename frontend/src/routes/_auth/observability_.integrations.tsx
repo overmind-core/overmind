@@ -10,6 +10,7 @@ import { ConnectorSetupWizard } from "@/components/connectors/setup-wizard";
 import { CreateProjectDialog } from "@/components/create-project";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DateTime } from "@/components/ui/datetime";
 import { FloatingNudge } from "@/components/ui/floating-nudge";
@@ -18,7 +19,6 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { LoadingState } from "@/components/ui/spinner";
@@ -63,27 +63,35 @@ function SyncStatusLine({ credential }: { credential: ConnectorCredential }) {
   const { syncStatus, backfillImported, backfillTotal, syncError, lastSyncedAt, nextPollAt } =
     credential;
 
-  if (!credential.autoSyncEnabled && syncStatus !== "backfilling" && syncStatus !== "live") {
+  if (
+    !credential.autoSyncEnabled &&
+    syncStatus !== "backfilling" &&
+    syncStatus !== "live" &&
+    syncStatus !== "error"
+  ) {
     return <span className="text-xs text-muted-foreground">Auto-sync off</span>;
   }
 
-  if (syncStatus === "backfilling") {
-    // Prefer totalTracesImported — same unit as the Traces stat.
-    // No Spinner: lookback walks many (often empty) windows after the count
-    // stops moving; a spinner reads as "still importing" when history scan
-    // is just draining older days.
-    const tracesDone = credential.totalTracesImported || backfillImported;
+  if (syncStatus === "backfilling" || (syncStatus === "error" && credential.syncProgress)) {
+    const progress = credential.syncProgress;
+    const tracesDone = progress?.imported ?? credential.totalTracesImported ?? backfillImported;
+    const total = progress?.totalEstimate ?? backfillTotal;
     const pct =
-      backfillTotal && backfillTotal > 0
-        ? Math.round((tracesDone / backfillTotal) * 100)
-        : undefined;
+      total && total > 0 ? Math.min(99, Math.round((tracesDone / total) * 100)) : undefined;
+    const seconds = progress?.estimatedSecondsRemaining;
     return (
       <div className="flex min-w-[180px] flex-col gap-1">
         <span className="text-xs text-muted-foreground">
-          Importing history · {tracesDone.toLocaleString()}
-          {backfillTotal ? ` / ~${backfillTotal.toLocaleString()}` : ""} traces
+          {progress?.state === "waiting" ? "Waiting for provider" : "Importing"}
+          {" · "}
+          {tracesDone.toLocaleString()}
+          {total != null && total > 0 ? ` / ~${total.toLocaleString()}` : ""} traces
+          {seconds != null && progress?.state !== "waiting" && (
+            <> · ~{Math.max(1, Math.ceil(seconds / 60)).toLocaleString()} min left</>
+          )}
         </span>
-        {pct != null && <Progress label="Backfill progress" percent={pct} />}
+        {pct != null && <Progress label="Estimated backfill progress" percent={pct} />}
+        {syncError && <span className="text-xs text-destructive">{syncError}</span>}
       </div>
     );
   }
@@ -444,7 +452,6 @@ interface ConnectorSectionProps {
   meta: ConnectorMeta;
   credentials: ConnectorCredential[];
   projectId: string;
-  isLast: boolean;
   /** Called when the user wants to add a connection but has no project yet. */
   onRequireProject: () => void;
   onSyncStarted?: (info: SyncStartedInfo) => void;
@@ -455,7 +462,6 @@ function ConnectorSection({
   meta,
   credentials,
   projectId,
-  isLast,
   onRequireProject,
   onSyncStarted,
   onSyncKicked,
@@ -521,8 +527,6 @@ function ConnectorSection({
           </div>
         )}
       </div>
-
-      {!isLast && <Separator />}
 
       {/* Available connectors use the setup wizard; others fall back to the credentials dialog. */}
       {projectId &&
@@ -642,19 +646,18 @@ function IntegrationsPage() {
         </div>
       )}
 
-      <div className="rounded-md border border-border">
-        {CONNECTORS.map((meta, i) => (
-          <div className="px-4" key={meta.type}>
+      <div className="flex flex-col gap-4">
+        {CONNECTORS.map((meta) => (
+          <Card className="bg-transparent px-4" key={meta.type}>
             <ConnectorSection
               credentials={credentialsByType[meta.type] ?? []}
-              isLast={i === CONNECTORS.length - 1}
               meta={meta}
               onRequireProject={() => setCreateProjectOpen(true)}
               onSyncKicked={bumpFastPoll}
               onSyncStarted={setPostSync}
               projectId={projectId}
             />
-          </div>
+          </Card>
         ))}
       </div>
 

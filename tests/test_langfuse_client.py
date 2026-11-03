@@ -80,9 +80,8 @@ def test_v2_trace_page_completes_trees_and_keeps_the_cursor(api):
 
 def test_v2_trace_page_stops_a_repeated_cursor(api):
     api.reply(json_body={"data": [], "meta": {"cursor": "stuck"}})
-    _, cursor = LangFuseClient("pk", "sk").fetch_v2_trace_page(_WINDOW, cursor="stuck")
-
-    assert cursor is None
+    with pytest.raises(LangFuseError, match="cursor"):
+        LangFuseClient("pk", "sk").fetch_v2_trace_page(_WINDOW, cursor="stuck")
 
 
 def test_a_rate_limit_that_never_lifts_raises_with_its_status(api):
@@ -152,6 +151,64 @@ def test_a_complete_trace_is_not_refetched(api):
 
 
 def test_window_paging_stops_when_the_cursor_repeats(api):
-    _groups(api, {"data": [_obs("root", root=True)], "meta": {"cursor": "stuck"}})
+    with pytest.raises(LangFuseError, match="cursor"):
+        _groups(api, {"data": [_obs("root", root=True)], "meta": {"cursor": "stuck"}})
 
     assert len(api.calls) <= 3
+
+
+def test_batched_trace_completion_keeps_children_across_provider_pages(api):
+    first = {"id": "a", "traceId": "t1", "type": "SPAN", "isRootObservation": True}
+    second = {"id": "b", "traceId": "t2", "type": "SPAN", "isRootObservation": True}
+    child = {"id": "c", "traceId": "t1", "type": "SPAN", "parentObservationId": "a"}
+    api.reply(json_body={"data": [first, second], "meta": {"cursor": "discovery"}})
+    api.reply(json_body={"data": [first, second], "meta": {"cursor": "children"}})
+    api.reply(json_body={"data": [child], "meta": {}})
+    groups, cursor = LangFuseClient("pk", "sk").fetch_v2_trace_page(_WINDOW)
+    assert [[obs.id for obs in group] for group in groups] == [["a", "c"], ["b"]]
+    assert cursor == "discovery"
+    assert len(api.calls) == 3
+
+
+@pytest.mark.parametrize("returned", [[], [{"id": "unexpected", "traceId": "other"}]])
+def test_incomplete_or_unfiltered_batch_responses_are_not_imported(api, returned):
+    api.reply(json_body={"data": [{"id": "root", "traceId": "wanted"}], "meta": {}})
+    api.reply(json_body={"data": returned, "meta": {}})
+    with pytest.raises(LangFuseError):
+        LangFuseClient("pk", "sk").fetch_v2_trace_page(_WINDOW)
+
+
+def test_count_uses_one_aggregate_request_not_observation_pagination(api):
+    api.reply(
+        json_body={
+            "data": [
+                {"isRootObservation": True, "count_count": 70000},
+                {"isRootObservation": False, "count_count": 212},
+            ]
+        }
+    )
+    client = LangFuseClient("pk", "sk")
+    assert client.volume(_WINDOW) == {"roots": 70000, "observations": 70212}
+    assert len(api.calls) == 1
+    assert api.calls[0].path == "/api/public/v2/metrics"
+
+
+def test_missing_count_is_not_reported_as_zero(api):
+    api.reply(json_body={"data": [{"isRootObservation": True}]})
+    with pytest.raises(LangFuseError, match="valid volume count"):
+        LangFuseClient("pk", "sk").volume(_WINDOW)
+
+
+@pytest.mark.parametrize(
+    "headers,body",
+    [
+        ({"Retry-After": "3600"}, {}),
+        ({}, {"details": {"retryAfterSeconds": 3600}}),
+    ],
+)
+def test_long_rate_limit_wait_is_deferred_without_shortening_it(api, headers, body):
+    api.reply(429, headers=headers, json_body=body)
+    with pytest.raises(LangFuseError) as caught:
+        LangFuseClient("pk", "sk").list_projects()
+    assert caught.value.retry_after == 3600
+    assert len(api.calls) == 1

@@ -68,6 +68,8 @@ export * from './ConnectorShapeCandidate';
 export * from './ConnectorSourceProject';
 export * from './ConnectorSyncConfigCreateResponse';
 export * from './ConnectorSyncConfigWriteRequest';
+export * from './ConnectorSyncProgress';
+export * from './ConnectorSyncProgressStateEnum';
 export * from './ConnectorSyncRun';
 export * from './ConnectorSyncRunModeEnum';
 export * from './ConnectorSyncRunStatusEnum';

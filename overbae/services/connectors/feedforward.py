@@ -14,7 +14,7 @@ def save_sync_config(
     *,
     source_project_id: str = "",
     target_project=None,
-    lookback_days: int | None = None,
+    lookback_days: Any = _UNSET,
     backfill_from: Any = _UNSET,
     backfill_to: Any = _UNSET,
 ) -> Any:
@@ -29,7 +29,7 @@ def save_sync_config(
         source_project_id=source_project_id or (prev.source_project_id if prev else ""),
         target_project=target_project or (prev.target_project if prev else None),
         lookback_days=lookback_days
-        if lookback_days is not None
+        if lookback_days is not _UNSET
         else (prev.lookback_days if prev else None),
         backfill_from=prev.backfill_from
         if backfill_from is _UNSET and prev

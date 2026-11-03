@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from django.db.models import Q
+
 from overbae.services.connectors.schema import CONNECTOR_CREDENTIAL_ID_ATTR
 
 
@@ -32,7 +34,9 @@ def connector_imported_spans(credential):
     from overbae.models import Span
 
     cred_id = str(credential.id)
-    qs = Span.objects.filter(project=credential.project)
+    # Every target it has written to: a changed target must not orphan earlier imports.
+    targets = credential.configs.exclude(target_project=None).values("target_project")
+    qs = Span.objects.filter(Q(project=credential.project) | Q(project__in=targets))
     if connection.features.supports_json_field_contains:
         return qs.filter(resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: cred_id})
     ids = [

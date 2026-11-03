@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
 
+from overbae.services.connectors.progress import SyncProgress
 from overbae.services.mcp.contracts.common import MCPModel, ResourceLinkContract
 
 ConnectorMappingSource = Literal["observation_name", "metadata", "tag", "trace_name"]
@@ -117,6 +118,7 @@ class ConnectorSyncState(MCPModel):
     next_poll_at: datetime | None = None
     backfill_imported: int = Field(ge=0)
     backfill_total: int | None = Field(default=None, ge=0)
+    progress: SyncProgress | None = None
     total_spans_imported: int = Field(ge=0)
     total_traces_imported: int = Field(ge=0)
     has_error: bool = False

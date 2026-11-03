@@ -6,12 +6,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import time_machine
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from factories import make_connector, sync_until_live
+from factories import make_connector, make_project, sync_until_live
 from fakes.vendors import LangfuseAPI, Step
 
+from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.models import ConnectorCredential, Span
-from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
+from overbae.services.connectors.feedforward import save_sync_config
+from overbae.services.connectors.progress import checkpoint_progress, sync_progress
+from overbae.services.connectors.sync import (
+    boundary_import_key,
+    enqueue_connector_sync,
+    reset_connector_import,
+)
+from overbae.services.mcp.resources import connector_resource_payload
 from overbae.tasks import connector_sync
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("vendor-connectors")]
@@ -256,3 +266,194 @@ def test_a_sync_request_restarts_the_backfill_when_the_boundaries_changed(creden
     credential.refresh_from_db()
     assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
     assert credential.sync_cursor == {}
+
+
+def test_split_trace_pages_and_retries_do_not_inflate_import_counts(credential, langfuse):
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    root = Step("root", "span", None, start=start, end=start + timedelta(seconds=2))
+    child = Step(
+        "child",
+        "span",
+        root.id,
+        start=start + timedelta(seconds=1),
+        end=start + timedelta(seconds=2),
+    )
+    langfuse.record(uuid.uuid4().hex, [root, child])
+    langfuse.page_size = 1
+    cred = sync_until_live(credential)
+    assert cred.total_traces_imported == 1
+    assert cred.total_spans_imported == 2
+    _chunk(credential)
+    credential.refresh_from_db()
+    assert credential.total_traces_imported == 1
+    assert credential.total_spans_imported == 2
+
+
+def test_all_history_clears_the_previous_lookback(credential):
+    save_sync_config(credential, lookback_days=1)
+    assert save_sync_config(credential).lookback_days == 1
+    assert save_sync_config(credential, lookback_days=None).lookback_days is None
+
+
+def test_manual_import_resumes_after_provider_throttling(credential, langfuse, continuations):
+    langfuse.status = 429
+    result = _chunk(credential)
+    assert result["status"] == "error"
+    assert continuations == [str(credential.id)]
+    credential.refresh_from_db()
+    assert credential.auto_sync_enabled is False
+
+
+def test_source_count_and_eta_include_waits_and_survive_page_resume(
+    credential, langfuse, time_machine
+):
+    clock = time_machine
+    clock.move_to("2026-01-03T00:00:00Z", tick=False)
+    _traces(langfuse, 6)
+    langfuse.page_size = 2
+    _chunk(credential)
+    credential.refresh_from_db()
+    first = sync_progress(credential)
+    assert first.total_estimate == 6
+    assert first.observations_total == 6
+    assert first.imported == 2
+    clock.shift(60)
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.imported == 4
+    assert progress.estimated_seconds_remaining == 30
+    assert len([call for call in langfuse.requests if "/v2/metrics" in call.url]) == 1
+    # Status polling never calls the provider and doesn't count lease expiry as a retry.
+    assert progress.retry_at is None
+    clock.shift(301)
+    assert sync_progress(credential).estimated_seconds_remaining is None
+    assert sync_progress(credential).state == "waiting"
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.state == "complete"
+    assert progress.imported == 6
+    assert progress.estimated_seconds_remaining == 0
+
+
+def test_source_count_persists_when_a_data_page_is_throttled(credential, langfuse):
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    credential.refresh_from_db()
+    total = sync_progress(credential).total_estimate
+    langfuse.status = 429
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.total_estimate == total == 3
+    assert progress.imported == 1
+    assert progress.state == "waiting"
+    assert progress.estimated_seconds_remaining is None
+    assert progress.retry_at is not None
+
+
+def test_unavailable_count_does_not_block_import_and_is_retried(credential, langfuse, time_machine):
+    time_machine.move_to("2026-01-03T00:00:00Z", tick=False)
+    _traces(langfuse, 4)
+    langfuse.page_size = 1
+    langfuse.metrics_status = 429
+    _chunk(credential)
+    credential.refresh_from_db()
+    assert sync_progress(credential).total_estimate is None
+    assert sync_progress(credential).imported == 1
+    time_machine.shift(301)
+    langfuse.metrics_status = 200
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = ConnectorCredentialSerializer(credential).data["sync_progress"]
+    assert progress["total_estimate"] == 4
+    assert progress["imported"] == 2
+    assert progress["estimated_seconds_remaining"] == 301
+    resource = connector_resource_payload(
+        credential.project, credential, "overmind://connectors/test"
+    )
+    assert resource["sync"]["progress"] == progress
+
+
+def test_empty_backfill_reports_completion_instead_of_estimating(credential, langfuse):
+    _chunk(credential)
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert credential.sync_status == "live"
+    assert progress.state == "complete"
+    assert progress.imported == 0
+    assert progress.estimated_seconds_remaining == 0
+
+
+def test_metrics_quota_wait_does_not_block_trace_pages_or_retry_early(
+    credential, langfuse, time_machine
+):
+    time_machine.move_to("2026-01-03T00:00:00Z", tick=False)
+    _traces(langfuse, 4)
+    langfuse.page_size = 1
+    langfuse.metrics_status = 429
+    langfuse.metrics_retry_after = 3600
+    _chunk(credential)
+    time_machine.shift(301)
+    _chunk(credential)
+    assert len([call for call in langfuse.requests if "/v2/metrics" in call.url]) == 1
+    assert _spans(credential) == 2
+
+
+def test_totals_and_progress_count_the_target_project(credential, langfuse):
+    target = make_project()
+    save_sync_config(credential, target_project=target)
+    _traces(langfuse, 3)
+    credential = sync_until_live(credential)
+    assert Span.objects.filter(project=target).count() == 3
+    assert (credential.total_spans_imported, credential.total_traces_imported) == (3, 3)
+    assert sync_progress(credential).imported == 3
+
+
+def test_a_failed_live_poll_after_a_finished_backfill_is_not_complete(credential, langfuse):
+    _traces(langfuse, 1)
+    credential = sync_until_live(credential)
+    assert sync_progress(credential).state == "complete"
+    retry = timezone.now() + timedelta(minutes=5)
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_error="Langfuse rate limited", next_poll_at=retry
+    )
+    credential.refresh_from_db()
+    progress = sync_progress(credential)
+    assert progress.state == "waiting"
+    assert progress.retry_at == retry
+    assert progress.estimated_seconds_remaining is None
+
+
+def test_a_middle_chunk_does_not_count_the_whole_import(credential, langfuse):
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    with CaptureQueriesContext(connection) as queries:
+        _chunk(credential)
+    credential.refresh_from_db()
+    assert credential.total_traces_imported == 2
+    assert not [q["sql"] for q in queries if "COUNT(" in q["sql"] and "resource_attrs" in q["sql"]]
+
+
+def test_a_reset_reaches_spans_in_a_former_target_project(credential, langfuse):
+    first, second = make_project(), make_project()
+    save_sync_config(credential, target_project=first)
+    _traces(langfuse, 2)
+    sync_until_live(credential)
+    assert Span.objects.filter(project=first).count() == 2
+    save_sync_config(credential, target_project=second)
+    assert reset_connector_import(credential) == 2
+    assert not Span.objects.filter(project=first).exists()
+
+
+def test_a_chunk_without_new_traces_keeps_the_import_active(credential, langfuse):
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    credential.refresh_from_db()
+    with time_machine.travel(timezone.now() + timedelta(minutes=10), tick=False):
+        checkpoint_progress(credential, credential.sync_cursor["progress"], gained=0, done=False)
+        assert sync_progress(credential).state != "waiting"

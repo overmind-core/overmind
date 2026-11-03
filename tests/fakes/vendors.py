@@ -85,6 +85,8 @@ class LangfuseAPI:
     requests: list[Call] = field(default_factory=list)
     page_size: int | None = None
     status: int = 200
+    metrics_status: int = 200
+    metrics_retry_after: int = 0
     outage: str = "fake outage"
 
     def record(self, trace_id: str, steps: list[Step]) -> None:
@@ -116,12 +118,16 @@ class LangfuseAPI:
 
     def _observations(self, query: dict[str, str]) -> dict[str, Any]:
         wanted = query.get("traceId")
+        trace_ids = None
+        for condition in json.loads(query.get("filter") or "[]"):
+            if condition["column"] == "traceId" and condition["operator"] == "any of":
+                trace_ids = set(condition["value"])
         since = _parse(query["fromStartTime"]) if query.get("fromStartTime") else None
         until = _parse(query["toStartTime"]) if query.get("toStartTime") else None
         rows = [
             self._observation(trace_id, step)
             for trace_id, steps in self.traces.items()
-            if wanted in (None, trace_id)
+            if wanted in (None, trace_id) and (trace_ids is None or trace_id in trace_ids)
             for step in steps
             if wanted
             or ((since is None or step.start >= since) and (until is None or step.start < until))
@@ -143,6 +149,30 @@ class LangfuseAPI:
             return _json({"message": self.outage}, status=self.status)
         if parsed.path == "/api/public/projects":
             return _json({"data": [{"id": "lf-project", "name": "support-desk"}]})
+        if parsed.path == "/api/public/v2/metrics":
+            if self.metrics_status != 200:
+                return _json(
+                    {
+                        "message": self.outage,
+                        "details": {"retryAfterSeconds": self.metrics_retry_after},
+                    },
+                    status=self.metrics_status,
+                )
+            query = json.loads(parse_qs(parsed.query)["query"][0])
+            start, end = _parse(query["fromTimestamp"]), _parse(query["toTimestamp"])
+            counts = {True: 0, False: 0}
+            for steps in self.traces.values():
+                for step in steps:
+                    if start <= step.start < end:
+                        counts[step.parent is None] += 1
+            return _json(
+                {
+                    "data": [
+                        {"isRootObservation": root, "count_count": count}
+                        for root, count in counts.items()
+                    ]
+                }
+            )
         if parsed.path == "/api/public/v2/observations":
             return _json(self._observations({k: v[0] for k, v in parse_qs(parsed.query).items()}))
         return _json({"message": f"not found: {parsed.path}"}, status=404)

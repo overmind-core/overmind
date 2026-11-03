@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { ConnectorSyncProgress } from './ConnectorSyncProgress';
+import {
+    ConnectorSyncProgressFromJSON,
+    ConnectorSyncProgressFromJSONTyped,
+    ConnectorSyncProgressToJSON,
+    ConnectorSyncProgressToJSONTyped,
+} from './ConnectorSyncProgress';
 import type { ApiVersionEnum } from './ApiVersionEnum';
 import {
     ApiVersionEnumFromJSON,
@@ -128,6 +135,12 @@ export interface ConnectorCredential {
     readonly backfillTotal: number | null;
     /**
      *
+     * @type {ConnectorSyncProgress}
+     * @memberof ConnectorCredential
+     */
+    readonly syncProgress: ConnectorSyncProgress | null;
+    /**
+     *
      * @type {string}
      * @memberof ConnectorCredential
      */
@@ -204,6 +217,7 @@ export function instanceOfConnectorCredential(value: object): value is Connector
     if (!('syncStatus' in value) || value['syncStatus'] === undefined) return false;
     if (!('backfillImported' in value) || value['backfillImported'] === undefined) return false;
     if (!('backfillTotal' in value) || value['backfillTotal'] === undefined) return false;
+    if (!('syncProgress' in value) || value['syncProgress'] === undefined) return false;
     if (!('syncError' in value) || value['syncError'] === undefined) return false;
     if (!('apiVersion' in value) || value['apiVersion'] === undefined) return false;
     if (!('verifiedAt' in value) || value['verifiedAt'] === undefined) return false;
@@ -239,6 +253,7 @@ export function ConnectorCredentialFromJSONTyped(json: any, ignoreDiscriminator:
         'syncStatus': SyncStatusEnumFromJSON(json['sync_status']),
         'backfillImported': json['backfill_imported'],
         'backfillTotal': json['backfill_total'],
+        'syncProgress': ConnectorSyncProgressFromJSON(json['sync_progress']),
         'syncError': json['sync_error'],
         'apiVersion': ApiVersionEnumFromJSON(json['api_version']),
         'verifiedAt': (json['verified_at'] == null ? null : new Date(json['verified_at'])),
@@ -256,7 +271,7 @@ export function ConnectorCredentialToJSON(json: any): ConnectorCredential {
     return ConnectorCredentialToJSONTyped(json, false);
 }
 
-export function ConnectorCredentialToJSONTyped(value?: Omit<ConnectorCredential, 'id'|'api_key_hint'|'is_active'|'last_synced_at'|'sync_status'|'backfill_imported'|'backfill_total'|'sync_error'|'api_version'|'verified_at'|'total_spans_imported'|'total_traces_imported'|'next_poll_at'|'active_config'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function ConnectorCredentialToJSONTyped(value?: Omit<ConnectorCredential, 'id'|'api_key_hint'|'is_active'|'last_synced_at'|'sync_status'|'backfill_imported'|'backfill_total'|'sync_progress'|'sync_error'|'api_version'|'verified_at'|'total_spans_imported'|'total_traces_imported'|'next_poll_at'|'active_config'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

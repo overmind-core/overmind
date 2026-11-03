@@ -110,6 +110,8 @@ models/ConnectorShapeCandidate.ts
 models/ConnectorSourceProject.ts
 models/ConnectorSyncConfigCreateResponse.ts
 models/ConnectorSyncConfigWriteRequest.ts
+models/ConnectorSyncProgress.ts
+models/ConnectorSyncProgressStateEnum.ts
 models/ConnectorSyncRun.ts
 models/ConnectorSyncRunModeEnum.ts
 models/ConnectorSyncRunStatusEnum.ts

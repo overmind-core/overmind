@@ -57,3 +57,16 @@ tools to invent.
 Return the source/destination identities, mapping decision, sync outcome and
 `console_traces_url`. For configuration, open `observability/integrations` under
 the project's Console base with its `projectId`.
+
+Langfuse backfills expose `details.sync.progress` in `get_job` and `sync.progress`
+on the connector resource. The cached Metrics API root count is a trace estimate,
+not an exact trace-ID count. Report its `count_basis` and `counted_at`; newly
+arriving data may not be included. `estimated_seconds_remaining` uses measured
+unique import throughput including waits. Null means not enough progress or a
+stalled/error state; do not invent an ETA. `retry_at` is a provider retry, whereas
+`next_poll_at` alone can be a worker lease. Status polling does not call Langfuse.
+
+Langfuse counts and backfill completion cover API-accessible history only. Cloud
+Hobby exposes 30 days and Core 90 days through the API; an empty response does
+not prove the project is empty. Compare the project ID and visible record dates
+before reporting missing data. Honour the provider's full `Retry-After` delay.
