@@ -97,9 +97,10 @@ def prepare_backfill_progress(credential, client, state, windows, anchor):
 def checkpoint_progress(credential, snapshot, *, gained, done):
     """Add source traces new to this chunk; completion recounts the persisted spans once."""
     imported = _scoped_imported(credential, snapshot) if done else snapshot["imported"] + gained
+    now = timezone.now().isoformat()
     if imported > snapshot["imported"]:
-        snapshot["last_progress_at"] = timezone.now().isoformat()
-    snapshot.update(imported=imported, done=done)
+        snapshot["last_progress_at"] = now
+    snapshot.update(imported=imported, done=done, checkpointed_at=now)
 
 
 def sync_progress(credential) -> SyncProgress | None:
@@ -114,7 +115,13 @@ def sync_progress(credential) -> SyncProgress | None:
     )
     elapsed = (now - datetime.fromisoformat(snapshot["started_at"])).total_seconds()
     gained = max(0, snapshot["imported"] - snapshot["baseline"])
-    stale = (now - last).total_seconds() > 300 if last else elapsed > 300
+    # A chunk that revisits imported traces is still working, so only a silent import is stale.
+    checkpointed = snapshot.get("checkpointed_at")
+    stale = (
+        (now - datetime.fromisoformat(checkpointed)).total_seconds() > 300
+        if checkpointed
+        else elapsed > 300
+    )
     done = snapshot.get("done", False)
     waiting = bool(credential.sync_error) or (stale and not done)
     rate = gained / elapsed if gained and elapsed > 0 and not waiting and not done else None

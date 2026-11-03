@@ -28,14 +28,14 @@ def will_recarve(credential) -> bool:
 
 def connector_imported_spans(credential):
     from django.db import connection
+    from django.db.models import Q
 
     from overbae.models import Span
 
     cred_id = str(credential.id)
-    config = credential.active_config()
-    qs = Span.objects.filter(
-        project=(config.target_project if config else None) or credential.project
-    )
+    # Every target it has written to: a changed target must not orphan earlier imports.
+    targets = credential.configs.exclude(target_project=None).values("target_project")
+    qs = Span.objects.filter(Q(project=credential.project) | Q(project__in=targets))
     if connection.features.supports_json_field_contains:
         return qs.filter(resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: cred_id})
     ids = [

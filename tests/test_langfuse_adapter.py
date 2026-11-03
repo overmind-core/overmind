@@ -189,3 +189,24 @@ def test_backfill_watermark_stops_at_its_bound(api, clock):
     while not page.done:
         page = adapter.fetch_page(page.next_state)
     assert page.next_state["watermark"] == _START.isoformat()
+
+
+def test_backfill_watermark_compares_instants_across_formats(api, clock):
+    earlier = (_START - timedelta(hours=1)).isoformat()
+    later_same_second = earlier.replace("+00:00", ".500Z")
+    api.reply(
+        json_body={
+            "data": [
+                {
+                    "id": "o1",
+                    "traceId": "t1",
+                    "startTime": later_same_second,
+                    "name": "n",
+                    "type": "SPAN",
+                }
+            ],
+            "meta": {},
+        }
+    )
+    page = _adapter().fetch_page({"mode": "backfill", "watermark": earlier})
+    assert page.next_state["watermark"] == later_same_second

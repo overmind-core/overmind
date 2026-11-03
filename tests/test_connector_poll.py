@@ -15,8 +15,12 @@ from fakes.vendors import LangfuseAPI, Step
 from overbae.api.serializers import ConnectorCredentialSerializer
 from overbae.models import ConnectorCredential, Span
 from overbae.services.connectors.feedforward import save_sync_config
-from overbae.services.connectors.progress import sync_progress
-from overbae.services.connectors.sync import boundary_import_key, enqueue_connector_sync
+from overbae.services.connectors.progress import checkpoint_progress, sync_progress
+from overbae.services.connectors.sync import (
+    boundary_import_key,
+    enqueue_connector_sync,
+    reset_connector_import,
+)
 from overbae.services.mcp.resources import connector_resource_payload
 from overbae.tasks import connector_sync
 
@@ -432,3 +436,24 @@ def test_a_middle_chunk_does_not_count_the_whole_import(credential, langfuse):
     credential.refresh_from_db()
     assert credential.total_traces_imported == 2
     assert not [q["sql"] for q in queries if "COUNT(" in q["sql"] and "resource_attrs" in q["sql"]]
+
+
+def test_a_reset_reaches_spans_in_a_former_target_project(credential, langfuse):
+    first, second = make_project(), make_project()
+    save_sync_config(credential, target_project=first)
+    _traces(langfuse, 2)
+    sync_until_live(credential)
+    assert Span.objects.filter(project=first).count() == 2
+    save_sync_config(credential, target_project=second)
+    assert reset_connector_import(credential) == 2
+    assert not Span.objects.filter(project=first).exists()
+
+
+def test_a_chunk_without_new_traces_keeps_the_import_active(credential, langfuse):
+    _traces(langfuse, 3)
+    langfuse.page_size = 1
+    _chunk(credential)
+    credential.refresh_from_db()
+    with time_machine.travel(timezone.now() + timedelta(minutes=10), tick=False):
+        checkpoint_progress(credential, credential.sync_cursor["progress"], gained=0, done=False)
+        assert sync_progress(credential).state != "waiting"

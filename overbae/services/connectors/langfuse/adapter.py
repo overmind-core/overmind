@@ -199,7 +199,9 @@ class LangfuseAdapter:
         else:
             units, newest = self._collect_window(window.start, window.end)
             next_cursor = None
-        newest = _within_bound(max((ts for ts in (newest, watermark) if ts), default=None), anchor)
+        newest = _within_bound(
+            max((ts for ts in (newest, watermark) if ts), key=_parse_iso, default=None), anchor
+        )
         self._persist_api_version()
         if next_cursor:
             return Page(
