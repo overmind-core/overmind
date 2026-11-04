@@ -141,7 +141,8 @@ export function ResolvedStatusBadge({
       aria-valuenow={normalizedProgress == null ? undefined : normalizedProgress}
       className={cn(
         statusBadgeClassName(cfg, solidProgress),
-        normalizedProgress != null && "relative isolate overflow-hidden",
+        "relative isolate",
+        normalizedProgress != null && "overflow-hidden",
         className
       )}
       role={normalizedProgress == null ? undefined : "progressbar"}
