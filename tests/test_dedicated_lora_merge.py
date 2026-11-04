@@ -61,7 +61,7 @@ def test_prod_snapshot_engine_enables_the_sleep_route(monkeypatch, tmp_path):
     (tmp_path / "base").mkdir()
     monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
     monkeypatch.setattr(serving, "weights_vol", Mock())
-    monkeypatch.setattr(serving, "IS_PROD", True)
+    monkeypatch.setattr(serving, "IS_DEV", False)
     monkeypatch.setattr(serving.subprocess, "Popen", Mock())
     monkeypatch.setattr(serving, "_wait_for_vllm", Mock())
     slept = Mock()
