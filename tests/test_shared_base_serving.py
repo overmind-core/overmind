@@ -24,6 +24,9 @@ def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
     obj.enable_lora = True
     obj.max_lora_rank = 16
     (tmp_path / "base").mkdir()
+    draft = tmp_path / ".drafts" / "z-lab--Qwen3-Coder-30B-A3B-DFlash"
+    draft.mkdir(parents=True)
+    (draft / "config.json").write_text("{}")
     monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
     monkeypatch.setattr(serving, "weights_vol", Mock())
     monkeypatch.setattr(

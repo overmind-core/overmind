@@ -5,6 +5,7 @@ from overmind.client import Client, OvermindInferenceError
 
 from overbae.models import Dataset, DedicatedDeployment, DeployedModel, FinetuningJob, Project
 from overbae.services.provider_pricing import refresh_rates
+from tests.fakes.modal import open_chat_tunnel
 
 from .datasets import until
 
@@ -76,6 +77,20 @@ def test_serve(
 
     refresh_rates()
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _dedicated_reply)
+    open_chat_tunnel(
+        fake_modal,
+        "H100_vllm_dedicated",
+        {
+            "model": "dedicated/internal",
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": "Order 42 left the depot."},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 5, "total_tokens": 6},
+        },
+    )
     fake_modal.worker_stats = {"num_total_runners": 1, "backlog": 0, "num_running_inputs": 0}
     started = mcp.call(
         "start_dedicated_deployment",
