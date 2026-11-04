@@ -60,7 +60,7 @@ vllm_image = _from_vllm_openai(_VLLM_TAG)
 # Dedicated pools only. The shared inference app stays on _VLLM_TAG.
 _DEDICATED_VLLM_TAG = "v0.33.0"
 dedicated_vllm_image = _from_vllm_openai(_DEDICATED_VLLM_TAG)
-# Latest SGLang release. Dedicated classes that measured faster on SGLang use this image.
+# v0.5.23-cu130 lowered Qwen3.5-4B from 443 to 347 tok/s on H100.
 _DEDICATED_SGLANG_TAG = "v0.5.22"
 dedicated_sglang_image = attach_serving_args(
     modal.Image.from_registry(

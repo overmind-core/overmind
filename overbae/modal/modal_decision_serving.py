@@ -76,131 +76,143 @@ def publish(remote_id, artifact_identity):
     return {"weights_path": str(destination), "artifact_identity": artifact_identity}
 
 
-@app.cls(
-    image=image,
-    gpu="H100",
-    timeout=1200,
-    scaledown_window=120,
-    max_containers=1,
-    volumes={"/weights": weights},
-)
-@modal.concurrent(max_inputs=16)
-class DecisionEndpoint:
-    weights_path: str = modal.parameter()
-    artifact_identity: str = modal.parameter()
-    max_model_len: int = modal.parameter()
-    # Empty stays the shared serverless pool. A dedicated id is its own pool,
-    # so its autoscaler cannot pin every decision of this artifact.
-    pool: str = modal.parameter(default="")
+def _decision_worker(cls_name):
+    class DecisionEndpoint:
+        weights_path: str = modal.parameter()
+        artifact_identity: str = modal.parameter()
+        max_model_len: int = modal.parameter()
 
-    @modal.enter()
-    def load(self):
-        weights.reload()
-        checkpoint = artifact_path(self.artifact_identity)
-        if str(checkpoint) != self.weights_path:
-            raise ValueError("Serving path differs from the pinned artifact")
-        artifact = read_artifact(checkpoint)
-        if artifact["identity"] != self.artifact_identity:
-            raise ValueError("Serving identity differs")
-        config = artifact["training"]["model_config"]
-        base = read_base_manifest(Path(config["BASE_MODEL_PATH"]))
-        if base["identity"] != artifact["training"]["base_identity"]:
-            raise ValueError("Serving base identity differs")
-        if config["UNSLOTH_IMAGE"] != TRAIN_DECISION:
-            raise ValueError("Decision artifact requires another runtime")
-        self.temporary = tempfile.TemporaryDirectory(prefix="decision-serving-")
-        self.work = Path(self.temporary.name)
-        self.socket_path = self.work / "readout.sock"
-        atomic_json(
-            self.work / "preparation.json",
-            {
-                "context_length": self.max_model_len,
-                "vocab_fingerprint": artifact["vocab_fingerprint"],
-                "renderer": artifact["renderer"],
-            },
-        )
-        env = {
-            **os.environ,
-            **{key: str(value) for key, value in config.items() if value is not None},
-            "TRAINING_OBJECTIVE": artifact["objective"],
-            "MAX_LENGTH": str(self.max_model_len),
-            "SEED": str(artifact["training"]["seed"]),
-            "BT_CHECKPOINT_DIR": str(checkpoint),
-            "BT_RUN_DIR": str(self.work),
-            "PER_DEVICE_BATCH": "16",
-            "PADDED_TOKEN_BUDGET": str(max(32768, self.max_model_len)),
-            "DECISION_SERVICE_SOCKET": str(self.socket_path),
-        }
-        self.log = (self.work / "worker.log").open("w")
-        self.process = subprocess.Popen(
-            [sys.executable, str(assets / "train.py")],
-            cwd=self.work,
-            env=env,
-            stdout=self.log,
-            stderr=subprocess.STDOUT,
-        )
-        deadline = time.monotonic() + 900
-        while not self.socket_path.exists():
-            if self.process.poll() is not None or time.monotonic() >= deadline:
-                raise RuntimeError("Decision serving worker did not become ready")
-            time.sleep(0.1)
+        @modal.enter()
+        def load(self):
+            weights.reload()
+            checkpoint = artifact_path(self.artifact_identity)
+            if str(checkpoint) != self.weights_path:
+                raise ValueError("Serving path differs from the pinned artifact")
+            artifact = read_artifact(checkpoint)
+            if artifact["identity"] != self.artifact_identity:
+                raise ValueError("Serving identity differs")
+            config = artifact["training"]["model_config"]
+            base = read_base_manifest(Path(config["BASE_MODEL_PATH"]))
+            if base["identity"] != artifact["training"]["base_identity"]:
+                raise ValueError("Serving base identity differs")
+            if config["UNSLOTH_IMAGE"] != TRAIN_DECISION:
+                raise ValueError("Decision artifact requires another runtime")
+            self.temporary = tempfile.TemporaryDirectory(prefix="decision-serving-")
+            self.work = Path(self.temporary.name)
+            self.socket_path = self.work / "readout.sock"
+            atomic_json(
+                self.work / "preparation.json",
+                {
+                    "context_length": self.max_model_len,
+                    "vocab_fingerprint": artifact["vocab_fingerprint"],
+                    "renderer": artifact["renderer"],
+                },
+            )
+            env = {
+                **os.environ,
+                **{key: str(value) for key, value in config.items() if value is not None},
+                "TRAINING_OBJECTIVE": artifact["objective"],
+                "MAX_LENGTH": str(self.max_model_len),
+                "SEED": str(artifact["training"]["seed"]),
+                "BT_CHECKPOINT_DIR": str(checkpoint),
+                "BT_RUN_DIR": str(self.work),
+                "PER_DEVICE_BATCH": "16",
+                "PADDED_TOKEN_BUDGET": str(max(32768, self.max_model_len)),
+                "DECISION_SERVICE_SOCKET": str(self.socket_path),
+            }
+            self.log = (self.work / "worker.log").open("w")
+            self.process = subprocess.Popen(
+                [sys.executable, str(assets / "train.py")],
+                cwd=self.work,
+                env=env,
+                stdout=self.log,
+                stderr=subprocess.STDOUT,
+            )
+            deadline = time.monotonic() + 900
+            while not self.socket_path.exists():
+                if self.process.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError("Decision serving worker did not become ready")
+                time.sleep(0.1)
 
-    @modal.method()
-    def predict(self, requests):
-        if not isinstance(requests, list) or not 1 <= len(requests) <= 16:
-            raise ValueError("Expected 1-16 decisions")
-        requests = [decision_request(request) for request in requests]
-        encoded = json.dumps(requests).encode()
-        if len(encoded) > 256_000:
-            raise ValueError("Decision inputs exceed the request limit")
-        started = time.monotonic()
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(900)
-            connection.connect(str(self.socket_path))
-            connection.sendall(encoded + b"\n")
-            with connection.makefile("rb") as source:
-                result = json.loads(source.readline(32 * 1024 * 1024))
-        if "error" in result:
-            return {"error_code": "inference_rejected"}
-        predictions = result.get("predictions", [])
-        if result.get("model_identity") != self.artifact_identity or len(predictions) != len(
-            requests
-        ):
-            raise ValueError("Decision response identity or coverage differs")
-        indexed = {prediction["key"]: prediction for prediction in predictions}
-        if set(indexed) != {str(index) for index in range(len(requests))}:
-            raise ValueError("Decision response keys differ")
-        predictions = [indexed[str(index)] for index in range(len(requests))]
-        for request, prediction in zip(requests, predictions, strict=True):
-            probabilities = prediction["probabilities"]
-            if (
-                prediction["input_sha256"] != input_digest(request)
-                or prediction["kind"] != request["kind"]
-                or prediction["model_identity"] != self.artifact_identity
-                or len(probabilities) != len(request["options"])
-                or any(not math.isfinite(p) or not 0 <= p <= 1 for p in probabilities)
-                or not math.isclose(sum(probabilities), 1, abs_tol=1e-6)
+        @modal.method()
+        def predict(self, requests):
+            if not isinstance(requests, list) or not 1 <= len(requests) <= 16:
+                raise ValueError("Expected 1-16 decisions")
+            requests = [decision_request(request) for request in requests]
+            encoded = json.dumps(requests).encode()
+            if len(encoded) > 256_000:
+                raise ValueError("Decision inputs exceed the request limit")
+            started = time.monotonic()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(900)
+                connection.connect(str(self.socket_path))
+                connection.sendall(encoded + b"\n")
+                with connection.makefile("rb") as source:
+                    result = json.loads(source.readline(32 * 1024 * 1024))
+            if "error" in result:
+                return {"error_code": "inference_rejected"}
+            predictions = result.get("predictions", [])
+            if result.get("model_identity") != self.artifact_identity or len(predictions) != len(
+                requests
             ):
-                raise ValueError("Invalid decision probabilities")
-            prediction["options"] = request["options"]
-        tokens = sum(result["input_tokens"])
-        return {
-            "predictions": predictions,
-            "model_identity": self.artifact_identity,
-            "usage": {"prompt_tokens": tokens, "completion_tokens": 0, "total_tokens": tokens},
-            "latency_ms": (time.monotonic() - started) * 1000,
-            "finish_reason": "stop",
-        }
+                raise ValueError("Decision response identity or coverage differs")
+            indexed = {prediction["key"]: prediction for prediction in predictions}
+            if set(indexed) != {str(index) for index in range(len(requests))}:
+                raise ValueError("Decision response keys differ")
+            predictions = [indexed[str(index)] for index in range(len(requests))]
+            for request, prediction in zip(requests, predictions, strict=True):
+                probabilities = prediction["probabilities"]
+                if (
+                    prediction["input_sha256"] != input_digest(request)
+                    or prediction["kind"] != request["kind"]
+                    or prediction["model_identity"] != self.artifact_identity
+                    or len(probabilities) != len(request["options"])
+                    or any(not math.isfinite(p) or not 0 <= p <= 1 for p in probabilities)
+                    or not math.isclose(sum(probabilities), 1, abs_tol=1e-6)
+                ):
+                    raise ValueError("Invalid decision probabilities")
+                prediction["options"] = request["options"]
+            tokens = sum(result["input_tokens"])
+            return {
+                "predictions": predictions,
+                "model_identity": self.artifact_identity,
+                "usage": {"prompt_tokens": tokens, "completion_tokens": 0, "total_tokens": tokens},
+                "latency_ms": (time.monotonic() - started) * 1000,
+                "finish_reason": "stop",
+            }
 
-    @modal.exit()
-    def stop(self):
-        if hasattr(self, "process"):
-            self.process.terminate()
-            self.process.wait(timeout=20)
-        if hasattr(self, "log"):
-            self.log.close()
-        if hasattr(self, "temporary"):
-            self.temporary.cleanup()
+        @modal.exit()
+        def stop(self):
+            if hasattr(self, "process"):
+                self.process.terminate()
+                self.process.wait(timeout=20)
+            if hasattr(self, "log"):
+                self.log.close()
+            if hasattr(self, "temporary"):
+                self.temporary.cleanup()
+
+    DecisionEndpoint.__name__ = cls_name
+    DecisionEndpoint.__qualname__ = cls_name
+    return DecisionEndpoint
+
+
+def register_decision_endpoint(modal_app, cls_name, *, max_containers=1):
+    # The dedicated container imports this module and has no serving-release secret.
+    # The secret is what lets that import build the serverless app object.
+    return modal_app.cls(
+        image=image,
+        gpu="H100",
+        timeout=1200,
+        scaledown_window=120,
+        max_containers=max_containers,
+        volumes={"/weights": weights},
+        secrets=[modal.Secret.from_dict({"OVERMIND_SERVING_RELEASE": json.dumps(RELEASE)})],
+    )(modal.concurrent(max_inputs=16)(_decision_worker(cls_name)))
+
+
+DecisionEndpoint = register_decision_endpoint(app, "DecisionEndpoint")
+# Modal loads a deployed class with getattr(module, name). This is the user class.
+decision_dedicated = _decision_worker("decision_dedicated")
 
 
 @app.function(image=image, timeout=1200)

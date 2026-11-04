@@ -111,6 +111,44 @@ inference_secret = modal.Secret.from_name("overmind-inference")
 _volume_mounts = {WEIGHTS_MOUNT: weights_vol}
 
 
+def _decision_serve_args(worker, model_path: str) -> list[str]:
+    """Joint-head checkpoints are not chat LoRAs. Overlay the head, then serve the adapter."""
+    rank = int(worker.max_lora_rank or 0)
+    config = Path(worker._decision_lora) / "adapter_config.json"
+    if config.is_file():
+        stored = int(json.loads(config.read_text()).get("r") or 0)
+        rank = max(rank, stored)
+    from modal_shared.serving.args import snap_lora_rank
+
+    rank = snap_lora_rank(rank or 16)
+    return [
+        "vllm",
+        "serve",
+        model_path,
+        "--served-model-name",
+        f"{worker.model_name}--base",
+        "--enable-lora",
+        "--max-loras",
+        "1",
+        "--max-lora-rank",
+        str(rank),
+        "--lora-modules",
+        f"{worker.model_name}={worker._decision_lora}",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(VLLM_PORT),
+        "--max-model-len",
+        str(worker.max_model_len),
+        "--gpu-memory-utilization",
+        "0.90",
+        "--enforce-eager",
+        "--trust-remote-code",
+        "--dtype",
+        "bfloat16",
+    ]
+
+
 def _vllm_control(path: str):
     request = urllib.request.Request(
         f"http://127.0.0.1:{VLLM_PORT}{path}",
@@ -391,13 +429,30 @@ class _BaseVLLMWorker:
                 from modal_shared.serving.stage import stage_base
 
                 staged = stage_base(base_path, adapter_dir, Path("/tmp/overmind-serve"))
-                _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
+                head = adapter_dir / "joint_head.safetensors"
+                if head.is_file():
+                    for name in (
+                        "joint_head.safetensors",
+                        "joint_head_config.json",
+                        "unsloth_decision_config.json",
+                    ):
+                        src = adapter_dir / name
+                        if not src.is_file():
+                            continue
+                        dest = staged / name
+                        if dest.is_symlink() or dest.exists():
+                            dest.unlink()
+                        dest.symlink_to(src)
+                    self._decision_lora = str(adapter_dir)
+                    print(f"[vLLM] decision head {adapter_dir} on {base_path}")
+                else:
+                    _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
+                    print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
                 full_path = str(staged)
-                print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
 
         # Runtime adapter load is what lets a new deployment join an already-warm base pool
         # instead of booting its own container.
-        if self.enable_lora:
+        if self.enable_lora and not getattr(self, "_decision_lora", ""):
             _os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
             base_model = read_base_manifest(Path(full_path))["repo"]
 
@@ -408,14 +463,16 @@ class _BaseVLLMWorker:
             multimodal_text_only_args,
         )
         from modal_shared.serving.capacity import GPU_VRAM_GB, sequence_cap_for_checkpoint
-        from modal_shared.serving.speculative import draft_for, draft_volume_path
+        from modal_shared.serving.speculative import draft_for, draft_volume_path, mtp_for
 
         spec = resolve(base_model or self.model_name)
         draft_model = ""
         draft_tokens = 0
-        found = draft_for(base_model)
-        # The measured DFlash path is BF16 weights. An FP8 merged checkpoint stays on the base.
-        if found and (quantization or "bf16") in ("bf16", "none", ""):
+        bf16 = (quantization or "bf16") in ("bf16", "none", "")
+        # An FP8 merged checkpoint stays on the base; the head and the drafts are BF16.
+        mtp = mtp_for(base_model) if bf16 else None
+        found = None if mtp or not bf16 else draft_for(base_model)
+        if found:
             repo, draft_tokens = found
             draft_model = draft_volume_path(WEIGHTS_MOUNT, repo)
             if not (Path(draft_model) / "config.json").is_file():
@@ -444,27 +501,32 @@ class _BaseVLLMWorker:
                 port=VLLM_PORT,
                 draft_model=draft_model,
                 draft_tokens=draft_tokens,
+                mtp=mtp,
                 tool_call_parser=spec.tool_call_parser,
                 reasoning_parser=spec.reasoning_parser or "",
                 gpu_type=getattr(self, "gpu_type", ""),
                 model=base_model,
             )
         else:
-            cmd = build_vllm_args(
-                VllmServeContext(
-                    model_path=full_path,
-                    model_name=self.model_name,
-                    max_model_len=self.max_model_len,
-                    port=VLLM_PORT,
-                    max_num_seqs=max_num_seqs,
-                    quantization=quantization,
-                    base_model=base_model,
-                    enable_lora=self.enable_lora,
-                    max_lora_rank=self.max_lora_rank,
-                    draft_model=draft_model,
-                    draft_tokens=draft_tokens,
-                ),
-                spec,
+            cmd = (
+                _decision_serve_args(self, full_path)
+                if getattr(self, "_decision_lora", "")
+                else build_vllm_args(
+                    VllmServeContext(
+                        model_path=full_path,
+                        model_name=self.model_name,
+                        max_model_len=self.max_model_len,
+                        port=VLLM_PORT,
+                        max_num_seqs=max_num_seqs,
+                        quantization=quantization,
+                        base_model=base_model,
+                        enable_lora=self.enable_lora,
+                        max_lora_rank=self.max_lora_rank,
+                        draft_model=draft_model,
+                        draft_tokens=draft_tokens,
+                    ),
+                    spec,
+                )
             )
             if self.snapshot_weights:
                 if not self.enable_lora:
@@ -624,7 +686,13 @@ class _BaseVLLMWorker:
 
         self._ensure_ready()
 
-        if path not in {"/health", "/v1/models", "/v1/chat/completions", "/v1/completions"}:
+        if path not in {
+            "/health",
+            "/v1/models",
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/systemone",
+        }:
             raise ValueError("Only inference endpoints may be proxied")
 
         if adapter:

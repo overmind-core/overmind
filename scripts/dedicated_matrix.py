@@ -34,7 +34,7 @@ django.setup()
 from django.conf import settings  # noqa: E402
 
 from modal_shared.serving.engine import engine_for  # noqa: E402
-from modal_shared.serving.speculative import draft_for  # noqa: E402
+from modal_shared.serving.speculative import draft_for, mtp_for  # noqa: E402
 from modal_shared.shared import rel_weights_path  # noqa: E402
 from overbae.modal.gpu_selector import dedicated_gpu_names  # noqa: E402
 from overbae.models import DeployedModel  # noqa: E402
@@ -77,6 +77,8 @@ CLOCK = {
 
 
 def speculative(repo: str) -> str:
+    if mtp_for(repo):
+        return "MTP"
     found = draft_for(repo)
     if not found:
         return "nothing"

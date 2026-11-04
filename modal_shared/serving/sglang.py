@@ -1,4 +1,4 @@
-"""SGLang dedicated launch command. The flags are the ones that matched Modal's DFlash rate."""
+"""SGLang dedicated launch command."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ def build_sglang_args(
     port: int,
     draft_model: str = "",
     draft_tokens: int = 0,
+    mtp: tuple[int, int, int] | None = None,
     tool_call_parser: str = "",
     reasoning_parser: str = "",
     gpu_type: str = "",
@@ -68,7 +69,19 @@ def build_sglang_args(
         "--port",
         str(port),
     ]
-    if draft_model:
+    if mtp:
+        steps, topk, tokens = mtp
+        cmd += [
+            "--speculative-algorithm",
+            "EAGLE",
+            "--speculative-num-steps",
+            str(steps),
+            "--speculative-eagle-topk",
+            str(topk),
+            "--speculative-num-draft-tokens",
+            str(tokens),
+        ]
+    elif draft_model:
         cmd += [
             "--speculative-algorithm",
             "DFLASH",

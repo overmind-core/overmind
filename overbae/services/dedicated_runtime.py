@@ -29,9 +29,6 @@ WORKER_UNAVAILABLE = "Dedicated worker is not deployed."
 # min, max, and idle through update_autoscaler, or a GPU change leaves the old set running.
 _STABLE_MAX = 8
 _STABLE_WINDOW = 3600
-# Releases published before the pool parameter reject the name. Those dedicated
-# starts share one option set per artifact and GPU.
-_unpooled_apps: set[str] = set()
 
 
 def environment() -> str:
@@ -61,34 +58,19 @@ def worker_class_name(deployed, gpu_type: str) -> str:
     return f"{token}_{engine}_dedicated"
 
 
-def _app_name(deployed) -> str:
-    runtime = deployed.serving_runtime if isinstance(deployed.serving_runtime, dict) else {}
-    return str(runtime.get("app") or "")
-
-
-def _pool_rejected(exc: BaseException) -> bool:
-    text = str(exc)
-    return "pool" in text and "not defined" in text
-
-
-def _drop_pool(deployment, exc: BaseException) -> bool:
-    if deployment.deployed_model.inference_contract != "decision" or not _pool_rejected(exc):
-        return False
-    _unpooled_apps.add(_app_name(deployment.deployed_model))
-    return True
-
-
 def parameters(deployment) -> dict:
     deployed = deployment.deployed_model
     if deployed.inference_contract == "decision":
-        params = {
-            "weights_path": deployed.weights_path,
-            "artifact_identity": deployed.checkpoint_hash,
+        base = (deployed.base_model_id or "").replace("/", "--")
+        return {
+            "model_path": f".base_models/{base}",
+            "model_name": deployment.served_model_id,
             "max_model_len": deployed.max_model_len,
+            "enable_lora": True,
+            "max_lora_rank": int(deployed.lora_rank or 0),
+            "adapter_path": rel_weights_path(deployed.weights_path),
+            "snapshot_engine": False,
         }
-        if _app_name(deployed) not in _unpooled_apps:
-            params["pool"] = str(deployment.id)
-        return params
     path = rel_weights_path(deployed.weights_path)
     params = {
         "model_path": path,
@@ -144,7 +126,7 @@ def _variant(cls, deployment, *, maximum: int, idle_seconds: int):
     return cls
 
 
-def _scale_once(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
+def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
     instance = cls(**parameters(deployment))
     method = getattr(instance, "update_autoscaler", None)
     if method is not None:
@@ -158,24 +140,9 @@ def _scale_once(cls, deployment, *, minimum: int, maximum: int, idle_seconds: in
     return instance
 
 
-def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
-    try:
-        return _scale_once(
-            cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
-        )
-    except Exception as exc:
-        if not _drop_pool(deployment, exc):
-            raise
-        return _scale_once(
-            cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
-        )
-
-
 def release(deployment, gpu_type: str) -> None:
     """Drop every autoscaler variant for one GPU class."""
     deployed = deployment.deployed_model
-    if deployed.inference_contract == "decision":
-        return
     try:
         cls = _chat_cls(deployed, gpu_type)
         option_sets = (
@@ -205,8 +172,6 @@ def release(deployment, gpu_type: str) -> None:
 def retire_previous_options(deployment) -> None:
     """Scale down an option set that is not the stable one for this GPU."""
     deployed = deployment.deployed_model
-    if deployed.inference_contract == "decision":
-        return
     key = (max(int(deployment.max_replicas), 1), _window(deployment.idle_shutdown_seconds))
     if key == (_STABLE_MAX, _STABLE_WINDOW):
         return
@@ -229,23 +194,7 @@ def connect(deployment):
     """The container advance() already scaled. A request must not call update_autoscaler:
     that control-plane round trip is seconds, and the GPU is already warm."""
     deployed = deployment.deployed_model
-    env = environment()
     try:
-        if deployed.inference_contract == "decision":
-            runtime = deployed.serving_runtime or {}
-            app_name = runtime.get("app")
-            if not app_name:
-                raise InputValidationError(WORKER_UNAVAILABLE)
-            cls = modal.Cls.from_name(
-                app_name, "DecisionEndpoint", environment_name=runtime.get("environment") or env
-            )
-            if hasattr(cls, "with_options"):
-                cls = cls.with_options(
-                    gpu=deployment.gpu_type,
-                    max_containers=max(deployment.max_replicas, 1),
-                    scaledown_window=_window(deployment.idle_shutdown_seconds),
-                )
-            return cls(**parameters(deployment))
         cls = _variant(
             _chat_cls(deployed, deployment.gpu_type),
             deployment,
@@ -261,25 +210,7 @@ def connect(deployment):
 
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
     deployed = deployment.deployed_model
-    env = environment()
     try:
-        if deployed.inference_contract == "decision":
-            runtime = deployed.serving_runtime or {}
-            app_name = runtime.get("app")
-            if not app_name:
-                raise InputValidationError(WORKER_UNAVAILABLE)
-            cls = modal.Cls.from_name(
-                app_name, "DecisionEndpoint", environment_name=runtime.get("environment") or env
-            )
-            if hasattr(cls, "with_options"):
-                cls = cls.with_options(
-                    gpu=deployment.gpu_type,
-                    max_containers=max(maximum, 1),
-                    scaledown_window=_window(idle_seconds),
-                )
-            return _scale(
-                cls, deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
-            )
         cls = _chat_cls(deployed, deployment.gpu_type)
         return _scale(
             _variant(cls, deployment, maximum=_STABLE_MAX, idle_seconds=_STABLE_WINDOW),
@@ -296,30 +227,33 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
 
 def spawn_probe(instance, deployment) -> str:
     deployed = deployment.deployed_model
-    if deployed.inference_contract == "decision":
-        call = instance.predict.spawn(
-            [
-                {
-                    "state": "Serving readiness check.",
-                    "question": "Select an option.",
-                    "kind": "choice",
-                    "options": ["A", "B"],
+    body = (
+        {
+            "model": deployment.served_model_id,
+            "state": "Serving readiness check.",
+            "questions": {
+                "ready": {
+                    "type": "choice",
+                    "instructions": "Select an option.",
+                    "criteria": {"A": "A", "B": "B"},
                 }
-            ]
-        )
-    else:
-        call = instance.infer.spawn(
-            method="POST",
-            path="/v1/chat/completions",
-            body=json.dumps(
-                {
-                    "model": deployment.served_model_id,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 1,
-                }
-            ).encode(),
-            headers={"content-type": "application/json"},
-        )
+            },
+        }
+        if deployed.inference_contract == "decision"
+        else {
+            "model": deployment.served_model_id,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+        }
+    )
+    call = instance.infer.spawn(
+        method="POST",
+        path="/v1/systemone"
+        if deployed.inference_contract == "decision"
+        else "/v1/chat/completions",
+        body=json.dumps(body).encode(),
+        headers={"content-type": "application/json"},
+    )
     return call.object_id
 
 
@@ -341,9 +275,9 @@ def probe_state(call_id: str) -> str:
 
 
 def runner_count(instance, *, decision: bool) -> int | None:
-    method = instance.predict if decision else instance.infer
+    del decision
     try:
-        stats_call = method.get_current_stats
+        stats_call = instance.infer.get_current_stats
         stats = _drive(stats_call.aio()) if hasattr(stats_call, "aio") else stats_call()
     except Exception:
         return None
@@ -658,20 +592,19 @@ def iter_chat_stream(deployment, body: bytes):
         response.close()
 
 
-def _read_prediction(instance, decisions: list) -> dict:
-    result = instance.predict.remote(decisions)
-    if not isinstance(result, dict) or result.get("error_code"):
+def post_systemone(deployment, body: dict) -> dict:
+    base = _tunnel(deployment)
+    if not base:
         raise InputValidationError(WORKER_UNAVAILABLE)
-    return result
-
-
-def predict(instance, decisions: list, deployment=None) -> dict:
-    try:
-        return _read_prediction(instance, decisions)
-    except Exception as exc:
-        if deployment is None or not _drop_pool(deployment, exc):
-            raise
-        return _read_prediction(connect(deployment), decisions)
+    response = _http().post(
+        base.rstrip("/") + "/v1/systemone",
+        json=body,
+        headers={"authorization": f"Bearer {settings.INFERENCE_API_KEY}"},
+        timeout=300,
+    )
+    if response.status_code >= 400:
+        raise InputValidationError(response.text[:500] or WORKER_UNAVAILABLE)
+    return response.json()
 
 
 def minute_usd(rate: Decimal, replicas: int) -> Decimal:

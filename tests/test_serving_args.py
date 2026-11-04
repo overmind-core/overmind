@@ -151,6 +151,18 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
     assert sglang_tool_parser("muse_glimmer") == "muse"
     assert cmd[cmd.index("--speculative-algorithm") + 1] == "DFLASH"
     assert cmd[cmd.index("--speculative-num-draft-tokens") + 1] == "15"
+    mtp_cmd = build_sglang_args(
+        model_path="/tmp/folded",
+        served_name="dedicated/ft",
+        port=8000,
+        mtp=(3, 1, 4),
+        tool_call_parser="qwen3_coder",
+    )
+    assert mtp_cmd[mtp_cmd.index("--speculative-algorithm") + 1] == "EAGLE"
+    assert mtp_cmd[mtp_cmd.index("--speculative-num-steps") + 1] == "3"
+    assert mtp_cmd[mtp_cmd.index("--speculative-eagle-topk") + 1] == "1"
+    assert mtp_cmd[mtp_cmd.index("--speculative-num-draft-tokens") + 1] == "4"
+    assert "--speculative-draft-model-path" not in mtp_cmd
     assert "--mamba-scheduler-strategy" not in cmd
     assert engine_for("Qwen/Qwen3.5-4B") == "sglang"
     assert engine_for("unsloth/Qwen3.5-9B") == "sglang"
@@ -164,18 +176,18 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
 
 
 def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
-    from modal_shared.serving.speculative import draft_for, draft_volume_path
+    from modal_shared.serving.speculative import draft_for, draft_volume_path, mtp_for
 
     cmd = _args(
         _checkpoint(tmp_path),
-        base_model="unsloth/Qwen3.5-4B",
-        draft_model="/weights/.drafts/z-lab--Qwen3.5-4B-DFlash",
+        base_model="unsloth/Qwen3-4B",
+        draft_model="/weights/.drafts/z-lab--Qwen3-4B-DFlash-b16",
         draft_tokens=15,
     )
     payload = json.loads(cmd[cmd.index("--speculative-config") + 1])
     assert payload == {
         "method": "dflash",
-        "model": "/weights/.drafts/z-lab--Qwen3.5-4B-DFlash",
+        "model": "/weights/.drafts/z-lab--Qwen3-4B-DFlash-b16",
         "num_speculative_tokens": 15,
     }
     assert "--cudagraph-capture-sizes" not in cmd
@@ -186,11 +198,17 @@ def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
         "unsloth/Qwen3.5-2B",
         "Qwen/Qwen3.5-0.8B",
         "unsloth/Qwen3.5-0.8B",
+        "Qwen/Qwen3.5-9B",
+        "unsloth/Qwen3.5-9B",
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B",
     ):
-        assert draft_for(repo) is not None
-        assert draft_volume_path("/weights", draft_for(repo)[0]).startswith("/weights/.drafts/")
-    assert draft_for("Qwen/Qwen3.5-9B") == ("z-lab/Qwen3.5-9B-DFlash", 15)
-    assert draft_for("unsloth/Qwen3.5-9B") == ("z-lab/Qwen3.5-9B-DFlash", 15)
+        assert mtp_for(repo) == (3, 1, 4)
+        assert draft_for(repo) is None
+    assert draft_for("Qwen/Qwen3-4B") == ("z-lab/Qwen3-4B-DFlash-b16", 15)
+    assert draft_volume_path("/weights", draft_for("Qwen/Qwen3-4B")[0]).startswith(
+        "/weights/.drafts/"
+    )
     assert draft_for("unsloth/Qwen3.8-27B") == ("z-lab/Qwen3.8-27B-DFlash2", 7)
     assert draft_for("Qwen/Qwen3.8-27B") == ("z-lab/Qwen3.8-27B-DFlash2", 7)
     assert draft_for("unsloth/Muse-Glimmer-30B") == ("z-lab/Muse-Glimmer-30B-DFlash2", 7)

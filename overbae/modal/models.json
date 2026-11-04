@@ -3684,7 +3684,7 @@
             "enabled": false
           },
           "lora": {
-            "enabled": true
+            "enabled": false
           }
         }
       },
@@ -3699,7 +3699,7 @@
         "decision_index_edition": "0.3.2"
       },
       "disabled": true,
-      "disabled_reason": "Exact training and verified serving runtime not yet qualified"
+      "disabled_reason": "vLLM 0.33.0 cannot load this checkpoint: text_config has no num_attention_heads."
     },
     {
       "id": "LiquidAI/d1-3B",

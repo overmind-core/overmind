@@ -104,15 +104,18 @@ def test_dedicated_worker_is_not_the_serverless_class():
     assert "adapter_path" in sglang.__annotations__
 
 
-def _decision(app="overmind-decision-serve-old"):
+def _decision():
     return SimpleNamespace(
         id="dep-1",
         gpu_type="A100-80GB",
-        max_replicas=1,
+        max_replicas=2,
         idle_shutdown_seconds=900,
+        served_model_id="dedicated/dep-1",
         deployed_model=SimpleNamespace(
             inference_contract="decision",
-            serving_runtime={"app": app, "environment": "overmind-prod"},
+            base_model_id="Cloudflare/clef",
+            lora_rank=0,
+            serving_runtime={"app": "overmind-decision-serve-old", "environment": "overmind-prod"},
             weights_path="/weights/.decisions/abc",
             checkpoint_hash="abc",
             max_model_len=4096,
@@ -120,64 +123,41 @@ def _decision(app="overmind-decision-serve-old"):
     )
 
 
-def test_older_decision_release_scales_without_pool(monkeypatch):
-    dedicated_runtime._unpooled_apps.clear()
-    seen = []
+def test_dedicated_decision_binds_its_own_class(monkeypatch):
+    seen = {}
 
     class Endpoint:
         def __init__(self, **kwargs):
-            seen.append(kwargs)
-            self.kwargs = kwargs
+            seen["params"] = kwargs
 
-        def update_autoscaler(self, **_kwargs):
-            if "pool" in self.kwargs:
-                raise RuntimeError(
-                    "parameter names were provided but are not defined "
-                    "class modal.parameters for the class: pool"
-                )
+        def update_autoscaler(self, **kwargs):
+            seen["scale"] = kwargs
 
     class Remote:
-        def with_options(self, **_kwargs):
+        def with_options(self, **kwargs):
+            seen["options"] = kwargs
             return Endpoint
 
-    monkeypatch.setattr(dedicated_runtime.modal.Cls, "from_name", lambda *_a, **_k: Remote())
-    dedicated_runtime.bind(_decision(), minimum=1, maximum=1, idle_seconds=900)
-    assert "pool" in seen[0]
-    assert "pool" not in seen[1]
-    dedicated_runtime._unpooled_apps.clear()
+    def from_name(app_name, cls_name, *, environment_name):
+        seen["lookup"] = (app_name, cls_name, environment_name)
+        return Remote()
 
-
-def test_decision_predict_retries_when_the_release_rejects_pool(monkeypatch):
-    dedicated_runtime._unpooled_apps.clear()
-    deployment = _decision("overmind-decision-serve-other")
-    calls = []
-
-    class Instance:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-            class Predict:
-                def remote(self, _decisions):
-                    calls.append(kwargs)
-                    if "pool" in kwargs:
-                        raise RuntimeError(
-                            "parameter names were provided but are not defined "
-                            "class modal.parameters for the class: pool"
-                        )
-                    return {"predictions": [{"key": "0"}]}
-
-            self.predict = Predict()
-
-    monkeypatch.setattr(
-        dedicated_runtime,
-        "connect",
-        lambda row: Instance(**dedicated_runtime.parameters(row)),
-    )
-    result = dedicated_runtime.predict(Instance(**parameters(deployment)), [], deployment)
-    assert result["predictions"] == [{"key": "0"}]
-    assert "pool" in calls[0]
-    assert "pool" not in calls[1]
-    dedicated_runtime._unpooled_apps.clear()
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "overmind-dev")
+    monkeypatch.setattr(dedicated_runtime.modal.Cls, "from_name", from_name)
+    monkeypatch.setattr(dedicated_runtime, "chat_sequence_cap", lambda deployment: None)
+    dedicated_runtime.bind(_decision(), minimum=1, maximum=2, idle_seconds=900)
+    assert seen["lookup"] == ("overmind-dedicated", "A10080GB_vllm_dedicated", "overmind-dev")
+    assert seen["params"] == {
+        "model_path": ".base_models/Cloudflare--clef",
+        "model_name": "dedicated/dep-1",
+        "max_model_len": 4096,
+        "enable_lora": True,
+        "max_lora_rank": 0,
+        "adapter_path": ".decisions/abc",
+        "snapshot_engine": False,
+    }
+    assert "gpu" not in seen["options"]
+    assert seen["scale"]["min_containers"] == 1
 
 
 def test_dedicated_chat_disables_thinking_and_keeps_parallel_tools():
