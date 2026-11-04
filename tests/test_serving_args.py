@@ -13,6 +13,12 @@ from modal_shared.serving.args import (
     VllmServeContext,
     build_vllm_args,
 )
+from modal_shared.serving.decision_http import (
+    decision_base_vllm_command,
+    decision_vllm_command,
+    probabilities_for,
+    systemone_body,
+)
 
 pytestmark = pytest.mark.covers("model-runtime")
 
@@ -254,3 +260,40 @@ def test_chat_template_read_from_adapter_dir(tmp_path: Path) -> None:
         chat_template_dir=str(adapter),
     )
     assert cmd[cmd.index("--chat-template") + 1].startswith(str(adapter))
+
+
+def test_decision_vllm_command_serves_one_adapter(tmp_path: Path) -> None:
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+    (adapter / "adapter_config.json").write_text(json.dumps({"r": 8}))
+    cmd = decision_vllm_command(
+        model_path="/tmp/serve",
+        served_name="decision",
+        adapter_path=str(adapter),
+        max_lora_rank=0,
+        max_model_len=4096,
+    )
+    assert cmd[cmd.index("--max-loras") + 1] == "1"
+    assert cmd[cmd.index("--max-lora-rank") + 1] == "8"
+    assert cmd[cmd.index("--lora-modules") + 1] == f"decision={adapter}"
+    assert "--load-format" not in cmd
+    base = decision_base_vllm_command(
+        model_path="vllm-sr/d3-nano", served_name="vllm-sr/d3-nano", max_model_len=4096
+    )
+    assert "--enable-lora" not in base
+    assert base[base.index("--served-model-name") + 1] == "vllm-sr/d3-nano"
+
+
+def test_systemone_probabilities_follow_the_option_order() -> None:
+    request = {
+        "state": "The invoice is overdue.",
+        "question": "What is the risk?",
+        "kind": "choice",
+        "options": ["low", "high"],
+    }
+    body = systemone_body(request, "decision")
+    assert body["model"] == "decision"
+    assert body["questions"]["0"]["criteria"] == {"low": "low", "high": "high"}
+    assert probabilities_for(request, {"probabilities": {"low": 0.2, "high": 0.8}}) == [0.2, 0.8]
+    noul = {**request, "kind": "noul"}
+    assert probabilities_for(noul, {"noul": 0.75}) == [0.25, 0.75]

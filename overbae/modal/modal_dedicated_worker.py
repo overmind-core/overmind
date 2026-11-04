@@ -6,7 +6,7 @@ Deploy alongside the shared inference app:
 
 H100 exists only here. Each deployment binds its own model name, so its
 autoscaler cannot pin the shared ``overmind-inference`` pools. Decision
-deployments use the same vLLM classes. Serverless stays on ``DecisionEndpoint``.
+deployments use the same vLLM classes. Serverless ``DecisionEndpoint`` boots this vLLM image.
 """
 
 # Modal deploy resolves the module attribute `app` and never calls it.

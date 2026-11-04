@@ -3673,7 +3673,8 @@
       "hidden_size": 1024,
       "inference": {
         "gpu_type": "L4",
-        "max_model_len": 16384
+        "max_model_len": 16384,
+        "enabled": false
       },
       "finetuning": {
         "context_length": 16384,

@@ -112,41 +112,16 @@ _volume_mounts = {WEIGHTS_MOUNT: weights_vol}
 
 
 def _decision_serve_args(worker, model_path: str) -> list[str]:
-    """Joint-head checkpoints are not chat LoRAs. Overlay the head, then serve the adapter."""
-    rank = int(worker.max_lora_rank or 0)
-    config = Path(worker._decision_lora) / "adapter_config.json"
-    if config.is_file():
-        stored = int(json.loads(config.read_text()).get("r") or 0)
-        rank = max(rank, stored)
-    from modal_shared.serving.args import snap_lora_rank
+    from modal_shared.serving.decision_http import decision_vllm_command
 
-    rank = snap_lora_rank(rank or 16)
-    return [
-        "vllm",
-        "serve",
-        model_path,
-        "--served-model-name",
-        f"{worker.model_name}--base",
-        "--enable-lora",
-        "--max-loras",
-        "1",
-        "--max-lora-rank",
-        str(rank),
-        "--lora-modules",
-        f"{worker.model_name}={worker._decision_lora}",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        str(VLLM_PORT),
-        "--max-model-len",
-        str(worker.max_model_len),
-        "--gpu-memory-utilization",
-        "0.90",
-        "--enforce-eager",
-        "--trust-remote-code",
-        "--dtype",
-        "bfloat16",
-    ]
+    return decision_vllm_command(
+        model_path=model_path,
+        served_name=worker.model_name,
+        adapter_path=worker._decision_lora,
+        max_lora_rank=int(worker.max_lora_rank or 0),
+        max_model_len=worker.max_model_len,
+        port=VLLM_PORT,
+    )
 
 
 def _vllm_control(path: str):
