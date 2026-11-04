@@ -101,8 +101,6 @@ export function buildDecisionSnippets(
   const shellQuote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
   return {
     curl: [
-      "# pip install typesafe-sdk  —  or send the same body with curl.",
-      "# A cold start can take a few minutes. The call waits for the answer.",
       `curl --fail-with-body --silent --show-error --max-time 200 ${shellQuote(endpoint)} \\`,
       '  -H "Authorization: Bearer $OVERMIND_API_KEY" \\',
       '  -H "Content-Type: application/json" \\',

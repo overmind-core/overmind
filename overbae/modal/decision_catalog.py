@@ -34,4 +34,5 @@ def options() -> list[dict]:
             "decision_index": entry["decision"].get("decision_index"),
         }
         for entry in models().values()
+        if (entry.get("inference") or {}).get("enabled", True)
     ]

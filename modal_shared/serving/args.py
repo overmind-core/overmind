@@ -88,6 +88,9 @@ class VllmServeContext:
     # Where to read chat_template.jinja from. An adapter carries the template it was trained
     # with, which is not the stock base's.
     chat_template_dir: str = ""
+    # DFlash draft directory on the weights volume. Empty leaves speculative decoding off.
+    draft_model: str = ""
+    draft_tokens: int = 0
 
 
 def _serve_chat_template_path(model_path: str) -> str | None:
@@ -187,13 +190,30 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         "runai_streamer",
         "--model-loader-extra-config",
         json.dumps({"distributed": True}, separators=(",", ":")),
-        "--cudagraph-capture-sizes",
-        *([str(s) for s in CUDAGRAPH_CAPTURE_SIZES if s <= ctx.max_num_seqs] or ["1"]),
     ]
+    # The short capture list drops DFlash acceptance to about 5%, and the draft
+    # overhead then makes the server slower than the base. vLLM's own list does not.
+    if not ctx.draft_model:
+        cmd += [
+            "--cudagraph-capture-sizes",
+            *([str(s) for s in CUDAGRAPH_CAPTURE_SIZES if s <= ctx.max_num_seqs] or ["1"]),
+        ]
 
     chat_tmpl = _serve_chat_template_path(ctx.chat_template_dir or ctx.model_path)
     if chat_tmpl:
         cmd += ["--chat-template", chat_tmpl]
+    if ctx.draft_model:
+        cmd += [
+            "--speculative-config",
+            json.dumps(
+                {
+                    "method": "dflash",
+                    "model": ctx.draft_model,
+                    "num_speculative_tokens": ctx.draft_tokens,
+                },
+                separators=(",", ":"),
+            ),
+        ]
 
     return cmd
 

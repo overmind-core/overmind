@@ -18,6 +18,7 @@ from overbae.models.billing import BillingService
 from overbae.models.inference import DeployedModel
 from overbae.services import dedicated
 from overbae.services.provider_pricing import refresh_rates
+from tests.fakes.modal import open_chat_tunnel
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("state-machines")]
 
@@ -176,6 +177,16 @@ def test_dedicated_chat_skips_per_request_billing_and_appears_in_the_model_list(
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
+    open_chat_tunnel(
+        fake_modal,
+        "H100_vllm_dedicated",
+        {
+            "model": "dedicated/internal",
+            "system_fingerprint": "vllm-0.30.0-nohash",
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        },
+    )
     row = dedicated.start(deployed, user, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))
@@ -207,35 +218,31 @@ def test_dedicated_chat_streams_tokens_before_the_reply_finishes(fake_modal):
     ProjectMembership.objects.create(user=user, project=project)
     deployed = _ready(project)
     fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
-
-    def stream(**kwargs):
-        body = json.loads(kwargs["body"])
-        assert body["stream"] is True
-        piece = json.dumps(
-            {
-                "model": "internal",
-                "system_fingerprint": "vllm",
-                "choices": [{"delta": {"content": "hi"}, "finish_reason": None}],
-            }
-        )
-        usage = json.dumps(
-            {
-                "model": "internal",
-                "choices": [],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
-                "metrics": {
-                    "time_to_first_token_ms": 20,
-                    "generation_time_ms": 40,
-                    "tokens_per_second": 50,
-                },
-            }
-        )
-        raw = f"data: {piece}\n\ndata: {usage}\n\ndata: [DONE]\n\n".encode()
-        yield {"status": 200, "headers": {"content-type": "text/event-stream"}}
-        yield raw[:12]
-        yield raw[12:]
-
-    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer_stream", stream)
+    piece = json.dumps(
+        {
+            "model": "internal",
+            "system_fingerprint": "vllm",
+            "choices": [{"delta": {"content": "hi"}, "finish_reason": None}],
+        }
+    )
+    usage = json.dumps(
+        {
+            "model": "internal",
+            "choices": [],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+            "metrics": {
+                "time_to_first_token_ms": 20,
+                "generation_time_ms": 40,
+                "tokens_per_second": 50,
+            },
+        }
+    )
+    open_chat_tunnel(
+        fake_modal,
+        "H100_vllm_dedicated",
+        {"choices": [{"message": {"content": "hi"}}]},
+        stream=f"data: {piece}\n\ndata: {usage}\n\ndata: [DONE]\n\n".encode(),
+    )
     row = dedicated.start(deployed, user, gpu_type="H100")
     dedicated.advance(str(row.id))
     dedicated.advance(str(row.id))

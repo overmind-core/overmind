@@ -82,10 +82,10 @@ class DeploymentInferenceView(APIView):
         )
 
 
-def _dedicated_systemone(request, model, names, decisions):
+def _dedicated_systemone(request, model):
     from django.utils import timezone
 
-    from overbae.services.dedicated import lookup, serve_decision
+    from overbae.services.dedicated import lookup, serve_systemone
     from overbae.services.deployed_chat import record_inference_call
 
     row = lookup(model, project_ids_for(request.user, request.auth))
@@ -101,7 +101,7 @@ def _dedicated_systemone(request, model, names, decisions):
         )
     started = timezone.now()
     try:
-        result = serve_decision(row, decisions)
+        result = serve_systemone(row, request.data)
     except InputValidationError as exc:
         code = 503 if "not online" in exc.detail else 400
         return Response({"error": {"message": exc.detail, "type": "invalid_request"}}, status=code)
@@ -120,16 +120,20 @@ def _dedicated_systemone(request, model, names, decisions):
         requested_model=model,
         bill=False,
     )
+    answers = result.get("answers")
+    if not isinstance(answers, dict):
+        return Response(
+            {"error": {"message": "Decision inference failed.", "type": "server_error"}},
+            status=502,
+        )
     usage = result.get("usage") or {}
     return Response(
         {
             "model": model,
-            "answers": systemone.answer(
-                names, [item["kind"] for item in decisions], result["predictions"]
-            ),
+            "answers": answers,
             "usage": {
-                "input_tokens": usage.get("prompt_tokens") or 0,
-                "output_tokens": usage.get("completion_tokens") or 0,
+                "input_tokens": usage.get("input_tokens") or usage.get("prompt_tokens") or 0,
+                "output_tokens": usage.get("output_tokens") or usage.get("completion_tokens") or 0,
                 "cost": None,
             },
             "id": str(row.id),
@@ -145,7 +149,7 @@ class SystemOneView(APIView):
         try:
             model, _state, names, decisions = systemone.parse(body)
             if str(model).startswith("dedicated/"):
-                return _dedicated_systemone(request, model, names, decisions)
+                return _dedicated_systemone(request, model)
             deployment = systemone.resolve(model, project_ids_for(request.user, request.auth))
         except InputValidationError as exc:
             return Response(

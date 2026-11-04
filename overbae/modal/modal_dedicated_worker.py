@@ -5,7 +5,8 @@ Deploy alongside the shared inference app:
   modal deploy overbae/modal/modal_dedicated_worker.py --env overmind-dev
 
 H100 exists only here. Each deployment binds its own model name, so its
-autoscaler cannot pin the shared ``overmind-inference`` pools.
+autoscaler cannot pin the shared ``overmind-inference`` pools. Decision
+deployments use the same vLLM classes. Serverless ``DecisionEndpoint`` boots this vLLM image.
 """
 
 # Modal deploy resolves the module attribute `app` and never calls it.

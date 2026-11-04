@@ -13,6 +13,7 @@ Storage layout:
   /weights/{job_id}/.meta.json         ready marker + serve metadata
   /weights/.staging/{job_id}/          raw download; gone once the serving copy is ready
   /weights/.base_models/{org--model}/  shared HF bases: LoRA merge source and serving base
+  /weights/.drafts/{org--draft}/       DFlash drafts for the bases that use one
   /weights/.adapters/{job_id}/         LoRA adapters served on a shared base
 
 S3 (baseten/modal only), the durable provider-independent home the UI's checkpoint-download
@@ -993,6 +994,32 @@ def list_base_models() -> list[str]:
     )
 
 
+def _ensure_draft(base_model: str) -> None:
+    from huggingface_hub import snapshot_download  # noqa: PLC0415
+
+    from modal_shared.serving.speculative import draft_for, draft_volume_path
+
+    found = draft_for(base_model)
+    if not found:
+        return
+    repo, _tokens = found
+    dest = Path(draft_volume_path(WEIGHTS_MOUNT, repo))
+    if _snapshot_is_complete(dest):
+        print(f"[draft] {repo} already cached at {dest}")
+        return
+    print(f"[draft] Downloading {repo} → {dest}")
+    dest.mkdir(parents=True, exist_ok=True)
+    snapshot_download(
+        repo_id=repo,
+        local_dir=str(dest),
+        ignore_patterns=["*.bin", "original/*", "*.pt"],
+        token=os.environ.get("HF_TOKEN") or None,
+        max_workers=16,
+    )
+    if not _snapshot_is_complete(dest):
+        raise RuntimeError(f"DFlash draft {repo} is incomplete after download ({dest})")
+
+
 @app.function(
     image=download_image,
     timeout=4 * 60 * 60,
@@ -1017,38 +1044,33 @@ def fetch_base_model(*, base_model: str) -> dict:
 
     weights_vol.reload()
     base_dir = _base_model_dir(base_model)
-    if _snapshot_is_complete(base_dir):
+    cached = _snapshot_is_complete(base_dir)
+    if cached:
         manifest = seal_base(base_dir, base_model)
-        weights_vol.commit()
         print(f"[base] {base_model} already cached at {base_dir}")
-        return {
-            "base_model": base_model,
-            "base_model_path": str(base_dir),
-            "cached": True,
-            "base_identity": manifest["identity"],
-        }
-
-    print(f"[base] Downloading {base_model} → {base_dir}")
-    base_dir.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        repo_id=base_model,
-        local_dir=str(base_dir),
-        ignore_patterns=["*.bin", "original/*", "*.pt"],
-        token=os.environ.get("HF_TOKEN") or None,
-        max_workers=16,
-    )
-    if not _snapshot_is_complete(base_dir):
-        raise RuntimeError(
-            f"Base snapshot for {base_model} is incomplete after download "
-            f"({base_dir}) — refusing to hand a partial base to the LoRA merge"
+    else:
+        print(f"[base] Downloading {base_model} → {base_dir}")
+        base_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_download(
+            repo_id=base_model,
+            local_dir=str(base_dir),
+            ignore_patterns=["*.bin", "original/*", "*.pt"],
+            token=os.environ.get("HF_TOKEN") or None,
+            max_workers=16,
         )
-    manifest = seal_base(base_dir, base_model)
+        if not _snapshot_is_complete(base_dir):
+            raise RuntimeError(
+                f"Base snapshot for {base_model} is incomplete after download "
+                f"({base_dir}) — refusing to hand a partial base to the LoRA merge"
+            )
+        manifest = seal_base(base_dir, base_model)
+        print(f"[base] {base_model} ready at {base_dir}")
+    _ensure_draft(base_model)
     weights_vol.commit()
-    print(f"[base] {base_model} ready at {base_dir}")
     return {
         "base_model": base_model,
         "base_model_path": str(base_dir),
-        "cached": False,
+        "cached": cached,
         "base_identity": manifest["identity"],
     }
 

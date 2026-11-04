@@ -54,6 +54,16 @@ TARGET_CONCURRENT_INPUTS = 28  # autoscaler only adds a replica near this load
 MAX_CONTAINERS_PER_MODEL = 1  # queue excess; raise if sustained load needs fan-out
 
 VLLM_PORT = 8000
+
+
+def _local_vllm_headers(worker, headers: dict) -> dict:
+    safe = {k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")}
+    key = os.environ.get("INFERENCE_API_KEY", "")
+    if key and getattr(worker, "direct_vllm", False):
+        safe["authorization"] = f"Bearer {key}"
+    return safe
+
+
 # NemotronH/Mamba-hybrid checkpoints can need 15-20+ min to become healthy on a cold
 # container: large weight download plus Triton SSM-kernel autotuning on first call
 # (vllm-project/vllm#34399). The ceiling must leave margin between _wait_for_vllm timing
@@ -88,6 +98,8 @@ from modal_shared.images.serve import (  # noqa: E402
     LORA_SERVE_IMAGES,
     SERVE_IMAGES,
     api_server_image,
+    dedicated_sglang_image,
+    dedicated_vllm_image,
 )
 from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_MEMORY_MIB  # noqa: E402
 
@@ -97,6 +109,19 @@ app = modal.App(APP_NAME)
 inference_secret = modal.Secret.from_name("overmind-inference")
 
 _volume_mounts = {WEIGHTS_MOUNT: weights_vol}
+
+
+def _decision_serve_args(worker, model_path: str) -> list[str]:
+    from modal_shared.serving.decision_http import decision_vllm_command
+
+    return decision_vllm_command(
+        model_path=model_path,
+        served_name=worker.model_name,
+        adapter_path=worker._decision_lora,
+        max_lora_rank=int(worker.max_lora_rank or 0),
+        max_model_len=worker.max_model_len,
+        port=VLLM_PORT,
+    )
 
 
 def _vllm_control(path: str):
@@ -126,7 +151,9 @@ def _wait_for_vllm(
     reported_at = started - 15
     while time.monotonic() < deadline:
         if proc is not None and proc.poll() is not None:
-            raise RuntimeError(f"vLLM exited before becoming healthy (exit_code={proc.returncode})")
+            raise RuntimeError(
+                f"engine exited before becoming healthy (exit_code={proc.returncode})"
+            )
         now = time.monotonic()
         if journal and now - reported_at >= 15:
             journal.emit(
@@ -145,7 +172,7 @@ def _wait_for_vllm(
 
 def _make_worker_health_app():
     """Kept only so ``_resolve_worker_url`` can mint a stable URL string for the registry. Real
-    traffic goes through the ``infer`` RPC."""
+    traffic on the shared pool goes through the ``infer`` RPC."""
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse
     from starlette.routing import Route
@@ -338,15 +365,11 @@ class _BaseVLLMWorker:
             )
 
         adapter_rel = getattr(self, "adapter_path", "") or ""
-        if adapter_rel:
-            from modal_shared.serving.stage import stage_base
-
-            adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
-            base_path = full_path
-            staged = stage_base(Path(base_path), adapter_dir, Path("/tmp/overmind-serve"))
-            _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
-            full_path = str(staged)
-            print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
+        # The staged dir has no .meta.json repo, so the draft map would miss.
+        folded_repo = ""
+        base_path = Path(full_path)
+        if adapter_rel and (base_path / BASE_MANIFEST).is_file():
+            folded_repo = read_base_manifest(base_path)["repo"]
 
         if not self.enable_lora:
             _rewrite_legacy_layer_types(Path(full_path) / "config.json", _json=_json)
@@ -362,10 +385,49 @@ class _BaseVLLMWorker:
                 base_model = meta.get("base_model") or ""
             except Exception:
                 pass
+        if not base_model:
+            base_model = folded_repo
+        if not base_model and ".base_models/" in self.model_path:
+            slug = self.model_path.split(".base_models/", 1)[1].split("/", 1)[0]
+            base_model = slug.replace("--", "/", 1)
+        engine = getattr(self, "engine", "vllm")
+        if adapter_rel:
+            adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
+            if engine == "sglang":
+                from modal_shared.serving.merge import write_folded_checkpoint
+
+                folded = Path("/tmp/overmind-folded")
+                write_folded_checkpoint(base_path, adapter_dir, folded)
+                full_path = str(folded)
+                print(f"[serve] folded {adapter_dir} into {folded}")
+            else:
+                from modal_shared.serving.stage import stage_base
+
+                staged = stage_base(base_path, adapter_dir, Path("/tmp/overmind-serve"))
+                head = adapter_dir / "joint_head.safetensors"
+                if head.is_file():
+                    for name in (
+                        "joint_head.safetensors",
+                        "joint_head_config.json",
+                        "unsloth_decision_config.json",
+                    ):
+                        src = adapter_dir / name
+                        if not src.is_file():
+                            continue
+                        dest = staged / name
+                        if dest.is_symlink() or dest.exists():
+                            dest.unlink()
+                        dest.symlink_to(src)
+                    self._decision_lora = str(adapter_dir)
+                    print(f"[vLLM] decision head {adapter_dir} on {base_path}")
+                else:
+                    _os.environ["OVERMIND_FOLD_ADAPTER"] = str(adapter_dir)
+                    print(f"[vLLM] folding {adapter_dir} while reading {base_path}")
+                full_path = str(staged)
 
         # Runtime adapter load is what lets a new deployment join an already-warm base pool
         # instead of booting its own container.
-        if self.enable_lora:
+        if self.enable_lora and not getattr(self, "_decision_lora", ""):
             _os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
             base_model = read_base_manifest(Path(full_path))["repo"]
 
@@ -376,8 +438,22 @@ class _BaseVLLMWorker:
             multimodal_text_only_args,
         )
         from modal_shared.serving.capacity import GPU_VRAM_GB, sequence_cap_for_checkpoint
+        from modal_shared.serving.speculative import draft_for, draft_volume_path, mtp_for
 
         spec = resolve(base_model or self.model_name)
+        draft_model = ""
+        draft_tokens = 0
+        bf16 = (quantization or "bf16") in ("bf16", "none", "")
+        # An FP8 merged checkpoint stays on the base; the head and the drafts are BF16.
+        mtp = mtp_for(base_model) if bf16 else None
+        found = None if mtp or not bf16 else draft_for(base_model)
+        if found:
+            repo, draft_tokens = found
+            draft_model = draft_volume_path(WEIGHTS_MOUNT, repo)
+            if not (Path(draft_model) / "config.json").is_file():
+                raise RuntimeError(
+                    f"DFlash draft {repo} is not on the weights volume ({draft_model})"
+                )
         vram_gb = GPU_VRAM_GB.get(getattr(self, "gpu_type", ""), 0)
         cap = sequence_cap_for_checkpoint(
             Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
@@ -385,53 +461,79 @@ class _BaseVLLMWorker:
         # 0 means one full sequence does not fit; still admit one so the boot error is vLLM's.
         max_num_seqs = MAX_CONCURRENT_INPUTS if cap is None else max(1, cap)
         print(
-            f"[vLLM] Serving {full_path} "
+            f"[{engine}] Serving {full_path} "
             f"(quantization={quantization!r} base_model={base_model!r} "
             f"tool_parser={spec.tool_call_parser} family={spec.key} "
             f"max_num_seqs={max_num_seqs} vram_gb={vram_gb})"
         )
-        cmd = build_vllm_args(
-            VllmServeContext(
+        if engine == "sglang":
+            from modal_shared.serving.sglang import build_sglang_args
+
+            # gpt-oss has no thinking-off switch. The parser keeps analysis out of content.
+            cmd = build_sglang_args(
                 model_path=full_path,
-                model_name=self.model_name,
-                max_model_len=self.max_model_len,
+                served_name=self.model_name,
                 port=VLLM_PORT,
-                max_num_seqs=max_num_seqs,
-                quantization=quantization,
-                base_model=base_model,
-                enable_lora=self.enable_lora,
-                max_lora_rank=self.max_lora_rank,
-            ),
-            spec,
-        )
-        if self.snapshot_weights:
-            if not self.enable_lora:
-                raise ValueError("Snapshot workers require shared-base LoRA mode")
-            cmd += [
-                "--enable-sleep-mode",
-                "--distributed-executor-backend",
-                "modal_shared.serving.snapshot.SnapshotExecutor",
-                "--worker-extension-cls",
-                "modal_shared.serving.weights.SharedBaseWeights",
-            ]
-        elif getattr(self, "snapshot_engine", False):
-            cmd.append("--enable-sleep-mode")
-        if "--chat-template" in cmd:
-            print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
-
-        if _is_text_only_finetune_of_multimodal_base(base_model, full_path, self.model_name):
-            # Skip vLLM's multimodal init entirely, or it looks for the
-            # preprocessor_config.json this checkpoint does not have.
-            print(
-                f"[vLLM] {base_model!r}/{self.model_name!r} is natively multimodal "
-                "but checkpoint has no preprocessor/processor_config.json — "
-                "serving language-model-only"
+                draft_model=draft_model,
+                draft_tokens=draft_tokens,
+                mtp=mtp,
+                tool_call_parser=spec.tool_call_parser,
+                reasoning_parser=spec.reasoning_parser or "",
+                gpu_type=getattr(self, "gpu_type", ""),
+                model=base_model,
             )
-            cmd += multimodal_text_only_args()
+        else:
+            cmd = (
+                _decision_serve_args(self, full_path)
+                if getattr(self, "_decision_lora", "")
+                else build_vllm_args(
+                    VllmServeContext(
+                        model_path=full_path,
+                        model_name=self.model_name,
+                        max_model_len=self.max_model_len,
+                        port=VLLM_PORT,
+                        max_num_seqs=max_num_seqs,
+                        quantization=quantization,
+                        base_model=base_model,
+                        enable_lora=self.enable_lora,
+                        max_lora_rank=self.max_lora_rank,
+                        draft_model=draft_model,
+                        draft_tokens=draft_tokens,
+                    ),
+                    spec,
+                )
+            )
+            if self.snapshot_weights:
+                if not self.enable_lora:
+                    raise ValueError("Snapshot workers require shared-base LoRA mode")
+                cmd += [
+                    "--enable-sleep-mode",
+                    "--distributed-executor-backend",
+                    "modal_shared.serving.snapshot.SnapshotExecutor",
+                    "--worker-extension-cls",
+                    "modal_shared.serving.weights.SharedBaseWeights",
+                ]
+            elif getattr(self, "snapshot_engine", False):
+                cmd.append("--enable-sleep-mode")
+            if "--chat-template" in cmd:
+                print(f"[vLLM] Using checkpoint chat template: {full_path}/chat_template.jinja")
 
-        if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
-            cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
-        print("Starting vLLM:", " ".join(cmd))
+            if _is_text_only_finetune_of_multimodal_base(base_model, full_path, self.model_name):
+                # Skip vLLM's multimodal init entirely, or it looks for the
+                # preprocessor_config.json this checkpoint does not have.
+                print(
+                    f"[vLLM] {base_model!r}/{self.model_name!r} is natively multimodal "
+                    "but checkpoint has no preprocessor/processor_config.json — "
+                    "serving language-model-only"
+                )
+                cmd += multimodal_text_only_args()
+
+            if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
+                cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
+        print(f"Starting {engine}:", " ".join(cmd))
+        if getattr(self, "direct_vllm", False) and _os.environ.get("INFERENCE_API_KEY"):
+            # The public tunnel hits this port. The key is not part of the logged command.
+            cmd += ["--api-key", _os.environ["INFERENCE_API_KEY"]]
         self._serve_command = cmd
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
         # are not mangled by the shell.
@@ -443,6 +545,9 @@ class _BaseVLLMWorker:
             # Level 2 discards the weights, and the next container has nothing to wake.
             _vllm_control("/sleep?level=1")
             print("[vLLM] slept engine for snapshot", flush=True)
+        elif getattr(self, "direct_vllm", False):
+            # No snapshot, so nothing runs wake(). The tunnel has to open here.
+            self._open_direct()
 
     def wake(self) -> None:
         if not getattr(self, "snapshot_engine", False) or getattr(self, "_startup_error", None):
@@ -452,10 +557,28 @@ class _BaseVLLMWorker:
             _vllm_control("/wake_up?tags=weights")
             _vllm_control("/wake_up?tags=kv_cache")
             _wait_for_vllm(proc=getattr(self, "_proc", None))
+            self._open_direct()
         except Exception as error:
             self._fail_startup(error)
             return
         print("[vLLM] snapshot restore ready", flush=True)
+
+    def _open_direct(self) -> None:
+        if getattr(self, "_tunnel", None) is not None or not getattr(self, "direct_vllm", False):
+            return
+        # A parametrized web endpoint 303s and drops POST. A port forward does not.
+        self._tunnel_cm = modal.forward(VLLM_PORT)
+        self._tunnel = self._tunnel_cm.__enter__()
+
+    @modal.method()
+    def direct_url(self) -> str:
+        err = getattr(self, "_startup_error", None)
+        if err:
+            raise RuntimeError(err)
+        tunnel = getattr(self, "_tunnel", None)
+        if tunnel is None:
+            raise RuntimeError("Dedicated tunnel did not open.")
+        return tunnel.url
 
     @modal.exit()
     def shutdown(self) -> None:
@@ -538,7 +661,13 @@ class _BaseVLLMWorker:
 
         self._ensure_ready()
 
-        if path not in {"/health", "/v1/models", "/v1/chat/completions", "/v1/completions"}:
+        if path not in {
+            "/health",
+            "/v1/models",
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/systemone",
+        }:
             raise ValueError("Only inference endpoints may be proxied")
 
         if adapter:
@@ -559,9 +688,7 @@ class _BaseVLLMWorker:
                 ).encode(),
             }
         url = f"http://localhost:{VLLM_PORT}{path}"
-        safe_headers = {
-            k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")
-        }
+        safe_headers = _local_vllm_headers(self, headers)
         async with httpx.AsyncClient(timeout=300) as client:
             if journal:
                 await asyncio.to_thread(journal.emit, "generating")
@@ -614,9 +741,7 @@ class _BaseVLLMWorker:
             ).encode()
             return
         url = f"http://localhost:{VLLM_PORT}{path}"
-        safe_headers = {
-            k: v for k, v in headers.items() if k.lower() not in ("host", "content-length")
-        }
+        safe_headers = _local_vllm_headers(self, headers)
         async with (
             httpx.AsyncClient(timeout=300) as client,
             client.stream(method, url, headers=safe_headers, content=body) as resp,
@@ -939,9 +1064,12 @@ def _register_worker(
     pin_resources=False,
     max_containers: int | None = None,
     owner=None,
+    image_override=None,
+    snapshot=True,
+    engine="vllm",
 ) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
-    image = (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
+    image = image_override or (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
     parameters = {
         "__annotations__": {
             "model_path": str,
@@ -965,14 +1093,19 @@ def _register_worker(
         # A post-snapshot hook on the common base would also run for LoRA restores.
         # Dedicated containers snapshot the slept engine, so startup runs before the
         # snapshot and wake runs after every restore.
-        parameters["startup"] = modal.enter(snap=bool(pin_resources))(_BaseVLLMWorker.startup)
+        parameters["engine"] = engine
+        parameters["startup"] = modal.enter(snap=bool(pin_resources and snapshot))(
+            _BaseVLLMWorker.startup
+        )
         if pin_resources:
+            parameters["direct_vllm"] = True
             # Empty serves the base. A path folds that one adapter while the shards are read.
             parameters["__annotations__"]["adapter_path"] = str
             parameters["adapter_path"] = modal.parameter(default="")
-            parameters["__annotations__"]["snapshot_engine"] = bool
-            parameters["snapshot_engine"] = modal.parameter(default=True)
-            parameters["wake"] = modal.enter(snap=False)(_BaseVLLMWorker.wake)
+            if snapshot:
+                parameters["__annotations__"]["snapshot_engine"] = bool
+                parameters["snapshot_engine"] = modal.parameter(default=True)
+                parameters["wake"] = modal.enter(snap=False)(_BaseVLLMWorker.wake)
     cls = type(
         cls_name,
         (_SharedBaseVLLMWorker if lora else _BaseVLLMWorker,),
@@ -1008,8 +1141,17 @@ def _register_worker(
                         "enable_memory_snapshot": True,
                         "experimental_options": {"enable_gpu_snapshot": True},
                     }
-                    if pin_resources
-                    else {}
+                    if pin_resources and snapshot
+                    else (
+                        {
+                            "cpu": 8,
+                            "memory": WORKER_MEMORY_MIB[gpu_type],
+                            # Modal's GPU disk floor. The folded checkpoint and compile cache fit.
+                            "ephemeral_disk": 524288,
+                        }
+                        if pin_resources
+                        else {}
+                    )
                 )
             ),
         },
@@ -1032,8 +1174,24 @@ def register_dedicated_classes(target_app, owner) -> None:
             pin_resources=True,
             max_containers=8,
             owner=slot,
+            image_override=dedicated_vllm_image,
         )
         owner[name] = slot[name]
+        sglang_name = f"{token}_sglang_dedicated"
+        sglang_slot = {}
+        _register_worker(
+            sglang_name,
+            gpu_type,
+            "vllm",
+            target_app=target_app,
+            pin_resources=True,
+            snapshot=False,
+            engine="sglang",
+            max_containers=8,
+            owner=sglang_slot,
+            image_override=dedicated_sglang_image,
+        )
+        owner[sglang_name] = sglang_slot[sglang_name]
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():

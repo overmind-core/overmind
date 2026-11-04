@@ -195,3 +195,6 @@ tests/journeys/.runs/
 # Local verification output; maintained regression inputs belong in tests/fixtures.
 /tests/evidence/*
 !/tests/evidence/README.md
+
+# Local interview packs (candidate task and answer key)
+/interview/

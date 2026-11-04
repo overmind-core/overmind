@@ -66,6 +66,7 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
     assert {entry["family"] for entry in entries.values()} == {"clef", "d3", "d1"}
     assert entries["Cloudflare/clef-flash"]["training_available"]
     assert not entries["vllm-sr/d3-edge"]["training_available"]
+    assert "LiquidAI/d1-omni-600M" not in entries
     payload = {
         "project": str(project.id),
         "model": "Cloudflare/clef-flash",

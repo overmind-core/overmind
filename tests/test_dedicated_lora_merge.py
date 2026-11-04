@@ -10,7 +10,12 @@ import pytest
 
 from overbae.modal import modal_vllm_worker as serving
 from overbae.services import dedicated_runtime
-from overbae.services.dedicated_runtime import chat, parameters, worker_class_name
+from overbae.services.dedicated_runtime import (
+    parameters,
+    repair_forced_calls,
+    shape_chat_payload,
+    worker_class_name,
+)
 
 pytestmark = pytest.mark.covers("model-runtime")
 
@@ -31,6 +36,18 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
     )
 
     assert worker_class_name(deployed, "A100-80GB") == "A10080GB_vllm_dedicated"
+    qwen = SimpleNamespace(
+        inference_contract="chat",
+        base_model_id="Qwen/Qwen3.5-4B",
+        quantization="bf16",
+    )
+    assert worker_class_name(qwen, "H100") == "H100_sglang_dedicated"
+    fp8 = SimpleNamespace(
+        inference_contract="chat",
+        base_model_id="Qwen/Qwen3.5-4B",
+        quantization="fp8",
+    )
+    assert worker_class_name(fp8, "H100") == "H100_vllm_dedicated"
     assert parameters(deployment) == {
         "model_path": ".base_models/Qwen--Qwen2.5-0.5B-Instruct",
         "model_name": "dedicated/ft-9be76bc2",
@@ -39,14 +56,6 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
         "max_lora_rank": 16,
         "adapter_path": ".adapters/ft-9be76bc2",
     }
-    sent = {}
-
-    def remote(**kwargs):
-        sent.update(kwargs)
-        return {"status": 200, "body": b"{}", "headers": {}}
-
-    chat(SimpleNamespace(infer=SimpleNamespace(remote=remote)), deployment, b"{}")
-    assert "adapter" not in sent
 
 
 def test_prod_snapshot_engine_enables_the_sleep_route(monkeypatch, tmp_path):
@@ -89,17 +98,24 @@ def test_dedicated_worker_is_not_the_serverless_class():
     find = discovery._find_partial_methods_for_user_cls
     assert set(find(dedicated, flags.ENTER_PRE_SNAPSHOT)) == {"startup"}
     assert set(find(dedicated, flags.ENTER_POST_SNAPSHOT)) == {"wake"}
+    sglang = serving.H100_sglang_dedicated._get_user_cls()
+    assert sglang.engine == "sglang"
+    assert "snapshot_engine" not in sglang.__annotations__
+    assert "adapter_path" in sglang.__annotations__
 
 
-def _decision(app="overmind-decision-serve-old"):
+def _decision():
     return SimpleNamespace(
         id="dep-1",
         gpu_type="A100-80GB",
-        max_replicas=1,
+        max_replicas=2,
         idle_shutdown_seconds=900,
+        served_model_id="dedicated/dep-1",
         deployed_model=SimpleNamespace(
             inference_contract="decision",
-            serving_runtime={"app": app, "environment": "overmind-prod"},
+            base_model_id="Cloudflare/clef",
+            lora_rank=0,
+            serving_runtime={"app": "overmind-decision-serve-old", "environment": "overmind-prod"},
             weights_path="/weights/.decisions/abc",
             checkpoint_hash="abc",
             max_model_len=4096,
@@ -107,61 +123,177 @@ def _decision(app="overmind-decision-serve-old"):
     )
 
 
-def test_older_decision_release_scales_without_pool(monkeypatch):
-    dedicated_runtime._unpooled_apps.clear()
-    seen = []
+def test_dedicated_decision_binds_its_own_class(monkeypatch):
+    seen = {}
 
     class Endpoint:
         def __init__(self, **kwargs):
-            seen.append(kwargs)
-            self.kwargs = kwargs
+            seen["params"] = kwargs
 
-        def update_autoscaler(self, **_kwargs):
-            if "pool" in self.kwargs:
-                raise RuntimeError(
-                    "parameter names were provided but are not defined "
-                    "class modal.parameters for the class: pool"
-                )
+        def update_autoscaler(self, **kwargs):
+            seen["scale"] = kwargs
 
     class Remote:
-        def with_options(self, **_kwargs):
+        def with_options(self, **kwargs):
+            seen["options"] = kwargs
             return Endpoint
 
-    monkeypatch.setattr(dedicated_runtime.modal.Cls, "from_name", lambda *_a, **_k: Remote())
-    dedicated_runtime.bind(_decision(), minimum=1, maximum=1, idle_seconds=900)
-    assert "pool" in seen[0]
-    assert "pool" not in seen[1]
-    dedicated_runtime._unpooled_apps.clear()
+    def from_name(app_name, cls_name, *, environment_name):
+        seen["lookup"] = (app_name, cls_name, environment_name)
+        return Remote()
+
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "overmind-dev")
+    monkeypatch.setattr(dedicated_runtime.modal.Cls, "from_name", from_name)
+    monkeypatch.setattr(dedicated_runtime, "chat_sequence_cap", lambda deployment: None)
+    dedicated_runtime.bind(_decision(), minimum=1, maximum=2, idle_seconds=900)
+    assert seen["lookup"] == ("overmind-dedicated", "A10080GB_vllm_dedicated", "overmind-dev")
+    assert seen["params"] == {
+        "model_path": ".base_models/Cloudflare--clef",
+        "model_name": "dedicated/dep-1",
+        "max_model_len": 4096,
+        "enable_lora": True,
+        "max_lora_rank": 0,
+        "adapter_path": ".decisions/abc",
+        "snapshot_engine": False,
+    }
+    assert "gpu" not in seen["options"]
+    assert seen["scale"]["min_containers"] == 1
 
 
-def test_decision_predict_retries_when_the_release_rejects_pool(monkeypatch):
-    dedicated_runtime._unpooled_apps.clear()
-    deployment = _decision("overmind-decision-serve-other")
-    calls = []
+def test_dedicated_chat_disables_thinking_and_keeps_parallel_tools():
+    payload = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "get_weather"}}],
+        "chat_template_kwargs": {"enable_thinking": True},
+        "max_tokens": 16,
+    }
+    shape_chat_payload(payload, base_model_id="unsloth/Muse-Glimmer-30B")
+    assert payload["chat_template_kwargs"]["enable_thinking"] is False
+    assert payload["chat_template_kwargs"]["thinking"] is False
+    assert payload["chat_template_kwargs"]["reasoning_strength"] == "low"
+    assert payload["include_reasoning"] is False
+    assert payload["parallel_tool_calls"] is True
+    assert payload["max_tokens"] == 48
 
-    class Instance:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    held = {
+        "tools": [{"type": "function", "function": {"name": "get_weather"}}],
+        "parallel_tool_calls": False,
+        "tool_choice": "none",
+    }
+    shape_chat_payload(held, base_model_id="Qwen/Qwen3-4B")
+    assert "tools" not in held
+    assert "tool_choice" not in held
+    assert held["chat_template_kwargs"] == {"enable_thinking": False, "thinking": False}
 
-            class Predict:
-                def remote(self, _decisions):
-                    calls.append(kwargs)
-                    if "pool" in kwargs:
-                        raise RuntimeError(
-                            "parameter names were provided but are not defined "
-                            "class modal.parameters for the class: pool"
-                        )
-                    return {"predictions": [{"key": "0"}]}
+    oss = {"max_tokens": 32}
+    shape_chat_payload(oss, base_model_id="openai/gpt-oss-20b")
+    assert oss["include_reasoning"] is False
+    assert oss["reasoning_effort"] == "low"
+    assert "parallel_tool_calls" not in oss
+    assert payload["messages"][0] == {
+        "role": "system",
+        "content": (
+            "Put one atem:invoke for each item the user names, and separate assistant "
+            "tool messages with <|eom|> rather than ending the turn after the first."
+        ),
+    }
 
-            self.predict = Predict()
+    named = {
+        "messages": [{"role": "user", "content": "What is the weather in Paris?"}],
+        "tools": [
+            {"type": "function", "function": {"name": "get_weather"}},
+            {"type": "function", "function": {"name": "get_time"}},
+        ],
+        "tool_choice": {"type": "function", "function": {"name": "get_time"}},
+    }
+    shape_chat_payload(named, base_model_id="google/gemma-4-26B-A4B-it")
+    assert [tool["function"]["name"] for tool in named["tools"]] == ["get_time"]
+    assert named["parallel_tool_calls"] is False
+    assert named["messages"][0]["content"] == "Call get_time."
+    assert named["tool_choice"] == "required"
+    assert "get_time" in named["structured_outputs"]["regex"]
+    assert "get_weather" not in named["structured_outputs"]["regex"]
 
-    monkeypatch.setattr(
-        dedicated_runtime,
-        "connect",
-        lambda row: Instance(**dedicated_runtime.parameters(row)),
-    )
-    result = dedicated_runtime.predict(Instance(**parameters(deployment)), [], deployment)
-    assert result["predictions"] == [{"key": "0"}]
-    assert "pool" in calls[0]
-    assert "pool" not in calls[1]
-    dedicated_runtime._unpooled_apps.clear()
+    required = {
+        "messages": [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "function": {"name": "get_weather"}}],
+        "tool_choice": "required",
+    }
+    shape_chat_payload(required, base_model_id="openai/gpt-oss-20b")
+    assert required["parallel_tool_calls"] is False
+    assert "structured_outputs" not in required
+    assert required["messages"][0]["content"] == "Be brief.\nCall one of the available functions."
+
+    kept = {
+        "tools": [{"type": "function", "function": {"name": "get_weather"}}],
+        "tool_choice": "required",
+        "parallel_tool_calls": True,
+    }
+    shape_chat_payload(kept, base_model_id="openai/gpt-oss-20b")
+    assert kept["parallel_tool_calls"] is True
+
+    shaped = json.dumps(
+        {
+            "tool_choice": "required",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_time",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"timezone": {"type": "string"}},
+                            "required": ["timezone"],
+                        },
+                    },
+                }
+            ],
+        }
+    ).encode()
+    raw = json.dumps(
+        {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": (
+                            "<|channel|>commentary to=functions.get_time<|constrain|>json"
+                            '<|message|>{"timezone":"UTC"}<|call|>'
+                            "<|channel|>commentary to=functions.get_time<|constrain|>json"
+                            '<|message|>{"result":"later"}<|call|>'
+                        ),
+                    },
+                }
+            ]
+        }
+    ).encode()
+    repaired = json.loads(repair_forced_calls(raw, shaped))
+    calls = repaired["choices"][0]["message"]["tool_calls"]
+    assert [call["function"]["name"] for call in calls] == ["get_time"]
+    assert json.loads(calls[0]["function"]["arguments"]) == {"timezone": "UTC"}
+
+    quoted = json.dumps(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_0",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_time",
+                                    "arguments": json.dumps({"timezone": '"Europe/Paris"'}),
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ).encode()
+    repaired = json.loads(repair_forced_calls(quoted, shaped))
+    assert json.loads(
+        repaired["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+    ) == {"timezone": "Europe/Paris"}

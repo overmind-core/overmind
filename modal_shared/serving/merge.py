@@ -87,3 +87,56 @@ def _pair_prefix(tensor_name: str, lora_weights: dict[str, torch.Tensor]) -> str
         if f"{outer}.lora_A.weight" in lora_weights and f"{outer}.lora_B.weight" in lora_weights:
             return outer
     return None
+
+
+def write_folded_checkpoint(base: Path, adapter: Path, output: Path) -> None:
+    """Write a full checkpoint with this adapter folded in.
+
+    SGLang reads safetensors itself, so the vLLM streamer hook cannot fold for it.
+    The delta is the same one ``install_weight_fold`` applies.
+    """
+    import gc
+    import shutil
+
+    from safetensors.torch import save_file
+
+    base = base.resolve()
+    output = output.resolve()
+    if output == base or output.is_relative_to(base):
+        raise ValueError(f"refusing to fold onto the base checkpoint: {output}")
+    weights = _load_adapter(adapter / "adapter_model.safetensors")
+    scale = _scale(json.loads((adapter / "adapter_config.json").read_text()))
+    if output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True)
+    for path in base.iterdir():
+        if path.suffix == ".safetensors":
+            continue
+        dest = output / path.name
+        if path.is_dir():
+            shutil.copytree(path, dest, dirs_exist_ok=True)
+        elif path.is_file():
+            shutil.copy2(path, dest)
+    consumed: set[str] = set()
+    shards = sorted(base.glob("*.safetensors"))
+    if not shards:
+        raise FileNotFoundError(f"No *.safetensors in base checkpoint: {base}")
+    for shard in shards:
+        tensors: dict[str, torch.Tensor] = {}
+        with safe_open(shard, framework="torch") as handle:
+            for name in handle.keys():  # noqa: SIM118
+                tensor = handle.get_tensor(name)
+                prefix = _pair_prefix(name, weights)
+                if prefix is not None:
+                    delta = weights[f"{prefix}.lora_B.weight"] @ weights[f"{prefix}.lora_A.weight"]
+                    tensor = tensor + scale * delta.to(dtype=tensor.dtype)
+                    consumed.add(f"{prefix}.lora_A.weight")
+                    consumed.add(f"{prefix}.lora_B.weight")
+                tensors[name] = tensor
+        save_file(tensors, output / shard.name)
+        del tensors
+        gc.collect()
+    leftover = set(weights) - consumed
+    if leftover:
+        first = sorted(leftover)[0]
+        raise RuntimeError(f"{len(leftover)} adapter keys were not merged; first: {first}")

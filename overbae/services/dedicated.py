@@ -357,20 +357,63 @@ def _require_chat(row: DedicatedDeployment):
 
 def serve_chat(row: DedicatedDeployment, body: bytes):
     _require_chat(row)
-    return dedicated_runtime.chat(dedicated_runtime.connect(row), row, body)
+    return dedicated_runtime.chat(row, body)
 
 
 def serve_chat_stream(row: DedicatedDeployment, body: bytes):
     _require_chat(row)
-    return dedicated_runtime.iter_chat_stream(dedicated_runtime.connect(row), row, body)
+    return dedicated_runtime.iter_chat_stream(row, body)
 
 
-def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
+def _online_decision(row: DedicatedDeployment) -> None:
     if row.deployed_model.inference_contract != "decision":
         raise InputValidationError("This dedicated deployment is a chat model.")
     if row.status != DedicatedDeployment.Status.ONLINE:
         raise InputValidationError(NOT_ONLINE)
-    return dedicated_runtime.predict(dedicated_runtime.connect(row), decisions, row)
+
+
+def serve_systemone(row: DedicatedDeployment, body: dict) -> dict:
+    _online_decision(row)
+    payload = dict(body)
+    payload["model"] = row.served_model_id
+    return dedicated_runtime.post_systemone(row, payload)
+
+
+def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
+    _online_decision(row)
+    questions = {}
+    for index, item in enumerate(decisions):
+        kind = item.get("kind") or "choice"
+        if kind == "classification":
+            kind = "choice"
+        questions[str(index)] = {
+            "type": kind,
+            "instructions": item["question"],
+            "criteria": {option: option for option in item["options"]},
+        }
+    result = dedicated_runtime.post_systemone(
+        row,
+        {
+            "model": row.served_model_id,
+            "state": decisions[0]["state"],
+            "questions": questions,
+        },
+    )
+    answers = result.get("answers") or {}
+    predictions = []
+    for index, item in enumerate(decisions):
+        answer = answers.get(str(index)) or {}
+        probabilities = answer.get("probabilities") or {}
+        predictions.append(
+            {
+                "options": item["options"],
+                "probabilities": [
+                    float(probabilities.get(option) or 0) for option in item["options"]
+                ],
+            }
+        )
+    result["predictions"] = predictions
+    return result
 
 
 def complete_request(payload: dict) -> dict:
