@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import pytest
+from asgiref.sync import async_to_sync
 from factories import make_project
 
-from overbae.innermind import comparison
-from overbae.models import EvalRun, EvalScore
+from overbae.innermind import comparison, deterministic
+from overbae.models import EvalRun, EvalScore, Span
 
 pytestmark = pytest.mark.covers("metrics-math")
 
@@ -30,3 +31,13 @@ def test_comparison_uses_the_same_nonnull_pairs_for_both_means():
     assert result["paired"] == result["ties"] == 1
     assert result["wins"] == result["losses"] == 0
     assert result["coverage"] == {"observed_rows": 2, "baseline_scored": 2, "candidate_scored": 1}
+
+
+@pytest.mark.parametrize("value", ['float("nan")', '(float("nan"), "reason")', 'float("inf")'])
+def test_deterministic_nonfinite_scores_are_errors(value):
+    span = Span(span_id="span", trace_id="trace", attributes={}, usage={})
+    result = async_to_sync(deterministic.run)(
+        f"def evaluate(span):\n    return {value}\n", span, [span]
+    )
+    assert result["outcome"] == "error"
+    assert result["score"] is None
