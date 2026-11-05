@@ -200,6 +200,26 @@ def test_removed_membership_revokes_project_key_access():
     assert client.get(f"/api/projects/{project.pk}/").status_code == 401
 
 
+@pytest.mark.parametrize(
+    "allowed_ips,address,expected",
+    [
+        (["203.0.113.0/24"], "203.0.113.10", 200),
+        (["203.0.113.0/24"], "198.51.100.10", 401),
+        (["2001:db8:1::/48"], "2001:db8:1::10", 200),
+        (["2001:db8:1::/48"], "2001:db8:2::10", 401),
+        ([], "198.51.100.10", 200),
+    ],
+)
+def test_rest_key_enforces_ip_network(allowed_ips, address, expected):
+    user = make_user()
+    raw, token = APIToken.create_for_user(user)
+    token.allowed_ips = allowed_ips
+    token.save(update_fields=["allowed_ips"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+    assert client.get("/api/auth/me/", REMOTE_ADDR=address).status_code == expected
+
+
 @pytest.mark.parametrize("linked", [False, True])
 def test_clerk_rejects_inactive_accounts(clerk, linked):
     user = make_user(is_active=False)
