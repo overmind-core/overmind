@@ -100,6 +100,7 @@ export interface OptimizerExperimentsListRequest {
     ordering?: string;
     page?: number;
     pageSize?: number;
+    project?: string;
     search?: string;
 }
 
@@ -638,6 +639,10 @@ export class OptimizerExperimentsApi extends runtime.BaseAPI {
 
         if (requestParameters['pageSize'] != null) {
             queryParameters['page_size'] = requestParameters['pageSize'];
+        }
+
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
         }
 
         if (requestParameters['search'] != null) {

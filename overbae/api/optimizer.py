@@ -224,7 +224,10 @@ class OptimizerExperimentCreateSerializer(serializers.ModelSerializer):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Only return experiments for this capability.",
-            )
+            ),
+            OpenApiParameter(
+                name="project", type=OpenApiTypes.UUID, location=OpenApiParameter.QUERY
+            ),
         ]
     )
 )
@@ -240,6 +243,9 @@ class OptimizerExperimentViewSet(viewsets.ModelViewSet):
         qs = OptimizerExperiment.objects.filter(
             project_id__in=project_ids_for(self.request.user, self.request.auth)
         ).select_related("capability", "dataset", "cell", "eval_set")
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            qs = qs.filter(project_id=project_id)
         capability_id = self.request.query_params.get("capability")
         if capability_id:
             qs = qs.filter(capability_id=capability_id)
