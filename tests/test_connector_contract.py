@@ -292,6 +292,20 @@ def test_a_vendor_without_a_cheap_count_spends_no_request_on_one(vendor, connect
     assert len(api.requests) == before
 
 
+def test_galileo_honors_saved_history_bounds_and_unbounded_history(connected, slept):
+    end = timezone.now() - timedelta(days=20)
+    start = end - timedelta(hours=6)
+    _api, _steps, adapter = connected(
+        "galileo", lookback_days=2, backfill_from=start, backfill_to=end
+    )
+    page = adapter.fetch_page({})
+    assert page.window_from == start
+    assert page.window_to == end
+    _api, _steps, adapter = connected("galileo", lookback_days=None)
+    page = adapter.fetch_page({})
+    assert page.window_from.year == 1
+
+
 @pytest.mark.django_db
 def test_complete_langsmith_tree_repairs_equal_version_partial_span(connected, slept):
     _api, _steps, adapter = connected("langsmith")

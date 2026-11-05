@@ -40,9 +40,11 @@ _SAMPLE_TRACE_LIMIT = 100
 _SAMPLE_MAX_PAGES = 4
 
 
-def _parse_iso(value: str | None) -> datetime | None:
+def _parse_iso(value: str | datetime | None) -> datetime | None:
     if not value:
         return None
+    if isinstance(value, datetime):
+        return value
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
@@ -121,7 +123,7 @@ class GalileoAdapter:
 
     def fetch_page(self, state: dict[str, Any]) -> Page:
         config = self.credential.active_config()
-        lookback_days = (config.lookback_days if config else None) or _DEFAULT_LOOKBACK_DAYS
+        lookback_days = config.lookback_days if config else _DEFAULT_LOOKBACK_DAYS
         mode = state.get("mode") or ("live" if state.get("watermark") else "backfill")
 
         if mode == "live":
@@ -130,8 +132,14 @@ class GalileoAdapter:
         # Windows are planned against an anchor pinned on the first page, not a
         # fresh now(): re-planning as the clock moves shifts every boundary, and
         # the resume filter then steps over a whole window.
-        anchor = _parse_iso(state.get("backfill_anchor")) or timezone.now()
-        windows = plan_windows(None, anchor, max_lookback=timedelta(days=int(lookback_days)))
+        configured_from = _parse_iso(getattr(config, "backfill_from", None))
+        configured_to = _parse_iso(getattr(config, "backfill_to", None))
+        anchor = _parse_iso(state.get("backfill_anchor")) or configured_to or timezone.now()
+        windows = plan_windows(
+            configured_from,
+            anchor,
+            max_lookback=timedelta(days=int(lookback_days)) if lookback_days else None,
+        )
         next_end = state.get("next_window_end")
         if next_end:
             windows = [w for w in windows if w.end.isoformat() <= next_end]
