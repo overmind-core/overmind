@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import apiClient from "@/client";
+import { isPermanentApiRefusal } from "@/lib/api-error";
 import { formatBytes } from "@/lib/formatters";
 import type { UploadReserved, UploadState } from "@/openapi";
-import { ResponseError } from "@/openapi";
 
 export interface UploadProgress {
   sent: number;
@@ -13,10 +13,6 @@ export interface UploadProgress {
 
 /** The server's refusal reason, when there is one — never a generic code. */
 async function uploadError(err: unknown): Promise<Error> {
-  if (err instanceof ResponseError) {
-    const detail = (await err.response.json().catch(() => null))?.detail;
-    if (typeof detail === "string" && detail) return new Error(detail);
-  }
   return err instanceof Error ? err : new Error("Upload failed.");
 }
 
@@ -35,7 +31,7 @@ async function sendChunk(
     try {
       return await apiClient.uploads.uploadsChunkUpdate({ body, id, offset }, { signal });
     } catch (err) {
-      const refused = err instanceof ResponseError;
+      const refused = isPermanentApiRefusal(err);
       if (refused || signal?.aborted || attempt === CHUNK_ATTEMPTS) throw await uploadError(err);
       await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
     }
