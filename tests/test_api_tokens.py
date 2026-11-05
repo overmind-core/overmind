@@ -189,3 +189,12 @@ def test_project_key_does_not_see_sibling_membership():
     ProjectMembership.objects.create(user=user, project=b)
     _, token = APIToken.create_for_user(user, project=a)
     assert [str(pid) for pid in project_ids_for(user, token)] == [str(a.id)]
+
+
+def test_removed_membership_revokes_project_key_access():
+    user, project = make_user(), make_project()
+    membership = ProjectMembership.objects.create(user=user, project=project)
+    client, _ = _api_key_client(user, project=project)
+    assert client.get(f"/api/projects/{project.pk}/").status_code == 200
+    membership.delete()
+    assert client.get(f"/api/projects/{project.pk}/").status_code == 401
