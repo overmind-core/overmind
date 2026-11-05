@@ -288,6 +288,16 @@ def test_bare_run_decoration_raises():
         def main() -> None: ...
 
 
+def test_run_restores_outer_conversation(exporter):
+    with tracing.session("outer"):
+        with run("first", conversation_id="customer-1"):
+            pass
+        with run("second"):
+            pass
+    assert _by_name(exporter, "first").attributes["conversation.id"] == "customer-1"
+    assert _by_name(exporter, "second").attributes["conversation.id"] == "outer"
+
+
 @pytest.mark.covers("privacy")
 def test_run_redacts_nested_dataclass_fields(exporter):
     @dataclasses.dataclass

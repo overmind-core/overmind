@@ -18,6 +18,8 @@ entries here cover the SDK surface.
 
 - Redact secret fields in traced dataclass values.
 
+- Restore the outer conversation after an SDK run.
+
 - `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
   capability card, utilities under their `called_by` parent) and its
   `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips
