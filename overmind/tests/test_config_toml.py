@@ -12,7 +12,9 @@ from overmind.config import (
     dump,
     load,
     protect_secret_file,
+    resolve_api_credentials,
 )
+from overmind.tracing import get_api_settings
 from overmind.utils import convert_json_to_toml
 
 pytestmark = pytest.mark.covers("privacy")
@@ -219,3 +221,29 @@ def test_secret_file_still_works_without_git(tmp_path: Path):
         protect_secret_file(secret, repo_root=tmp_path)
 
     assert (tmp_path / ".overmind" / ".gitignore").read_text() == "*\n"
+
+
+@pytest.mark.covers("privacy")
+@pytest.mark.parametrize("override", ["argument", "environment"])
+@pytest.mark.parametrize(
+    "base_url", ["https://api.overmindlab.ai", "https://overmind.example.org", "http://localhost:8000"]
+)
+def test_saved_key_cannot_follow_an_endpoint_override(tmp_path, monkeypatch, override, base_url):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OVERMIND_API_URL", raising=False)
+    cfg = Config(api_key="bound-secret", base_url=base_url, project_id="project")
+    dump(cfg, Path("overmind.toml"))
+    assert resolve_api_credentials("", "", cfg) == ("bound-secret", base_url)
+    assert get_api_settings() == ("bound-secret", base_url)
+    url = "https://different.example"
+    if override == "environment":
+        monkeypatch.setenv("OVERMIND_API_URL", url)
+        url = ""
+    with pytest.raises(ValueError, match="different API"):
+        resolve_api_credentials("", url, cfg)
+    with pytest.raises(ValueError, match="different API"):
+        get_api_settings(base_url=url)
+    assert resolve_api_credentials("explicit-other-key", url, cfg) == (
+        "explicit-other-key",
+        "https://different.example",
+    )

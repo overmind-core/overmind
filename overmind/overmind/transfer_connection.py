@@ -11,8 +11,7 @@ try:
 except ImportError:
     import tomli as tomllib
 
-from overmind.config import Config
-from overmind.sync import resolve_api_key, resolve_api_url
+from overmind.config import Config, resolve_api_credentials
 
 
 class TransferError(Exception):
@@ -235,17 +234,8 @@ def check_connection(*, api_key, api_url, project_id, session=None):
 
 
 def resolve_transfer_connection(api_key: str, api_url: str, config: Config | None) -> tuple[str, str]:
-    key = resolve_api_key(api_key, config)
+    key, base = resolve_api_credentials(api_key, api_url, config)
     if key:
-        base = resolve_api_url(api_url, config)
-        bound_key = config.api_key if config else ""
-        if bound_key.startswith("env:"):
-            bound_key = os.environ.get(bound_key[4:], "")
-        if bound_key and key == bound_key and base != config.base_url.rstrip("/"):
-            raise ValueError(
-                "Repository credentials belong to a different API; select a matching connection "
-                "instead of overriding only its address. No request was sent."
-            )
         return key, base
 
     root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")

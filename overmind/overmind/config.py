@@ -149,6 +149,45 @@ class Config:
         self.capabilities = caps
 
 
+def resolve_api_key(cli_key: str, config: Config | None) -> str:
+    if cli_key:
+        return cli_key
+    if config and config.project_id and config.api_key:
+        return config.api_key
+    env_key = os.environ.get("OVERMIND_API_KEY", "")
+    if env_key:
+        return env_key
+    toml_key = (config.api_key if config else "") or ""
+    if toml_key.startswith("env:"):
+        toml_key = os.environ.get(toml_key[4:], "")
+    return toml_key
+
+
+def resolve_api_url(cli_url: str, config: Config | None) -> str:
+    if cli_url:
+        return cli_url.rstrip("/")
+    env = os.environ.get("OVERMIND_API_URL")
+    if env:
+        return env.rstrip("/")
+    if config and config.base_url:
+        return config.base_url.rstrip("/")
+    return "https://api.overmindlab.ai"
+
+
+def resolve_api_credentials(api_key: str, api_url: str, config: Config | None) -> tuple[str, str]:
+    key = resolve_api_key(api_key, config)
+    url = resolve_api_url(api_url, config)
+    bound_key = config.api_key if config else ""
+    if bound_key.startswith("env:"):
+        bound_key = os.environ.get(bound_key[4:], "")
+    if bound_key and key == bound_key and url != config.base_url.rstrip("/"):
+        raise ValueError(
+            "Repository credentials belong to a different API. "
+            "Use the repository's saved endpoint or an explicit matching connection. No request was sent."
+        )
+    return key, url
+
+
 class SecretFileError(RuntimeError):
     pass
 

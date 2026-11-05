@@ -163,19 +163,12 @@ def _resolve_api_credentials(
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> tuple[str, str] | None:
-    """Return ``(api_key, base_url)`` from args / env / overmind.toml, or None."""
-    key = (api_key or "").strip()
-    url = (base_url or "").strip()
-    if not key or not url:
-        # Lazy: overmind.sync pulls the Typer CLI stack into library imports.
-        from overmind.sync import DEFAULT_BASE_URL, resolve_api_key, resolve_api_url
-
+    try:
         cfg = config.load(config.DEFAULT_PATH) if config.DEFAULT_PATH.exists() else None
-        key = key or (resolve_api_key("", cfg) or "").strip()
-        url = url or resolve_api_url("", cfg) or DEFAULT_BASE_URL
-    if not key or not url:
+        key, url = config.resolve_api_credentials(api_key or "", base_url or "", cfg)
+    except (OSError, ValueError):
         return None
-    return key, url.rstrip("/")
+    return (key, url) if key else None
 
 
 def _fetch_me(api_key: str, base_url: str) -> dict[str, Any] | None:

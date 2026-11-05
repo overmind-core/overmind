@@ -36,7 +36,7 @@ from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import Status, StatusCode
 
 from overmind import attrs
-from overmind.config import DEFAULT_PATH, Config, load, saved_project_api_key
+from overmind.config import DEFAULT_PATH, Config, load, resolve_api_credentials
 from overmind.genai_usage import canonical_usage_updates
 
 logger = logging.getLogger(__name__)
@@ -68,16 +68,10 @@ def get_api_settings(
     base_url: str | None = None,
 ) -> tuple[str, str]:
     local_config = _local_config()
-    saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-    overmind_api_key = (
-        overmind_api_key or saved_key or os.getenv("OVERMIND_API_KEY") or (local_config.api_key if local_config else "")
-    )
-    if not overmind_api_key:
+    key, url = resolve_api_credentials(overmind_api_key or "", base_url or "", local_config)
+    if not key:
         raise RuntimeError("Missing Overmind API key. Run `overmind sync` or set OVERMIND_API_KEY.")
-    resolved_url = (
-        base_url or os.getenv("OVERMIND_API_URL") or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-    )
-    return overmind_api_key, resolved_url.rstrip("/")
+    return key, url
 
 
 # Guards against cyclic / mock-heavy inputs that recurse forever.
@@ -788,12 +782,8 @@ def init(
             return True
 
         local_config = _local_config()
-        saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-        overmind_api_key = (
-            overmind_api_key
-            or saved_key
-            or os.getenv("OVERMIND_API_KEY")
-            or (local_config.api_key if local_config else "")
+        overmind_api_key, overmind_base_url = resolve_api_credentials(
+            overmind_api_key or "", overmind_base_url or "", local_config
         )
         if not overmind_api_key:
             msg = "Overmind tracing disabled: no project credential. Run `overmind sync` or set OVERMIND_API_KEY."
@@ -804,11 +794,6 @@ def init(
             _keyless_logged = True
             _track_sdk_init("keyless", providers=providers, capability_id=capability_id)
             return False
-        overmind_base_url = (
-            overmind_base_url
-            or os.getenv("OVERMIND_API_URL")
-            or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-        ).rstrip("/")
         project_id = project_id or (local_config.project_id if local_config else None)
 
         environment = (

@@ -8,14 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from overmind.config import Config, dump, load
+from overmind.config import Config, dump, load, resolve_api_key
 from overmind.init_cmd import SUPPORTED_IDES, claude_config_path, write_mcp_config
 from overmind.sync import (
     SyncError,
     _api_key_scope,
     _slugify,
     ensure_project_id,
-    resolve_api_key,
     run_down,
     run_up,
 )
