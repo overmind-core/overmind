@@ -14,6 +14,8 @@ entries here cover the SDK surface.
 
 - Restore SDK compatibility with Python 3.10.
 
+- Exclude freeform CLI arguments from analytics.
+
 - `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
   capability card, utilities under their `called_by` parent) and its
   `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips
