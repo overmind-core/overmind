@@ -7,6 +7,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from overbae.api.authentication import ip_allowed
 from overbae.api.scoping import project_ids_for
 from overbae.models import (
     APIToken,
@@ -17,7 +18,6 @@ from overbae.models import (
 )
 from overbae.services.datasets import pipeline_bindings, pipeline_packages, workbench
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.mcp.auth import ip_allowed
 
 
 class PipelineSerializer(serializers.Serializer):

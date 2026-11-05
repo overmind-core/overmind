@@ -189,3 +189,14 @@ def test_project_key_does_not_see_sibling_membership():
     ProjectMembership.objects.create(user=user, project=b)
     _, token = APIToken.create_for_user(user, project=a)
     assert [str(pid) for pid in project_ids_for(user, token)] == [str(a.id)]
+
+
+@pytest.mark.parametrize("address,expected", [("127.0.0.1", 200), ("203.0.113.1", 401)])
+def test_rest_key_enforces_ip_network(address, expected):
+    user = make_user()
+    raw, token = APIToken.create_for_user(user)
+    token.allowed_ips = ["127.0.0.0/8"]
+    token.save(update_fields=["allowed_ips"])
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+    assert client.get("/api/auth/me/", REMOTE_ADDR=address).status_code == expected
