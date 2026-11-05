@@ -221,10 +221,7 @@ def normalize_messages(messages: Any) -> list[dict[str, Any]]:
             tool_call_id = getattr(message, "tool_call_id", None)
         entry: dict[str, Any] = {"role": _MESSAGE_ROLE_MAP.get(role, role), "content": _message_text(content)}
         if tool_calls:
-            entry["tool_calls"] = [
-                {"name": tc.get("name"), "args": tc.get("args")} if isinstance(tc, dict) else str(tc)
-                for tc in tool_calls
-            ]
+            entry["tool_calls"] = _normalize_for_json(tool_calls)
         if tool_call_id:
             entry["tool_call_id"] = str(tool_call_id)
         out.append(entry)

@@ -22,6 +22,8 @@ entries here cover the SDK surface.
 
 - Scope turn reuse to capability identity.
 
+- Preserve captured tool call identity and arguments.
+
 - `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
   capability card, utilities under their `called_by` parent) and its
   `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips
