@@ -289,3 +289,18 @@ def test_shared_profiler_ranks_langsmith_records_unchanged():
     assert names[0] in {"handler", "researcher"}
     assert names.index("chat") > names.index("researcher")
     assert next(s["parent_name"] for s in shapes if s["name"] == "researcher") == "handler"
+
+
+def test_clipped_child_keeps_ancestry_through_the_shared_span_mapping():
+    partial = observations_to_span_dicts(
+        runs_to_records([_trace_runs()[1]], promote_orphans=False), credential=_cred()
+    )
+    complete = observations_to_span_dicts(
+        runs_to_records(_trace_runs(), promote_orphans=False), credential=_cred()
+    )
+    child = next(span for span in complete if span["name"] == "llm")
+    assert partial[0]["span_id"] == child["span_id"]
+    assert partial[0]["parent_span_id"] == child["parent_span_id"]
+    assert partial[0]["span_type"] == child["span_type"] == "llm_call"
+    assert partial[0]["attributes"]["connector.incomplete_ancestry"] is True
+    assert not child["attributes"].get("connector.incomplete_ancestry")

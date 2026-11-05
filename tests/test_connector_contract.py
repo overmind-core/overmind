@@ -17,6 +17,7 @@ from fakes.vendors import (
     support_desk_trace,
 )
 
+from overbae.models import Span
 from overbae.services.connectors import get_adapter
 from overbae.services.connectors.braintrust.client import (
     BraintrustAuthError,
@@ -37,6 +38,7 @@ from overbae.services.connectors.langsmith.client import (
     LangSmithError,
     LangSmithTimeoutError,
 )
+from overbae.tasks.connector_sync import sync_connector_chunk
 
 pytestmark = pytest.mark.covers("vendor-connectors")
 
@@ -288,3 +290,31 @@ def test_a_vendor_without_a_cheap_count_spends_no_request_on_one(vendor, connect
     before = len(api.requests)
     assert adapter.count(lookback_days=7) is None
     assert len(api.requests) == before
+
+
+@pytest.mark.django_db
+def test_complete_langsmith_tree_repairs_equal_version_partial_span(connected, slept):
+    _api, _steps, adapter = connected("langsmith")
+    credential = adapter.credential
+    page = adapter.fetch_page({"mode": "live"})
+    spans = adapter.to_span_dicts(page.units[0], credential=credential)
+    expected = next(span for span in spans if span["parent_span_id"])
+    stored = Span.objects.create(
+        project=credential.project,
+        **{
+            **expected,
+            "parent_span_id": None,
+            "span_type": "entry_point",
+            "attributes": {**expected["attributes"], "connector.incomplete_ancestry": True},
+            "eval_attributes": {"score": 0.1},
+            "eval_claimed_at": timezone.now(),
+        },
+    )
+    credential.sync_cursor = {"mode": "live"}
+    credential.save(update_fields=["sync_cursor"])
+    sync_connector_chunk(str(credential.pk))
+    stored.refresh_from_db()
+    assert stored.parent_span_id == expected["parent_span_id"]
+    assert stored.span_type == expected["span_type"]
+    assert not stored.attributes.get("connector.incomplete_ancestry")
+    assert "score" not in stored.eval_attributes

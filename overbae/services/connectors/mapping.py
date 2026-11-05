@@ -228,22 +228,25 @@ def observations_to_span_dicts(
         return capability_cache[key]
 
     external_trace_id = observations[0].trace_id or observations[0].id
-    partitions = partition_by_capability(
-        observations,
-        is_capability_boundary(
-            capability_mapping, observations=observations, capability_type=capability_type
-        ),
+    boundary = is_capability_boundary(
+        capability_mapping, observations=observations, capability_type=capability_type
     )
+    partitions = partition_by_capability(observations, boundary)
     # A single capability needs no disambiguation, so ids stay as they were.
     single = len(partitions) == 1
 
     spans: list[dict[str, Any]] = []
     for part in partitions:
+        incomplete = bool(
+            part.root.parent_observation_id
+            and not part.root.is_root_observation
+            and not boundary(part.root)
+        )
         trace_key = external_trace_id if single else f"{external_trace_id}#{part.root.id}"
         om_trace_id = trace_id_for(cred_id, trace_key)
 
         for obs in (part.root, *part.members):
-            is_root = obs.id == part.root.id
+            is_root = obs.id == part.root.id and not incomplete
             spans.append(
                 _span_dict(
                     obs,
@@ -263,6 +266,8 @@ def observations_to_span_dicts(
                     conventions=conventions,
                 )
             )
+            if incomplete:
+                spans[-1]["attributes"]["connector.incomplete_ancestry"] = True
     return spans
 
 
