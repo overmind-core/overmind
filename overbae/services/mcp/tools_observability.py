@@ -228,7 +228,7 @@ def _trace_filter_data(payload: QueryTracesInput, context: MCPContext) -> dict[s
         if source in values:
             data[target] = str(values[source])
     if payload.status is not None:
-        data["has_error"] = str(payload.status == "error").lower()
+        data["has_error"] = str(payload.status in {"error", "2"}).lower()
     elif payload.has_error is not None:
         data["has_error"] = str(payload.has_error).lower()
     return data
