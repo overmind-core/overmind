@@ -8,7 +8,6 @@ import apiClient, {
   getAccessToken,
   getLocalAccountId,
   getLocalIdentity,
-  ResponseError,
   rememberLocalIdentity,
   setAsyncTokenGetter,
   setTokens,
@@ -16,6 +15,7 @@ import apiClient, {
 import { config } from "@/config";
 import { setStoredProjectId } from "@/hooks/use-project-search-sync";
 import { getContext } from "@/integrations/tanstack-query";
+import { isPermanentApiRefusal } from "@/lib/api-error";
 import { emitGuestUpgrade, hasGuestSession, markGuestSession } from "@/lib/guest";
 import { notify } from "@/lib/notify";
 
@@ -78,7 +78,10 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
       let settled = true;
       try {
         const token = await getToken();
-        if (!token) return;
+        if (!token) {
+          settled = false;
+          return;
+        }
         const claimed = await apiClient.auth.authGuestClaimCreate({
           guestClaimRequest: { clerkToken: token },
         });
@@ -86,7 +89,7 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
         trackEvent("guest_claimed");
       } catch (err) {
         // A refusal is final; a transport failure keeps the guest so a reload retries.
-        settled = err instanceof ResponseError && err.response.status < 500;
+        settled = isPermanentApiRefusal(err);
         notify.error(err, "Could not attach the demo workspace to this account.");
       } finally {
         if (settled) {

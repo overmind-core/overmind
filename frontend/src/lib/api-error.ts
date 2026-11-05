@@ -17,6 +17,15 @@ export class ApiError extends Error {
   }
 }
 
+export function isPermanentApiRefusal(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    ![408, 429].includes(error.status)
+  );
+}
+
 export const NETWORK_ERROR_MESSAGE =
   "Could not reach the server. Check your connection and try again.";
 
