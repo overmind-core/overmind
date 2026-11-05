@@ -266,14 +266,14 @@ def is_ready(spans: list[Span]) -> bool:
     )
 
 
-async def score_trace(trace_id: str) -> bool:
+async def score_trace(project_id, trace_id: str) -> bool:
     """Counts the attempt on the root before judging, so a killed pass counts too; once
     ``MAX_ATTEMPTS`` are spent the trajectory is stored without calling the judge."""
     spans = [
         span
-        async for span in Span.objects.filter(trace_id=trace_id).order_by("start_time_ns")[
-            :TRACE_SPAN_CAP
-        ]
+        async for span in Span.objects.filter(project_id=project_id, trace_id=trace_id).order_by(
+            "start_time_ns"
+        )[:TRACE_SPAN_CAP]
     ]
     if not is_ready(spans):
         return False
@@ -301,11 +301,11 @@ async def score_trace(trace_id: str) -> bool:
     return True
 
 
-async def score_traces(trace_ids: list[str]) -> int:
+async def score_traces(project_id, trace_ids: list[str]) -> int:
     scored = 0
     for trace_id in trace_ids:
         try:
-            scored += await score_trace(trace_id)
+            scored += await score_trace(project_id, trace_id)
         except Exception as exc:  # noqa: BLE001 — the sweep retries an unscored trajectory
             logger.warning("Scoring trajectory %s failed: %s", trace_id, exc)
     return scored

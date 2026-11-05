@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 from asgiref.sync import async_to_sync
-from factories import make_project
+from factories import make_project, make_span
 
-from overbae.innermind import comparison, deterministic, evidence
+from overbae.innermind import comparison, deterministic, evidence, trajectory
 from overbae.models import EvalRun, EvalScore, Span
 
 pytestmark = pytest.mark.covers("metrics-math")
@@ -48,3 +48,16 @@ def test_cyclic_ancestry_terminates_without_inventing_intent():
     a = Span(span_id="a", parent_span_id="b", attributes={})
     b = Span(span_id="b", parent_span_id="a", attributes={})
     assert evidence.read_intent(a, {"a": a, "b": b}) == ""
+
+
+@pytest.mark.covers("tenancy")
+@pytest.mark.django_db(transaction=True)
+def test_trajectory_scores_only_the_admitted_project():
+    a, b = make_project(), make_project()
+    root = make_span(a, trace_id="shared", eval_attributes={"score": 0.8})
+    other = make_span(b, trace_id="shared", eval_attributes={"score": 0.1})
+    assert async_to_sync(trajectory.score_traces)(a.pk, ["shared"]) == 1
+    root.refresh_from_db()
+    other.refresh_from_db()
+    assert root.eval_attributes["trajectory"]["score"] == pytest.approx(0.8)
+    assert "trajectory" not in other.eval_attributes

@@ -61,9 +61,9 @@ def execute_live_scoring(self, *, work_id: int) -> dict:
         if item.kind == "span":
             trace_ids = async_loop.run(span_processor.score_spans([item.key]))
             if trace_ids:
-                score_trajectories(trace_ids=trace_ids)
+                score_trajectories(project_id=item.project_id, trace_ids=trace_ids)
         elif item.kind == "trajectory":
-            async_loop.run(trajectory.score_traces([item.key]))
+            async_loop.run(trajectory.score_traces(item.project_id, [item.key]))
         elif item.kind == "signals":
             async_loop.run(signals.SignalRunner(str(item.project_id)).run())
         else:
@@ -128,13 +128,14 @@ def sweep_unscored_spans() -> dict:
 
 
 @shared_task(name="overbae.tasks.innermind.score_trajectories")
-def score_trajectories(*, trace_ids: list[str] | None = None) -> dict:
+def score_trajectories(*, project_id=None, trace_ids: list[str] | None = None) -> dict:
     trace_ids = trace_ids or trajectory.unscored_trajectory_ids()
     by_project = defaultdict(list)
-    for project_id, trace_id in (
-        Span.objects.filter(trace_id__in=trace_ids, parent_span_id__isnull=True)
-        .exclude(eval_attributes__has_key="trajectory")
-        .values_list("project_id", "trace_id")
+    roots = Span.objects.filter(trace_id__in=trace_ids, parent_span_id__isnull=True)
+    if project_id is not None:
+        roots = roots.filter(project_id=project_id)
+    for project_id, trace_id in roots.exclude(eval_attributes__has_key="trajectory").values_list(
+        "project_id", "trace_id"
     ):
         by_project[project_id].append(trace_id)
     for project_id, keys in by_project.items():
