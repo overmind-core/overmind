@@ -3,11 +3,14 @@ parks for the client. Driven through the ledger, the eval chord and the tasks.""
 
 from __future__ import annotations
 
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 import pytest
 from conftest import frozen_dataset
+from django.db import close_old_connections
 from django.urls import reverse
 from factories import auth_client, make_matrix_row, make_project, make_user
 
@@ -15,6 +18,7 @@ from overbae.models import (
     Capability,
     EvalMatrix,
     EvalRun,
+    EvalScore,
     OptimizerCandidate,
     OptimizerCommand,
     OptimizerExperiment,
@@ -320,3 +324,49 @@ def test_optimize_capability_schedules_without_dispatch(monkeypatch):
     assert experiment.status == S.SCHEDULED
     assert experiment.entrypoint == "trigger"
     assert dispatched == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_candidate_completions_keep_all_scores_and_clear_pending(monkeypatch):
+    exp = _experiment()
+    iteration = OptimizerIteration.objects.create(experiment=exp, order=1, status="evaluating")
+    candidates = []
+    for index, score in enumerate([0.2, 0.8]):
+        run = EvalRun.objects.create(
+            project=exp.project, name=f"Candidate {index}", status="completed", max_items=1
+        )
+        EvalScore.objects.create(
+            project=exp.project,
+            run=run,
+            source_type="dataset_row",
+            source_id=f"{run.pk}:0",
+            score=score,
+        )
+        candidates.append(
+            OptimizerCandidate.objects.create(
+                experiment=exp, iteration=iteration, candidate_index=index, eval_run=run
+            )
+        )
+    exp.state = {"eval_pending": {str(c.pk): str(c.eval_run_id) for c in candidates}}
+    exp.status = S.EVALUATING_CANDIDATE_OUTPUTS
+    exp.save()
+    dispatches = []
+    monkeypatch.setattr(run_experiment_advance, "delay", lambda *args: dispatches.append(args))
+    ready = threading.Barrier(2)
+
+    def finish(candidate):
+        try:
+            ready.wait(timeout=5)
+            on_candidate_eval_finished(candidate.eval_run)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(finish, candidates))
+    exp.refresh_from_db()
+    assert exp.state["eval_pending"] == {}
+    assert exp.status == S.EVALUATED_CANDIDATE_OUTPUTS
+    assert sorted(exp.scores["1"].values()) == [20, 80]
+    assert len(dispatches) == 1
+    on_candidate_eval_finished(candidates[0].eval_run)
+    assert len(dispatches) == 1
