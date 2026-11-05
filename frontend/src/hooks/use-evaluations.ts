@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { notify } from "@/lib/notify";
@@ -237,26 +237,43 @@ export const useEvalRunComparisonQuery = (
     retry: false,
   });
 
-export async function fetchEvalRunRows(runId: string) {
+export async function fetchEvalRunRows(runId: string, signal?: AbortSignal) {
   const results: EvalRunRow[] = [];
   for (let page = 1; ; page++) {
-    const data = await apiClient.evalRunRows.evalRunRowsList({
-      ordering: "row_index",
-      page,
-      pageSize: 1000,
-      run: runId,
-    });
+    const data = await apiClient.evalRunRows.evalRunRowsList(
+      {
+        ordering: "row_index",
+        page,
+        pageSize: 1000,
+        run: runId,
+      },
+      { signal }
+    );
     results.push(...data.results);
     if (!data.next) return { ...data, next: null, previous: null, results };
   }
 }
 
+export function evalRowsPollingInterval(
+  query: { state: { status: string; data?: { count: number } } },
+  active: boolean
+) {
+  // Large result sets still support cross-page filtering; refresh them less often.
+  return backoffPolling(
+    query,
+    active
+      ? Math.min(60_000, 4_000 * Math.max(1, Math.ceil((query.state.data?.count ?? 0) / 1000)))
+      : false
+  );
+}
+
 export const useEvalRunRowsQuery = (runId: string | undefined, active = false) =>
   useQuery({
     enabled: !!runId,
-    queryFn: () => fetchEvalRunRows(runId!),
-    queryKey: ["eval-run-rows", runId],
-    refetchInterval: (q) => backoffPolling(q, active ? 4_000 : false),
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => fetchEvalRunRows(runId!, signal),
+    queryKey: ["eval-run-rows", runId, active],
+    refetchInterval: (q) => evalRowsPollingInterval(q, active),
   });
 
 export const useEvalRunRowQuery = (id: number | undefined) =>

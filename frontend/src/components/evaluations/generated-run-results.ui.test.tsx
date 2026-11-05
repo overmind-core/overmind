@@ -54,7 +54,7 @@ it("opens all model outputs together, retaining full text, reasoning, errors and
   ] as EvalRunRow[];
   for (const run of runs) {
     const results = samples.filter((sample) => sample.run === run.id);
-    client.setQueryData(["eval-run-rows", run.id], { count: results.length, results });
+    client.setQueryData(["eval-run-rows", run.id, false], { count: results.length, results });
   }
   render(
     <QueryClientProvider client={client}>

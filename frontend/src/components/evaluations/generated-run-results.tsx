@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 
-import { useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQueries } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { EntityRef } from "@/components/entity-ref";
@@ -33,7 +33,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchEvalRunRows, isActiveRunStatus } from "@/hooks/use-evaluations";
+import {
+  evalRowsPollingInterval,
+  fetchEvalRunRows,
+  isActiveRunStatus,
+} from "@/hooks/use-evaluations";
 import { TITLE } from "@/lib/typography";
 import type { EvalRun, EvalRunRow } from "@/openapi";
 
@@ -125,9 +129,11 @@ export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
   const datapointsRef = useRef<HTMLElement>(null);
   const queries = useQueries({
     queries: runs.map((run) => ({
-      queryFn: () => fetchEvalRunRows(run.id),
-      queryKey: ["eval-run-rows", run.id],
-      refetchInterval: isActiveRunStatus(run.status) ? 4000 : (false as const),
+      placeholderData: keepPreviousData,
+      queryFn: ({ signal }: { signal: AbortSignal }) => fetchEvalRunRows(run.id, signal),
+      queryKey: ["eval-run-rows", run.id, isActiveRunStatus(run.status)],
+      refetchInterval: (q: { state: { status: string; data?: { count: number } } }) =>
+        evalRowsPollingInterval(q, isActiveRunStatus(run.status)),
     })),
   });
   const points = alignRunDatapoints(
