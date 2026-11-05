@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
+import httpx
 import pytest
 from conftest import drain_stream
+from django.db import close_old_connections
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -16,7 +20,7 @@ from overbae.core.errors import InputValidationError
 from overbae.models import BillingTelemetry, DedicatedDeployment, InferenceCall, Project, User
 from overbae.models.billing import BillingService
 from overbae.models.inference import DeployedModel
-from overbae.services import dedicated
+from overbae.services import dedicated, inference_requests
 from overbae.services.provider_pricing import refresh_rates
 from tests.fakes.modal import open_chat_tunnel
 
@@ -309,3 +313,89 @@ def test_dedicated_list_returns_the_latest_row_for_each_model():
     assert listed["gpu_type"] == "H100"
     assert listed["model_name"] == first.model_id
     assert listed["model_id"] == f"dedicated/{first.model_id}"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.covers("work-once")
+def test_dedicated_request_holds_its_claim_while_the_provider_runs(fake_modal, scripted):
+    user = _user()
+    project = Project.objects.create(name="Dedicated request")
+    model = _ready(project)
+    refresh_rates()
+    row = dedicated.start(model, user, gpu_type="H100")
+    row.status = "online"
+    row.save(update_fields=["status"])
+    fake_modal.deploy(
+        "overmind-dedicated",
+        "H100_vllm_dedicated.direct_url",
+        lambda **kwargs: "https://audit-dedicated.test",
+    )
+    started, release = threading.Event(), threading.Event()
+
+    def respond(call):
+        started.set()
+        assert release.wait(10)
+        result = _ok()
+        return result["status"], result["headers"], result["body"]
+
+    provider = scripted("https://audit-dedicated.test").then(respond)
+    request = inference_requests.submit(
+        model,
+        user,
+        "slow",
+        {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 32},
+        dedicated=row,
+    )
+
+    def advance():
+        try:
+            inference_requests.advance(request.pk)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(advance)
+        try:
+            assert started.wait(10)
+            request.refresh_from_db()
+            assert request.state == "submitting"
+            assert request.claim_until >= timezone.now() + timedelta(seconds=300)
+            inference_requests.advance(request.pk)
+            assert len(provider.calls) == 1
+        finally:
+            release.set()
+        future.result(timeout=10)
+    request.refresh_from_db()
+    assert request.state == "succeeded"
+    assert request.result["content"] == "hi"
+
+
+@pytest.mark.covers("work-once")
+def test_dedicated_unknown_acknowledgement_is_never_replayed(fake_modal, scripted):
+    user = _user()
+    project = Project.objects.create(name="Unknown dedicated acknowledgement")
+    model = _ready(project)
+    refresh_rates()
+    row = dedicated.start(model, user, gpu_type="H100")
+    row.status = "online"
+    row.save(update_fields=["status"])
+    fake_modal.deploy(
+        "overmind-dedicated",
+        "H100_vllm_dedicated.direct_url",
+        lambda **kwargs: "https://audit-dedicated.test",
+    )
+    provider = scripted("https://audit-dedicated.test").fail(
+        httpx.ReadTimeout("acknowledgement lost")
+    )
+    request = inference_requests.submit(
+        model,
+        user,
+        "unknown",
+        {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 32},
+        dedicated=row,
+    )
+    inference_requests.advance(request.pk)
+    inference_requests.advance(request.pk)
+    request.refresh_from_db()
+    assert request.state == "submission_unknown"
+    assert len(provider.calls) == 1
