@@ -98,7 +98,13 @@ describe("useFinetuningRunsQuery", () => {
     const poll = options.refetchInterval;
     if (typeof poll !== "function") throw new Error("Expected adaptive history polling");
     const query = (jobs: { status: string }[], fetchFailureCount = 0) =>
-      ({ state: { data: { results: [{ jobs }] }, fetchFailureCount } }) as never;
+      ({
+        state: {
+          data: { results: [{ jobs }] },
+          fetchFailureCount,
+          status: fetchFailureCount ? "error" : "success",
+        },
+      }) as never;
     expect(poll(query([]))).toBe(10_000);
     expect(poll(query([{ status: "succeeded" }]))).toBe(10_000);
     expect(poll(query([{ status: "preprocessing" }]))).toBe(5_000);
