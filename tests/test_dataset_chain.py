@@ -190,3 +190,14 @@ def test_diff_marks_added_and_changed_values_and_lists_removed_rows(tmp_path):
     assert [r["source_row"] for r in removed] == [1]
     detail = diff.between(before, after)
     assert detail["changed_examples"][0]["x"] == {"before": "c", "after": "C"}
+
+
+def test_diff_accepts_quoted_column_names(tmp_path):
+    before, after = tmp_path / "before.parquet", tmp_path / "after.parquet"
+    name = 'say"hello'
+    store.write_rows(before, [{"source_row": 0, name: "before"}])
+    store.write_rows(after, [{"source_row": 0, name: "after"}])
+    assert diff.marks(before, after, [0]) == {0: {"before": {name: "before"}}}
+    detail = diff.between(before, after)
+    assert detail["changed_columns"] == {name: 1}
+    assert detail["changed_examples"][0][name] == {"before": "before", "after": "after"}

@@ -412,7 +412,7 @@ def null_rates(path):
     if not names:
         return {}
     expressions = [
-        f"avg(CASE WHEN {_quote(name)} IS NULL OR CAST({_quote(name)} AS VARCHAR) = '' "
+        f"avg(CASE WHEN {quote_identifier(name)} IS NULL OR CAST({quote_identifier(name)} AS VARCHAR) = '' "
         "THEN 1.0 ELSE 0.0 END)"
         for name in names
     ]
@@ -421,7 +421,7 @@ def null_rates(path):
     return dict(zip(names, (float(value or 0) for value in values), strict=True))
 
 
-def _quote(name: str) -> str:
+def quote_identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
@@ -436,7 +436,7 @@ def _filter_sql(filters: list[dict[str, Any]], names: set[str]) -> tuple[str, li
             raise StoreError(f"Unknown column {field!r}.")
         if op not in _FILTER_OPS:
             raise StoreError(f"Unknown filter {op!r}.")
-        col = _quote(field)
+        col = quote_identifier(field)
         text = f"CAST({col} AS VARCHAR)"
         if op == "contains":
             clauses.append(f"{text} ILIKE ?")
@@ -491,7 +491,9 @@ def page(
     names = set(kinds)
     where, params = _filter_sql(filters or [], names)
     if search:
-        columns = " || ' ' || ".join(f"COALESCE(CAST({_quote(n)} AS VARCHAR), '')" for n in kinds)
+        columns = " || ' ' || ".join(
+            f"COALESCE(CAST({quote_identifier(n)} AS VARCHAR), '')" for n in kinds
+        )
         where = f"({where}) AND ({columns}) ILIKE ?"
         params.append(f"%{search}%")
     order = '"_index" ASC'
@@ -502,9 +504,9 @@ def page(
         if sort == "_index":
             order = f'"_index" {way}'
         elif kinds[sort] in ("integer", "number"):
-            order = f"{_quote(sort)} {way} NULLS LAST"
+            order = f"{quote_identifier(sort)} {way} NULLS LAST"
         else:
-            order = f"CAST({_quote(sort)} AS VARCHAR) {way} NULLS LAST"
+            order = f"CAST({quote_identifier(sort)} AS VARCHAR) {way} NULLS LAST"
     con = connect(t=path)
     try:
         base = 'SELECT (row_number() OVER ()) - 1 AS "_index", * FROM "t"'
@@ -551,11 +553,12 @@ def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:
         projection = "*"
         if nested:
             replacements = ", ".join(
-                f"CAST({_quote(column)} AS JSON) AS {_quote(column)}" for column in nested
+                f"CAST({quote_identifier(column)} AS JSON) AS {quote_identifier(column)}"
+                for column in nested
             )
             projection += f" REPLACE ({replacements})"
         con.execute(
-            f"CREATE VIEW {_quote(name)} AS SELECT {projection} FROM read_parquet('{literal}')"
+            f"CREATE VIEW {quote_identifier(name)} AS SELECT {projection} FROM read_parquet('{literal}')"
         )
     return con
 

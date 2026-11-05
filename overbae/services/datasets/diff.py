@@ -28,13 +28,16 @@ def _tracked(a: Path, b: Path) -> bool:
 
 def _neq(columns: list[str]) -> str:
     return " OR ".join(
-        f'(CAST(a."{c}" AS VARCHAR) IS DISTINCT FROM CAST(b."{c}" AS VARCHAR))' for c in columns
+        f"(CAST(a.{store.quote_identifier(c)} AS VARCHAR) IS DISTINCT FROM CAST(b.{store.quote_identifier(c)} AS VARCHAR))"
+        for c in columns
     )
 
 
 def _hashed(columns: list[str]) -> str:
     """Joins hashes, not values: long text stays out of the join's memory."""
-    hashes = ", ".join(f'hash(CAST("{c}" AS VARCHAR)) AS h{i}' for i, c in enumerate(columns))
+    hashes = ", ".join(
+        f"hash(CAST({store.quote_identifier(c)} AS VARCHAR)) AS h{i}" for i, c in enumerate(columns)
+    )
     return (
         f"WITH ha AS (SELECT source_row, {hashes} FROM a), "
         f"hb AS (SELECT source_row, {hashes} FROM b) "
@@ -108,7 +111,9 @@ def marks(before: Path, after: Path, source_rows: list[int]) -> dict[int, dict[s
             if sr not in present:
                 out[int(sr)] = {"added": True}
         if shared and present:
-            select = ", ".join(f'a."{c}" AS "{c}"' for c in shared)
+            select = ", ".join(
+                f"a.{store.quote_identifier(c)} AS {store.quote_identifier(c)}" for c in shared
+            )
             kinds = {c["name"]: c["type"] for c in store.read_manifest(before)}
             cur = con.execute(
                 f"SELECT a.source_row, {select} FROM a JOIN b USING (source_row) "
@@ -120,7 +125,7 @@ def marks(before: Path, after: Path, source_rows: list[int]) -> dict[int, dict[s
             after_rows = {
                 r[0]: r
                 for r in con.execute(
-                    f"SELECT b.source_row, {', '.join(f'b."{c}"' for c in shared)} FROM b "
+                    f"SELECT b.source_row, {', '.join(f'b.{store.quote_identifier(c)}' for c in shared)} FROM b "
                     f"WHERE b.source_row IN ({ids})"
                 ).fetchall()
             }
@@ -174,7 +179,8 @@ def between(before: Path, after: Path) -> dict[str, Any]:
                 ).fetchall()
             ]
             select = ", ".join(
-                f'a."{c}" AS "before__{c}", b."{c}" AS "after__{c}"' for c in changed
+                f"a.{store.quote_identifier(c)} AS {store.quote_identifier('before__' + c)}, b.{store.quote_identifier(c)} AS {store.quote_identifier('after__' + c)}"
+                for c in changed
             )
             ids = ", ".join(str(int(i)) for i in sample)
             found = {
