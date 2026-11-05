@@ -68,10 +68,6 @@ from overbae.services.training_record import requested_configuration, run_record
 logger = logging.getLogger(__name__)
 
 
-def _user_project_ids(user):
-    return set(ProjectMembership.objects.filter(user=user).values_list("project_id", flat=True))
-
-
 def _first_float(attrs: dict, *keys: str) -> float | None:
     for key in keys:
         raw = attrs.get(key)
@@ -387,8 +383,8 @@ class UserOnboardingSerializer(serializers.ModelSerializer):
 
 def _validate_project_ownership(serializer_instance, value):
     """Shared validation: ensure project belongs to the requesting user."""
-    user = serializer_instance.context["request"].user
-    if value.id not in _user_project_ids(user):
+    request = serializer_instance.context["request"]
+    if value.id not in project_ids_for(request.user, getattr(request, "auth", None)):
         raise serializers.ValidationError("You are not a member of this project.")
     return value
 
@@ -2371,7 +2367,9 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is None:
             return value
-        allowed = {str(pid) for pid in project_ids_for(request.user, request.auth)}
+        allowed = {
+            str(pid) for pid in project_ids_for(request.user, getattr(request, "auth", None))
+        }
         if str(value.pk) not in allowed:
             raise serializers.ValidationError(
                 "This API key is scoped to another project."

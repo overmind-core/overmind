@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from factories import make_project, make_user
+from factories import make_project, make_span, make_user
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -234,3 +234,26 @@ def test_clerk_rejects_inactive_accounts(clerk, linked):
     assert user.is_active is False
     if not linked:
         assert user.clerk_user_id != clerk_id
+
+
+@pytest.mark.covers("tenancy")
+@pytest.mark.parametrize("route", ["capabilities", "eval-sets", "eval-matrix"])
+def test_project_key_cannot_create_in_sibling_project(route):
+    user = make_user()
+    own, sibling = make_project(member=user), make_project(member=user)
+    client, _ = _api_key_client(user, project=own)
+    body = {"project": str(sibling.pk), "name": "Private", "type": "llm", "source": "Correct"}
+    response = client.post(f"/api/{route}/", body, format="json")
+    assert response.status_code == (400 if route == "capabilities" else 403)
+
+
+@pytest.mark.covers("tenancy")
+def test_project_key_cannot_read_sibling_trace():
+    user = make_user()
+    own, sibling = make_project(member=user), make_project(member=user)
+    span = make_span(sibling, trace_id="1" * 32)
+    client, _ = _api_key_client(user, project=own)
+    assert client.get(f"/api/traces/{span.trace_id}/").status_code == 404
+    response = client.get("/api/traces/", {"project": str(sibling.pk)})
+    assert response.status_code == 200
+    assert response.data["results"] == []

@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
-from overbae.api.serializers import _user_project_ids
+from overbae.api.scoping import project_ids_for
 from overbae.core.model_registry import judge_picker_models
 from overbae.innermind import context, deterministic, generation, runs
 from overbae.innermind.definitions import DefinitionSource, definition_source
@@ -35,7 +35,8 @@ EXPECTATION_MAX_CHARS = 1_000
 def require_membership(serializer, project):
     if project is None:
         return project
-    if project.id not in _user_project_ids(serializer.context["request"].user):
+    request = serializer.context["request"]
+    if project.id not in project_ids_for(request.user, getattr(request, "auth", None)):
         raise PermissionDenied("You are not a member of this project.")
     return project
 
