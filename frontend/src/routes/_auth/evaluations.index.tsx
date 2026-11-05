@@ -115,6 +115,7 @@ function EvaluationsPage() {
           <RunsTable
             action={<CreateRunDialog key={projectId} projectId={projectId} />}
             filters={search}
+            key={projectId}
             onSearchChange={patchSearch}
             page={page}
             pageSize={pageSize}
