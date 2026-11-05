@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import dataclasses
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -285,3 +286,21 @@ def test_bare_run_decoration_raises():
 
         @run
         def main() -> None: ...
+
+
+@pytest.mark.covers("privacy")
+def test_run_redacts_nested_dataclass_fields(exporter):
+    @dataclasses.dataclass
+    class Credentials:
+        password: str
+        count: int
+
+    @run("secret-result")
+    def operation():
+        return {"result": Credentials(password="never-export-this", count=3)}
+
+    operation()
+    output = _by_name(exporter, "secret-result").attributes["outputs"]
+    assert "never-export-this" not in output
+    assert "redacted" in output
+    assert "3" in output

@@ -121,7 +121,12 @@ def _normalize_for_json(obj: Any, *, _depth: int = 0) -> Any:
     if isinstance(obj, (int, float, bool, type(None))):
         return obj
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {f.name: _normalize_for_json(getattr(obj, f.name), _depth=_depth + 1) for f in dataclasses.fields(obj)}
+        return {
+            f.name: "<redacted>"
+            if _is_secret_key(f.name)
+            else _normalize_for_json(getattr(obj, f.name), _depth=_depth + 1)
+            for f in dataclasses.fields(obj)
+        }
     if _should_skip_value(obj):
         return f"<{type(obj).__name__}>"
     if isinstance(obj, dict):
