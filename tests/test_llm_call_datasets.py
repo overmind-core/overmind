@@ -258,7 +258,9 @@ def test_hash_split_lands_train_and_eval():
     capability = Capability.objects.create(project=project, name="Support", slug="support")
     train_ids, eval_ids = _ids_for_split()
     for span_id in [*train_ids, *eval_ids]:
-        _call_span(project, capability, span_id, tool=True)
+        span = _call_span(project, capability, span_id, tool=True)
+        span.trace_id = span_id
+        span.save(update_fields=["trace_id"])
     train, evaluation = dispatch.create_split(
         project=project,
         user=None,
@@ -282,3 +284,14 @@ def test_hash_split_lands_train_and_eval():
     assert train.active_cell.fits("train")[0]
     assert evaluation.active_cell.fits("eval")[0]
     assert {train.source.rows, evaluation.source.rows} == {2}
+
+
+def test_split_keeps_sibling_calls_on_the_same_side():
+    records = [
+        {"span_id": f"{trace}-{call}", "origin_trace_id": f"trace-{trace}"}
+        for trace in range(40)
+        for call in range(4)
+    ]
+    training, evaluation = hash_split(records, 20)
+    assert training and evaluation
+    assert not {r["origin_trace_id"] for r in training} & {r["origin_trace_id"] for r in evaluation}

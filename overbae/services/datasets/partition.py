@@ -11,12 +11,20 @@ from overbae.services.datasets.examples import field_value, input_objects, nativ
 
 GROUP_ALIASES = {
     "source_trace_id": "trace_id",
+    "origin_trace_id": "trace_id",
     "_overmind_document_id": "document_id",
     # A declared content column must not share the input-fingerprint namespace.
     "content": "group:content",
 }
 
-_IDENTITY = {"source_row", "trace_id", "source_trace_id", "conversation_id", "_overmind_provenance"}
+_IDENTITY = {
+    "source_row",
+    "trace_id",
+    "source_trace_id",
+    "origin_trace_id",
+    "conversation_id",
+    "_overmind_provenance",
+}
 
 
 def _canonical(value) -> str:
@@ -79,6 +87,7 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
     for column in {
         "trace_id",
         "source_trace_id",
+        "origin_trace_id",
         "conversation_id",
         "group_id",
         "document_id",
