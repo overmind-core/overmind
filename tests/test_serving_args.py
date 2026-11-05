@@ -179,6 +179,15 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
     assert engine_for("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
     assert engine_for("meta-llama/Llama-3.1-8B-Instruct") == "vllm"
     assert engine_for("Qwen/Qwen3-14B") == "vllm"
+    assert engine_for("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
+    lfm3 = build_sglang_args(
+        model_path="/tmp/folded",
+        served_name="dedicated/lfm3",
+        port=8000,
+        gpu_type="H100",
+        model="LiquidAI/LFM3-1.7B",
+    )
+    assert "--attention-backend" not in lfm3
 
 
 def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import shutil
+import sys
 import time
 from itertools import islice
 from pathlib import Path
@@ -136,6 +137,16 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize, *, decis
         report = preparation_failure("worker_out_of_date")
         (output_dir / "report.json").write_text(json.dumps(report, sort_keys=True))
         return
+    # Family hooks install load-time patches (LFM3's RoPE lookup) before config init.
+    assets = Path(__file__).resolve().parent
+    if str(assets) not in sys.path:
+        sys.path.insert(0, str(assets))
+    from catalog import resolve as resolve_family
+    from families import load_hooks
+
+    load_hooks(resolve_family(request["model"]).hooks_module).env_overrides(
+        use_lora=request.get("training_type") != "full"
+    )
     tokenizer = load_tokenizer(request["tokenizer_model"], trust_remote_code=True)
     if not tokenizer.eos_token or tokenizer.eos_token == "<EOS_TOKEN>":
         for token in ("<|im_end|>", "<|eot_id|>", "</s>", "<|endoftext|>", "<|return|>"):

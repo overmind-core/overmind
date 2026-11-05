@@ -25,6 +25,9 @@ def sglang_reasoning_parser(name: str) -> str:
 
 def attention_backend(gpu_type: str, *, model: str = "") -> str:
     # fa3 is the Hopper kernel. On Ada and Ampere it dies during graph capture.
+    if "lfm3" in model.lower():
+        # The LFM3 server picks flashinfer itself. fa3 mismatches the conv blocks.
+        return ""
     hopper = gpu_type in {"H100", "H200"} or not gpu_type
     if "gpt-oss" in model:
         # This architecture rejects flashinfer. Triton runs on the other GPUs.
@@ -57,8 +60,11 @@ def build_sglang_args(
         served_name,
         "--tp-size",
         "1",
-        "--attention-backend",
-        attention_backend(gpu_type, model=model),
+    ]
+    backend = attention_backend(gpu_type, model=model)
+    if backend:
+        cmd += ["--attention-backend", backend]
+    cmd += [
         "--mem-fraction-static",
         "0.75",
         "--dtype",
