@@ -14,8 +14,7 @@ import requests
 import typer
 from rich.console import Console
 
-from overmind.config import DEFAULT_PATH, Config, load
-from overmind.sync import resolve_api_key, resolve_api_url
+from overmind.config import DEFAULT_PATH, Config, load, resolve_api_credentials
 
 console = Console()
 
@@ -380,12 +379,12 @@ def run_finetune(
 
 def _client(api_key: str, api_url: str, path) -> tuple[Client, Config]:
     config = load(path) if path.exists() else Config()
-    key = resolve_api_key(api_key, config)
+    key, url = resolve_api_credentials(api_key, api_url, config)
     if not key:
         raise LayerError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
     session = requests.Session()
     session.headers["X-Api-Key"] = key
-    return Client(session, resolve_api_url(api_url, config)), config
+    return Client(session, url), config
 
 
 def _common(

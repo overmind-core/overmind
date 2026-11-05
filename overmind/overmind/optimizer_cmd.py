@@ -25,9 +25,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 import overmind.config as config_mod
+from overmind.config import resolve_api_credentials
 from overmind.optimizer import OptimiseLoop, attach_optimise, start_optimise
 from overmind.optimizer_api import OptimizerAPI
-from overmind.sync import resolve_api_key
 
 OPTIMISE_HELP = "Generate candidates locally; the server scores them."
 
@@ -52,11 +52,10 @@ def _load_config() -> config_mod.Config:
 
 
 def _make_api(cfg: config_mod.Config) -> OptimizerAPI:
-    api_key = resolve_api_key("", cfg)
+    api_key, base_url = resolve_api_credentials("", "", cfg)
     if not api_key:
         console.print("[red]No API key. Run `overmind sync` or set OVERMIND_API_KEY.[/]")
         raise typer.Exit(1)
-    base_url = os.getenv("OVERMIND_API_URL") or cfg.base_url
     return OptimizerAPI(base_url, api_key)
 
 

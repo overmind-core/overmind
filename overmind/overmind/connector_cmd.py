@@ -13,8 +13,7 @@ import requests
 import typer
 from rich.console import Console
 
-from overmind.config import DEFAULT_PATH, Config, load
-from overmind.sync import resolve_api_key, resolve_api_url
+from overmind.config import DEFAULT_PATH, Config, load, resolve_api_credentials
 
 CREDENTIALS_PATH = "/api/connector-credentials/"
 DEFAULT_TIMEOUT = 60
@@ -187,13 +186,12 @@ def add(
                 f"Unsupported connector type {connector_type!r}. Use one of: {', '.join(SUPPORTED_TYPES)}."
             )
         config = load(path) if path.exists() else Config()
-        key = resolve_api_key(api_key, config)
+        key, url = resolve_api_credentials(api_key, api_url, config)
         if not key:
             raise ConnectorAddError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
         project = project_id.strip() or config.project_id.strip()
         if not project:
             raise ConnectorAddError("Missing project-id. Pass --project-id or add project-id to overmind.toml.")
-        url = resolve_api_url(api_url, config)
         host = base_url.strip() or (os.environ.get("LANGFUSE_HOST", "").strip() if kind == "langfuse" else "")
         provider_key, provider_secret = _provider_credentials(kind)
         result = add_connector(

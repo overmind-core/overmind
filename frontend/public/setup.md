@@ -81,7 +81,7 @@ Overmind has the following features
 
 - Python: use the Overmind SDK. `get_instrumentation_plan`, apply each `required_decorator` verbatim.
 - Any other language with OpenTelemetry already enabled: no SDK and no plan. Add Overmind as one more OTLP/HTTP protobuf exporter beside the existing ones, never replacing them:
-  - Endpoint `https://api.overmindlab.ai/api/v1/traces`, header `x-api-key: <project key>`.
+  - Endpoint `<selected-api-base-url>/api/v1/traces`, header `x-api-key: <project key>`. Use the API reported by the connected catalogue and bound to that project key; preserve any explicitly selected local or self-hosted endpoint.
   - Resource attribute `overmind.capability.id` (the only key that binds spans to a capability).
   - Span attributes: `overmind.span.type=entry_point` and `overmind.unit_kind=run` on the root span of a run, `overmind.delivery=true` on the span carrying the result, `conversation.id` on every span of a multi-turn exchange.
 - No OpenTelemetry in a non-Python codebase: report telemetry as not set up. Do not introduce OpenTelemetry for the user.
