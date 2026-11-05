@@ -29,7 +29,7 @@ function livePoll(status: unknown) {
 }
 
 function pct(value: number | null | undefined) {
-  return value == null ? null : `${Math.round(value * 100)}%`;
+  return value == null ? null : `${Math.round(value)}%`;
 }
 
 function isTerminal(status: unknown) {
