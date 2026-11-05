@@ -13,7 +13,7 @@ from overbae.services.datasets import land, pipeline_runner, workbench
 from tests.load.processes import ProcessWorker
 from tests.workshop_script_fixtures import identity_script, retained_package, script_step
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def wait_until(condition, timeout=30):
