@@ -298,6 +298,16 @@ def test_run_restores_outer_conversation(exporter):
     assert _by_name(exporter, "second").attributes["conversation.id"] == "outer"
 
 
+def test_turns_with_same_behavior_are_separate_per_capability(exporter):
+    with run("root"):
+        for identity in ["cap-a", "cap-b", "cap-a"]:
+            with tracing.capability(id=identity), task("answer", unit="turn"):
+                pass
+    turns = [s for s in exporter.get_finished_spans() if s.name == "answer"]
+    assert len(turns) == 2
+    assert {s.attributes[attrs.CAPABILITY_ID] for s in turns} == {"cap-a", "cap-b"}
+
+
 @pytest.mark.covers("privacy")
 def test_run_redacts_nested_dataclass_fields(exporter):
     @dataclasses.dataclass

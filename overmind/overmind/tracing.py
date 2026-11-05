@@ -1057,7 +1057,7 @@ def capability(name: str | None = None, *, id: str | None = None) -> _Capability
 
 
 class _TurnRegistry:
-    """Open turn-unit spans keyed by (trace_id, behaviour key).
+    """Open turn-unit spans keyed by (trace_id, capability, behaviour key).
 
     A behaviour's activity is non-contiguous in loop-shaped agents (debate
     rounds interleave with other phases), so its turn span outlives each task
@@ -1066,21 +1066,22 @@ class _TurnRegistry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._spans: dict[tuple[int, str], trace.Span] = {}
-        self._last_activity_ns: dict[tuple[int, str], int] = {}
+        self._spans: dict[tuple[int, str, str], trace.Span] = {}
+        self._last_activity_ns: dict[tuple[int, str, str], int] = {}
 
     def get_or_start(self, key: str) -> trace.Span:
         ambient = trace.get_current_span().get_span_context()
+        identity = str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
         evicted: list[tuple[trace.Span, int | None]] = []
         with self._lock:
-            if ambient.is_valid and (span := self._spans.pop((ambient.trace_id, key), None)) is not None:
+            if ambient.is_valid and (span := self._spans.pop((ambient.trace_id, identity, key), None)) is not None:
                 # Re-insert so eviction takes the least recently used entry.
-                self._spans[(ambient.trace_id, key)] = span
+                self._spans[(ambient.trace_id, identity, key)] = span
                 return span
             span = get_tracer().start_span(
                 key, attributes=_declared_attributes(SpanType.FUNCTION, None, "turn", behaviour_key=key)
             )
-            self._spans[(span.get_span_context().trace_id, key)] = span
+            self._spans[(span.get_span_context().trace_id, identity, key)] = span
             # Without a run boundary nothing ever ends these; cap like the
             # evidence registry so a long-lived process cannot leak live spans.
             while len(self._spans) > _MAX_TRACKED_TRACES:
@@ -1091,7 +1092,8 @@ class _TurnRegistry:
         return span
 
     def touch(self, span: trace.Span, key: str) -> None:
-        entry = (span.get_span_context().trace_id, key)
+        identity = str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
+        entry = (span.get_span_context().trace_id, identity, key)
         with self._lock:
             # Only a still-tracked span records activity — a touch after
             # eviction must not resurrect the bookkeeping for an ended span.
@@ -1105,7 +1107,7 @@ class _TurnRegistry:
     def end_all(self) -> None:
         self._end(lambda entry: True)
 
-    def _end(self, match: Callable[[tuple[int, str]], bool]) -> None:
+    def _end(self, match: Callable[[tuple[int, str, str]], bool]) -> None:
         with self._lock:
             entries = [entry for entry in self._spans if match(entry)]
             ended = [(self._spans.pop(entry), self._last_activity_ns.pop(entry, None)) for entry in entries]
