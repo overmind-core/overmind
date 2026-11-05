@@ -522,7 +522,7 @@ def baseline_needs_base_deploy(job) -> bool:
     return target is not None and target.kind == "base_deploy"
 
 
-def _sibling_baseline_eval(job, *, model_id: str, kind: str):
+def _sibling_baseline_eval(job, *, model_id: str, kind: str, cell, matrix, params):
     """Reuse a group-mate's baseline EvalRun when it scores the same target.
 
     Wizard multi-model launches share ``group_id`` + eval set/dataset and one
@@ -534,7 +534,7 @@ def _sibling_baseline_eval(job, *, model_id: str, kind: str):
     gid = getattr(job, "group_id", None)
     if not gid or not model_id or not job.eval_dataset_id or not job.eval_set_id:
         return None
-    return (
+    candidates = (
         FinetuningJobEval.objects.filter(
             job__group_id=gid,
             job__eval_dataset_id=job.eval_dataset_id,
@@ -545,6 +545,9 @@ def _sibling_baseline_eval(job, *, model_id: str, kind: str):
             eval_run_id__isnull=False,
             eval_run__max_items=0,
             eval_run__sampling=1.0,
+            eval_run__cell=cell,
+            eval_run__matrix=matrix,
+            eval_run__judge_model=job.eval_judge_model,
         )
         .exclude(job_id=job.id)
         .exclude(
@@ -556,8 +559,14 @@ def _sibling_baseline_eval(job, *, model_id: str, kind: str):
         )
         .select_related("eval_run")
         .order_by("created_at")
-        .first()
     )
+    for candidate in candidates:
+        effective = {
+            key: value for key, value in (candidate.eval_run.params or {}).items() if key != "label"
+        }
+        if effective == params:
+            return candidate
+    return None
 
 
 def _attach_shared_baseline(job, shared):
@@ -818,11 +827,6 @@ def _launch_eval(
                 model_id=model_id,
                 error_message="The eval set has no enabled eval matrix rows.",
             )
-        if kind in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.COMPARATOR):
-            shared = _sibling_baseline_eval(job, model_id=model_id, kind=kind)
-            if shared is not None:
-                return _attach_shared_baseline(job, shared)
-
         from overbae.services.datasets import use as dataset_use
 
         # Same pin the eval-run API applies: generate scoring reads ``run.cell``.
@@ -850,6 +854,12 @@ def _launch_eval(
             if job.capability_id
             else {}
         )
+        if kind in (FinetuningJobEval.Kind.BASELINE, FinetuningJobEval.Kind.COMPARATOR):
+            shared = _sibling_baseline_eval(
+                job, model_id=model_id, kind=kind, cell=cell, matrix=matrix, params=params
+            )
+            if shared is not None:
+                return _attach_shared_baseline(job, shared)
         params["label"] = label[:255]
         try:
             run = runs.create_run(
