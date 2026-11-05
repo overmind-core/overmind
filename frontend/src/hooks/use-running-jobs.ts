@@ -101,7 +101,8 @@ export function useRunningJobs(projectId: string | undefined) {
     }
 
     const completed = detectCompletedJobs(previouslyActive.current, current, latest);
-    previouslyActive.current = new Map(current.map((j) => [j.key, j]));
+    for (const job of current) previouslyActive.current.set(job.key, job);
+    for (const job of completed) previouslyActive.current.delete(job.key);
 
     if (completed.length === 0) return;
 

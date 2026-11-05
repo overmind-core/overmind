@@ -313,3 +313,37 @@ describe("detectCompletedJobs", () => {
     expect(completed).toHaveLength(0);
   });
 });
+
+it.each([
+  "finetuning",
+  "optimizer",
+  "eval",
+] as const)("does not infer %s completion from an absent list row", (kind) => {
+  const previous: RunningJobItem = {
+    id: "id",
+    key: "work",
+    kind,
+    startedAt: "",
+    status: "running",
+    title: "Work",
+  };
+  expect(detectCompletedJobs(new Map([[previous.key, previous]]), [], {})).toEqual([]);
+});
+
+it("does not declare a training group complete while a known member is absent", () => {
+  const previous: RunningJobItem = {
+    groupId: "g",
+    id: "one",
+    key: "ft:g",
+    kind: "finetuning",
+    memberIds: ["one", "two"],
+    startedAt: "",
+    status: "running",
+    title: "Work",
+  };
+  expect(
+    detectCompletedJobs(new Map([[previous.key, previous]]), [], {
+      finetuning: [{ groupId: "g", id: "one", status: "succeeded" }],
+    })
+  ).toEqual([]);
+});
