@@ -2360,6 +2360,8 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             if config.target_project_id
             else None,
             "lookback_days": config.lookback_days,
+            "backfill_from": config.backfill_from.isoformat() if config.backfill_from else None,
+            "backfill_to": config.backfill_to.isoformat() if config.backfill_to else None,
             "effective_from": config.effective_from.isoformat(),
         }
 

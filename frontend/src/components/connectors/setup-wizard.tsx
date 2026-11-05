@@ -164,13 +164,22 @@ function initialConfirmed(existing?: ConnectorCredential): ConfirmedSections {
   };
 }
 
-function initialState(
+export function initialState(
   projectId: string,
   existing?: ConnectorCredential,
   defaultName = ""
 ): WizardState {
   const cfg = existing?.activeConfig;
-  const range = lookbackFromExistingDays(cfg?.lookbackDays ?? 30);
+  const range =
+    cfg?.backfillFrom || cfg?.backfillTo
+      ? {
+          customTimeRange: {
+            gte: cfg.backfillFrom?.toISOString(),
+            lte: cfg.backfillTo?.toISOString(),
+          },
+          timeRange: "custom" as const,
+        }
+      : lookbackFromExistingDays(cfg ? cfg.lookbackDays : 30);
   return {
     apiKey: "",
     apiSecret: "",
