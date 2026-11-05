@@ -1,11 +1,12 @@
 // covers: console-logic
 import { describe, expect, it } from "vitest";
 
-import type { ConnectorShapeCandidate } from "@/openapi";
+import type { ConnectorCapabilityProposal, ConnectorShapeCandidate } from "@/openapi";
 import {
   ancestorsOfSelected,
   buildShapeTree,
   descendantNames,
+  mergeSuggestedAssignments,
   namesMatching,
 } from "./setup-wizard";
 
@@ -136,5 +137,20 @@ describe("namesMatching", () => {
 
   it("treats a blank query as unfiltered", () => {
     expect(namesMatching(tree, "   ")).toEqual(new Set());
+  });
+});
+
+it("keeps an explicit unmapped choice when discovery suggests it again", () => {
+  const assignments = { chosen: "existing", rejected: "" };
+  const proposals = Object.fromEntries(
+    ["rejected", "chosen", "new"].map((name) => [
+      name,
+      { capabilityId: "suggested" } as ConnectorCapabilityProposal,
+    ])
+  );
+  expect(mergeSuggestedAssignments(assignments, proposals)).toEqual({
+    chosen: "existing",
+    new: "suggested",
+    rejected: "",
   });
 });

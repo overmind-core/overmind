@@ -206,6 +206,18 @@ function initialState(
   };
 }
 
+export function mergeSuggestedAssignments(
+  assignments: Record<string, string>,
+  proposals: Record<string, ConnectorCapabilityProposal>
+): Record<string, string> {
+  const additions = Object.fromEntries(
+    Object.entries(proposals)
+      .filter(([key, proposal]) => !(key in assignments) && proposal.capabilityId)
+      .map(([key, proposal]) => [key, proposal.capabilityId!])
+  );
+  return Object.keys(additions).length ? { ...assignments, ...additions } : assignments;
+}
+
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "PATCH": {
@@ -505,15 +517,8 @@ export function ConnectorSetupWizard({
   useEffect(() => {
     const proposed = candidatesQuery.data?.proposals;
     if (!proposed || state.confirmed.capabilities) return;
-    const next = { ...state.assignments };
-    let added = false;
-    for (const [key, proposal] of Object.entries(proposed)) {
-      if (!next[key] && proposal.capabilityId) {
-        next[key] = proposal.capabilityId;
-        added = true;
-      }
-    }
-    if (added) dispatch({ patch: { assignments: next }, type: "PATCH" });
+    const next = mergeSuggestedAssignments(state.assignments, proposed);
+    if (next !== state.assignments) dispatch({ patch: { assignments: next }, type: "PATCH" });
   }, [candidatesQuery.data, state.assignments, state.confirmed.capabilities]);
 
   // Live preview count once credentials verify.
@@ -666,7 +671,7 @@ export function ConnectorSetupWizard({
 
       await api.connectorCredentials.connectorCredentialsCapabilityMappingUpdate({
         connectorCapabilityMappingWriteRequest: {
-          assignments: state.assignments,
+          assignments: Object.fromEntries(Object.entries(state.assignments).filter(([, id]) => id)),
           autoCreate: false,
           key: state.capabilityKey || null,
           names: state.capabilityNames,
@@ -1794,11 +1799,11 @@ function CapabilitiesBody({
                 <Select
                   onValueChange={(capabilityId) => {
                     const next = { ...assignments };
-                    if (capabilityId === "__none__") delete next[value];
+                    if (capabilityId === "__none__") next[value] = "";
                     else next[value] = capabilityId;
                     onChange({ assignments: next });
                   }}
-                  value={assignments[value] ?? "__none__"}
+                  value={assignments[value] || "__none__"}
                 >
                   <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="Unmapped" />
