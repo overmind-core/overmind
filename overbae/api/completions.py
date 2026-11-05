@@ -323,7 +323,7 @@ def _resolve_alias(request: Request, model_id: str) -> tuple[DeployedModel | Non
         )
 
     if deployed.inference_contract == "decision":
-        return Response(
+        return None, Response(
             {
                 "error": {
                     "message": "This model returns decision probabilities. Call POST /api/v1/systemone.",
