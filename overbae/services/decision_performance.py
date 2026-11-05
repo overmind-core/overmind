@@ -455,7 +455,7 @@ def advance(run_id):
                 if r.position > 0
                 and r.latency_ms is not None
                 and first_instance
-                and r.response.get("worker_instance") == first_instance
+                and (r.response or {}).get("worker_instance") == first_instance
             ]
             job = (
                 FinetuningJob.objects.filter(
@@ -471,7 +471,7 @@ def advance(run_id):
                 float(job.cost_usd) if job and job.cost_usd is not None else 0 if not job else None
             )
             compute = (
-                estimate_usage([r.response.get("compute_usage", {}) for r in requests])
+                estimate_usage([(r.response or {}).get("compute_usage", {}) for r in requests])
                 if native
                 else None
             )
@@ -503,7 +503,7 @@ def advance(run_id):
                     {
                         r.response["worker_instance"]
                         for r in valid
-                        if r.response.get("worker_instance")
+                        if (r.response or {}).get("worker_instance")
                     }
                 ),
                 "recorded_cost_usd": sum(r.usage.get("response_cost") or 0 for r in requests),
