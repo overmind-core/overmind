@@ -315,6 +315,37 @@ def test_dedicated_list_returns_the_latest_row_for_each_model():
     assert listed["model_id"] == f"dedicated/{first.model_id}"
 
 
+def test_failed_warmup_releases_the_remote_floor_before_becoming_terminal(fake_modal):
+    refresh_rates()
+    user = _user()
+    project = Project.objects.create(name="Failure cleanup")
+    deployed = _ready(project)
+    fake_modal.deploy(
+        "overmind-dedicated", "H100_vllm_dedicated.infer", lambda **kwargs: {"status": 503}
+    )
+    row = dedicated.start(deployed, user, gpu_type="H100")
+    dedicated.advance(str(row.pk))
+    dedicated.advance(str(row.pk))
+    row.refresh_from_db()
+    assert row.status == "shutting_down"
+    assert row.stopped_at is None
+    assert dedicated.due().filter(pk=row.pk).exists() is False  # Next observation is scheduled.
+    fake_modal.worker_stats = {"num_total_runners": 1}
+    dedicated.advance(str(row.pk))
+    row.refresh_from_db()
+    assert row.status == "shutting_down"
+    assert row.running_replicas == 1
+    assert any(
+        kind == "autoscaler" and kwargs.get("min_containers") == 0
+        for kind, _, _, kwargs in fake_modal.log
+    )
+    fake_modal.worker_stats = {"num_total_runners": 0}
+    dedicated.advance(str(row.pk))
+    row.refresh_from_db()
+    assert row.status == "failed"
+    assert row.stopped_at is not None
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.covers("work-once")
 def test_dedicated_request_holds_its_claim_while_the_provider_runs(fake_modal, scripted):
