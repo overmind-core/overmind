@@ -6,10 +6,17 @@ import { isExperimentLive } from "@/components/optimiser/experiment-status";
 export const useOptimizerExperimentsQuery = (projectId: string | undefined) =>
   useQuery({
     enabled: !!projectId,
-    queryFn: () =>
-      apiClient.optimizerExperiments.optimizerExperimentsList({
-        pageSize: 100,
-      }),
+    queryFn: async ({ signal }) => {
+      const results = [];
+      for (let page = 1; ; page++) {
+        const data = await apiClient.optimizerExperiments.optimizerExperimentsList(
+          { page, pageSize: 100, project: projectId },
+          { signal }
+        );
+        results.push(...data.results);
+        if (!data.next) return { ...data, next: null, previous: null, results };
+      }
+    },
     queryKey: ["optimizer-experiments", projectId],
     refetchInterval: (query) => {
       const rows = query.state.data?.results ?? [];
