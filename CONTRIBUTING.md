@@ -7,12 +7,12 @@ Thanks for helping build Overmind. This page covers the mechanics; `AGENTS.md` i
 Requirements: Docker, [uv](https://docs.astral.sh/uv/), [Bun](https://bun.sh/).
 
 ```bash
-cp .env.example .env      # fill in at minimum OPENROUTER_API_KEY
+cp .env.example .env      # set every required key listed in README.md
 docker compose up         # API, Console, Postgres, Redis, Celery workers
 make install-hooks        # pre-commit
 ```
 
-The Console runs at `http://localhost:3000` and the API at `http://localhost:8000`. The compose stack hot-reloads; you do not need separate dev servers.
+The Console runs at `http://localhost:5173` and the API at `http://localhost:8000`. The compose stack hot-reloads; you do not need separate dev servers.
 
 ## Before you push
 
