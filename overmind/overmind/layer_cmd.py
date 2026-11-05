@@ -6,7 +6,7 @@ import json
 import re
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -74,7 +74,7 @@ def _parse_iso(value: str, *, what: str) -> datetime:
     except ValueError as exc:
         raise LayerError(f"{what} must be an ISO timestamp or a duration like 7d.") from exc
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
 
 
@@ -252,7 +252,7 @@ def run_backtest(
     eval_set = capability.get("active_eval_set")
     if not eval_set:
         raise LayerError("The capability has no eval set.")
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     created = client.post(
         "/api/datasets/",
         {
@@ -324,7 +324,7 @@ def run_finetune(
     eval_set = capability.get("active_eval_set")
     if not eval_set:
         raise LayerError("The capability has no eval set.")
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     created = client.post(
         "/api/datasets/split/",
         {
@@ -402,7 +402,7 @@ def _common(
     if not project:
         raise LayerError("Missing project-id. Pass --project-id or add project-id to overmind.toml.")
     capability_id, slug = resolve_capability(config, capability)
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     start = parse_since(since, now=now)
     end = parse_until(until)
     if end is not None and end < start:

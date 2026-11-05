@@ -10,6 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
 DEFAULT_PATH = Path("overmind.toml")
 CREDENTIALS_PATH = Path(".overmind") / "credentials.toml"
 
@@ -277,8 +282,6 @@ def _metric_from_dict(raw: dict) -> EvalMetric:
 
 
 def _load_toml(path: Path) -> dict:
-    import tomllib
-
     with path.open("rb") as fh:
         return tomllib.load(fh)
 
