@@ -8,6 +8,8 @@ entries here cover the SDK surface.
 
 ### Fixed
 
+- Exclude freeform CLI arguments from analytics.
+
 - Restore SDK compatibility with Python 3.10.
 
 - Preserve tool calls in SDK chat responses.
