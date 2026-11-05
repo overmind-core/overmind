@@ -197,6 +197,9 @@ def advance(request_id):
         elif request.state == "queued" and request.payload.get("dedicated_id"):
             from overbae.services.dedicated import complete_request
 
+            # Persist the intent before HTTP. Its acknowledgement cannot be recovered
+            # from the Modal request store, so an expired owner must never replay it.
+            owned.update(state="submitting", claim_until=request.deadline, updated_at=now)
             try:
                 result = complete_request(request.payload)
                 result = {
@@ -219,9 +222,8 @@ def advance(request_id):
             except Exception:
                 logger.warning("Dedicated inference failed for %s", request.pk, exc_info=False)
                 changes = {
-                    "state": "failed",
-                    "error_code": "provider_failed",
-                    "completed_at": now,
+                    "state": "submission_unknown",
+                    "error_code": "acknowledgement_unknown",
                 }
         elif request.state == "queued":
             owned.update(state="submitting", updated_at=now)
@@ -232,6 +234,8 @@ def advance(request_id):
                 changes = {"remote_id": handle, "state": "running"}
             except Exception:
                 changes = {"state": "submission_unknown", "error_code": "acknowledgement_unknown"}
+        elif request.payload.get("dedicated_id") and not request.remote_id:
+            changes = {"state": "submission_unknown", "error_code": "acknowledgement_unknown"}
         elif not request.remote_id:
             handle = recover(request)
             changes = (
