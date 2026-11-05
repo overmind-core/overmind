@@ -95,10 +95,10 @@ def retry_due(plan, stage="final_external"):
     plan.save()
 
 
-def test_transport_interruption_recovers_only_missing_prediction_and_finishes(evaluation, scripted):
+def test_explicit_rate_limit_retries_only_rejected_prediction_and_finishes(evaluation, scripted):
     plan = evaluation
     provider = scripted("https://openrouter.ai/api/v1/systemone")
-    provider.fail(httpx.ReadTimeout("response lost")).reply(json_body=answer())
+    provider.reply(429).reply(json_body=answer())
     native_evaluation.advance(plan.pk, stage="final_external")
     plan.refresh_from_db()
     assert plan.state == "running"
@@ -118,13 +118,13 @@ def test_transport_interruption_recovers_only_missing_prediction_and_finishes(ev
     assert len(provider.calls) == 3
     assert plan.requests.filter(state="completed").count() == 2
     assert sorted(len(r.attempts) for r in plan.requests.all()) == [1, 2]
-    assert plan.results["costs"]["external"]["unknown_api_attempts"] == 1
+    assert plan.results["costs"]["external"]["unknown_api_attempts"] == 0
     assert plan.results["costs"]["external"]["recorded_evaluation_api_usd"] == pytest.approx(0.004)
 
 
 def test_exhausted_recovery_completes_with_missing_coverage(evaluation, scripted):
     plan = evaluation
-    provider = scripted("https://openrouter.ai/api/v1/systemone").fail(httpx.ReadTimeout("offline"))
+    provider = scripted("https://openrouter.ai/api/v1/systemone").reply(429)
     for _ in range(3):
         native_evaluation.advance(plan.pk, stage="final_external")
         retry_due(plan)
@@ -170,13 +170,13 @@ def test_partial_baseline_keeps_other_scores_and_only_pairs_available_rows(
     )
     plan.save()
     provider = scripted("https://openrouter.ai/api/v1/systemone")
-    provider.fail(httpx.ReadTimeout("offline"))
+    provider.reply(429)
     if baseline_success:
         provider.reply(json_body=answer())
     else:
-        provider.fail(httpx.ReadTimeout("offline"))
+        provider.reply(429)
     native_evaluation.advance(plan.pk, stage="final_external")
-    provider.fail(httpx.ReadTimeout("offline")).fail(httpx.ReadTimeout("offline"))
+    provider.reply(429).reply(429)
     for _ in range(2):
         retry_due(plan)
         native_evaluation.advance(plan.pk, stage="final_external")
@@ -195,7 +195,7 @@ def test_partial_baseline_keeps_other_scores_and_only_pairs_available_rows(
     assert len(provider.calls) == 8 - 2 * int(baseline_success)
 
 
-def test_saved_timeout_receipt_can_resume_without_repeating_successes(evaluation, scripted):
+def test_saved_timeout_receipt_resumes_other_inputs_without_replaying_unknown(evaluation, scripted):
     plan = evaluation
     source = native_evaluation.seal_suite(plan, "final")
     request = next(native_evaluation.records(source))
@@ -222,7 +222,8 @@ def test_saved_timeout_receipt_can_resume_without_repeating_successes(evaluation
     native_evaluation.advance(plan.pk, stage="final_external")
     plan.refresh_from_db()
     assert plan.calls["final_external"]["state"] == "completed"
-    assert len(provider.calls) == 2
+    assert plan.requests.filter(state="submission_unknown").count() == 1
+    assert len(provider.calls) == 1
     assert (
         plan.requests.get(input_sha256=input_digest(request["decision"])).attempts[0]["usage"][
             "response_cost"
@@ -388,7 +389,7 @@ def test_failed_input_does_not_skip_later_chunks(evaluation, scripted):
     counts = evaluation.results["completion"]["coverage"]["final"]["external"]
     assert counts["scored"] == 129
     assert counts["missing_predictions"] == 1
-    assert len(provider.calls) == 132
+    assert len(provider.calls) == 130
 
 
 def test_exhausted_native_preparation_does_not_submit_dependent_work(evaluation, fake_modal):
@@ -421,7 +422,7 @@ def test_partial_export_keeps_external_responses_not_yet_in_monitor(evaluation, 
 
 
 def test_paused_retry_does_not_restart(evaluation, scripted):
-    provider = scripted("https://openrouter.ai/api/v1/systemone").fail(httpx.ReadTimeout("offline"))
+    provider = scripted("https://openrouter.ai/api/v1/systemone").reply(429)
     native_evaluation.advance(evaluation.pk, stage="final_external")
     retry_due(evaluation)
     native_evaluation.pause(evaluation)
@@ -436,9 +437,7 @@ def test_retry_does_not_block_an_independent_participant(evaluation, scripted):
     )
     plan.save()
     provider = scripted("https://openrouter.ai/api/v1/systemone")
-    provider.fail(httpx.ReadTimeout("offline")).fail(httpx.ReadTimeout("offline")).reply(
-        json_body=answer()
-    )
+    provider.reply(429).reply(429).reply(json_body=answer())
     native_evaluation.advance(plan.pk, stage="final_external")
     native_evaluation.advance(plan.pk, stage="final_other")
     plan.refresh_from_db()
