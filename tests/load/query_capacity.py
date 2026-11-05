@@ -11,7 +11,7 @@ from overbae.services.datasets import land
 from tests.journeys.surfaces import McpSurface
 from tests.load.processes import ProcessAPI
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_cpu_heavy_queries_cannot_take_another_projects_sql_capacity(settings, tmp_path):
