@@ -18,6 +18,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from django.db.models import Q
 from django.utils.text import slugify
 
 from overbae.services.connectors.records import ObservationRecord
@@ -297,14 +298,6 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
     from overbae.models import Conversation, Span
 
     mapping = credential.capability_mapping or {}
-    assignments = mapping.get("assignments") or {}
-    if (
-        not assignments
-        and not mapping.get("auto_create")
-        and not mapping.get("fallback_capability_id")
-    ):
-        return 0
-
     cred_id = str(credential.id)
     project = credential.project
     qs = Span.objects.filter(
@@ -312,51 +305,23 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
         resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: cred_id},
     )
 
-    # Group by agent_key for bulk updates.
-    keys = (
-        qs.exclude(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}__isnull": True})
-        .values_list(f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}", flat=True)
-        .distinct()
-    )
-    # values_list on JSON key may not work on all backends the same way —
-    # fall back to a Python scan of distinct keys when needed.
-    distinct_keys: set[str] = set()
-    try:
-        for k in keys:
-            if k:
-                distinct_keys.add(str(k))
-    except Exception:
-        for attrs in qs.values_list("attributes", flat=True).iterator(chunk_size=500):
-            if isinstance(attrs, dict) and attrs.get(CONNECTOR_CAPABILITY_KEY_ATTR):
-                distinct_keys.add(str(attrs[CONNECTOR_CAPABILITY_KEY_ATTR]))
-
-    # Also include keys present in the new assignments (even if no spans yet).
-    distinct_keys |= set(assignments.keys())
-
+    distinct_keys = set(qs.values_list(f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}", flat=True))
     updated = 0
-    touched_trace_ids: set[str] = set()
     for agent_key in distinct_keys:
         capability = resolve_capability(agent_key, mapping, project)
         capability_id = capability.id if capability else None
-        matching = list(
-            qs.filter(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}": agent_key}).iterator(
-                chunk_size=200
+        if agent_key is None:
+            matching = qs.filter(
+                Q(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}__isnull": True})
+                | Q(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}": None})
             )
-        )
-        # JSON containment filter is more reliable across backends:
-        if not matching:
-            matching = [
-                s
-                for s in qs.iterator(chunk_size=500)
-                if (s.attributes or {}).get(CONNECTOR_CAPABILITY_KEY_ATTR) == agent_key
-            ]
+        else:
+            matching = qs.filter(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}": agent_key})
         to_update = []
         for span in matching:
             if span.capability_id != capability_id:
                 span.capability_id = capability_id
                 to_update.append(span)
-                if span.trace_id:
-                    touched_trace_ids.add(span.trace_id)
         if to_update:
             Span.objects.bulk_update(to_update, ["capability"])
             updated += len(to_update)
