@@ -79,6 +79,9 @@ class APITokenBackend(BaseAuthentication):
         if not token.user.is_active:
             raise exceptions.AuthenticationFailed("User inactive or deleted.")
 
+        if not token.is_account_scoped and not token.allowed_project_ids():
+            raise exceptions.AuthenticationFailed("The API key has no accessible project.")
+
         APIToken.objects.filter(pk=token.pk).update(last_used_at=timezone.now())
 
         return (token.user, token)
