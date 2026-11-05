@@ -183,3 +183,42 @@ def test_exhausted_judge_does_not_retry_without_known_extra_capacity(fake_llm, l
     assert outcome.parsed is None
     assert outcome.stats["error_kind"] == "output_limit"
     assert "output token limit" in funnel.failure_reason(outcome)
+
+
+def test_replay_preserves_text_and_executes_tools_from_the_same_message(fake_llm):
+    calls = [
+        {
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "lookup", "arguments": '{"id":1}'},
+        }
+    ]
+    replies = iter(
+        [{"content": "I will check the record.", "tool_calls": calls}, "The record is active."]
+    )
+    fake_llm.on(lambda r: r.model == "openai/gpt-4.1", lambda r: next(replies))
+    result = replay.run_capability(
+        input_messages=[{"role": "user", "content": "Check record 1"}],
+        tool_provider=replay.ReplayToolProvider(
+            recorded_calls=[{"name": "lookup", "arguments": {"id": 1}, "result": "active"}],
+            tool_defs=[
+                {
+                    "name": "lookup",
+                    "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}},
+                }
+            ],
+        ),
+        model="gpt-4.1",
+    )
+    sent = _sent(fake_llm, "openai/gpt-4.1")
+    assert len(sent) == 2
+    assistant = next(
+        message for message in sent[1].body["messages"] if message["role"] == "assistant"
+    )
+    assert assistant["content"] == "I will check the record."
+    assert assistant["tool_calls"][0]["id"] == "call-1"
+    assert any(
+        message["role"] == "tool" and "active" in message["content"]
+        for message in sent[1].body["messages"]
+    )
+    assert result.output_messages[-1]["content"] == "The record is active."
