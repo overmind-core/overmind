@@ -8,6 +8,8 @@ entries here cover the SDK surface.
 
 ### Fixed
 
+- Preserve tool calls in SDK chat responses.
+
 - Bind saved SDK credentials to their API endpoint.
 
 - `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
