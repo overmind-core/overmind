@@ -305,6 +305,7 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
     refetch,
   } = useDeployedModelsQuery({ capability: capabilityId, pageSize: 100, projectId });
   const models = deployed?.results ?? [];
+  const incumbentQuery = useDeployedModelQuery(capability.activeModel ?? undefined);
   const [modelSearch, setModelSearch] = useState("");
   const [modelStatus, setModelStatus] = useState("all");
   const filteredModels = useMemo(() => {
@@ -349,7 +350,7 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
       ? variables?.id
       : null;
   const liveId = capability.activeModel ?? null;
-  const live = models.find((m) => m.id === liveId) ?? null;
+  const live = incumbentQuery.data ?? models.find((m) => m.id === liveId) ?? null;
 
   return (
     <TooltipProvider>
@@ -486,7 +487,7 @@ export function ModelsTab({ capability, capabilityId, projectId }: ModelsTabProp
                   key={m.id}
                   model={m}
                   onSetLive={guard((model: DeployedModel) => {
-                    if (!pendingId) setLive(model, live);
+                    if (!pendingId && (!liveId || live)) setLive(model, live);
                   })}
                   projectId={projectId}
                 />

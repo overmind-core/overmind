@@ -10,7 +10,7 @@ import {
   SetActiveModelButton,
 } from "@/components/finetuning/set-active-model-button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDeployedModelsQuery } from "@/hooks/use-inference";
+import { useDeployedModelQuery, useDeployedModelsQuery } from "@/hooks/use-inference";
 import { useCapabilityDetailQuery } from "@/hooks/use-query";
 import type { DeployedModel, FinetuningJobList } from "@/openapi";
 
@@ -42,11 +42,13 @@ export function ModelLiveAction({
   });
 
   const capability = capabilityQuery.data;
+  const incumbentQuery = useDeployedModelQuery(capability?.activeModel ?? undefined);
   const models = deployedQuery.data?.results ?? [];
   const jobId = jobs[0]?.id;
   const candidate = model ?? (jobId ? models.find((m) => m.finetuningJobId === jobId) : undefined);
   // What the alias answers with today; null when it answers nothing.
-  const incumbent = models.find((m) => m.id === capability?.activeModel) ?? null;
+  const incumbent =
+    incumbentQuery.data ?? models.find((m) => m.id === capability?.activeModel) ?? null;
   const isLive = !!candidate && capability?.activeModel === candidate.id;
 
   const control = (() => {
@@ -79,7 +81,7 @@ export function ModelLiveAction({
       <span className="inline-flex items-center gap-2">
         {prompt}
         <SetActiveModelButton
-          activating={activationPending(capability)}
+          activating={activationPending(capability) || (!!capability?.activeModel && !incumbent)}
           candidate={candidate}
           capabilityId={capabilityId}
           incumbent={incumbent}
