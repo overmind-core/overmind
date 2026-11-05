@@ -568,6 +568,12 @@ class OverallComparisonSerializer(serializers.Serializer):
     status = serializers.CharField()
 
 
+class ComparisonCoverageSerializer(serializers.Serializer):
+    observed_rows = serializers.IntegerField()
+    baseline_scored = serializers.IntegerField()
+    candidate_scored = serializers.IntegerField()
+
+
 class EvalRunComparisonSerializer(serializers.Serializer):
     baseline_run_id = serializers.UUIDField()
     candidate_run_id = serializers.UUIDField()
@@ -575,6 +581,7 @@ class EvalRunComparisonSerializer(serializers.Serializer):
     candidate_label = serializers.CharField()
     overall = OverallComparisonSerializer()
     paired = serializers.IntegerField()
+    coverage = ComparisonCoverageSerializer(required=False)
     wins = serializers.IntegerField()
     losses = serializers.IntegerField()
     ties = serializers.IntegerField()

@@ -20,6 +20,13 @@ import {
     MetricComparisonToJSON,
     MetricComparisonToJSONTyped,
 } from './MetricComparison';
+import type { ComparisonCoverage } from './ComparisonCoverage';
+import {
+    ComparisonCoverageFromJSON,
+    ComparisonCoverageFromJSONTyped,
+    ComparisonCoverageToJSON,
+    ComparisonCoverageToJSONTyped,
+} from './ComparisonCoverage';
 import type { OverallComparison } from './OverallComparison';
 import {
     OverallComparisonFromJSON,
@@ -70,6 +77,12 @@ export interface EvalRunComparison {
      * @memberof EvalRunComparison
      */
     paired: number;
+    /**
+     *
+     * @type {ComparisonCoverage}
+     * @memberof EvalRunComparison
+     */
+    coverage?: ComparisonCoverage;
     /**
      *
      * @type {number}
@@ -136,6 +149,7 @@ export function EvalRunComparisonFromJSONTyped(json: any, ignoreDiscriminator: b
         'candidateLabel': json['candidate_label'],
         'overall': OverallComparisonFromJSON(json['overall']),
         'paired': json['paired'],
+        'coverage': json['coverage'] == null ? undefined : ComparisonCoverageFromJSON(json['coverage']),
         'wins': json['wins'],
         'losses': json['losses'],
         'ties': json['ties'],
@@ -161,6 +175,7 @@ export function EvalRunComparisonToJSONTyped(value?: EvalRunComparison | null, i
         'candidate_label': value['candidateLabel'],
         'overall': OverallComparisonToJSON(value['overall']),
         'paired': value['paired'],
+        'coverage': ComparisonCoverageToJSON(value['coverage']),
         'wins': value['wins'],
         'losses': value['losses'],
         'ties': value['ties'],

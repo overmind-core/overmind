@@ -49,8 +49,11 @@ def compare(baseline: EvalRun, candidate: EvalRun) -> dict:
     """Scores only rows both runs scored, so a row one run skipped never moves the delta."""
     base_rows, cand_rows = latest_scores(baseline), latest_scores(candidate)
     paired = sorted(set(base_rows) & set(cand_rows))
-    overall_base = [base_rows[k].score for k in paired if base_rows[k].score is not None]
-    overall_cand = [cand_rows[k].score for k in paired if cand_rows[k].score is not None]
+    scored_pairs = [
+        k for k in paired if base_rows[k].score is not None and cand_rows[k].score is not None
+    ]
+    overall_base = [base_rows[k].score for k in scored_pairs]
+    overall_cand = [cand_rows[k].score for k in scored_pairs]
 
     wins = losses = ties = 0
     for key in paired:
@@ -67,16 +70,15 @@ def compare(baseline: EvalRun, candidate: EvalRun) -> dict:
     names = {name for key in paired for name in (*base_rows[key].metrics, *cand_rows[key].metrics)}
     metrics = []
     for name in names:
-        b_vals = [
-            m["score"]
+        values = [
+            (
+                base_rows[k].metrics.get(name, {}).get("score"),
+                cand_rows[k].metrics.get(name, {}).get("score"),
+            )
             for k in paired
-            if (m := base_rows[k].metrics.get(name)) and m.get("score") is not None
         ]
-        c_vals = [
-            m["score"]
-            for k in paired
-            if (m := cand_rows[k].metrics.get(name)) and m.get("score") is not None
-        ]
+        b_vals = [b for b, c in values if b is not None and c is not None]
+        c_vals = [c for b, c in values if b is not None and c is not None]
         b_mean = mean(b_vals) if b_vals else None
         c_mean = mean(c_vals) if c_vals else None
         delta, status = classify(b_mean, c_mean)
@@ -105,7 +107,12 @@ def compare(baseline: EvalRun, candidate: EvalRun) -> dict:
             "delta": delta,
             "status": status,
         },
-        "paired": len(paired),
+        "paired": len(scored_pairs),
+        "coverage": {
+            "observed_rows": len(set(base_rows) | set(cand_rows)),
+            "baseline_scored": sum(row.score is not None for row in base_rows.values()),
+            "candidate_scored": sum(row.score is not None for row in cand_rows.values()),
+        },
         "wins": wins,
         "losses": losses,
         "ties": ties,

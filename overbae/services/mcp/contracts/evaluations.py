@@ -315,6 +315,12 @@ class OverallComparisonContract(MCPModel):
     status: ComparisonStatus
 
 
+class ComparisonCoverageContract(MCPModel):
+    observed_rows: int = Field(ge=0)
+    baseline_scored: int = Field(ge=0)
+    candidate_scored: int = Field(ge=0)
+
+
 class CompareEvaluationsOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     baseline_run_id: str
@@ -323,6 +329,7 @@ class CompareEvaluationsOutput(MCPModel):
     candidate_label: str
     overall: OverallComparisonContract
     paired: int = Field(ge=0)
+    coverage: ComparisonCoverageContract
     wins: int = Field(ge=0)
     losses: int = Field(ge=0)
     ties: int = Field(ge=0)
