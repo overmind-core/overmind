@@ -80,6 +80,7 @@ def _generation_env():
         lstrip_blocks=True,
     )
     env.globals["raise_exception"] = _raise
+    env.globals["strftime_now"] = lambda pattern: "2026-11-05"
     return env
 
 
@@ -192,3 +193,28 @@ def test_unknown_template_is_left_alone() -> None:
     tok = _Tok("{{ messages }}")
     assert patch_known_training_template(tok) is False
     assert tok.chat_template == "{{ messages }}"
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_gpt_oss_never_silently_drops_parallel_tool_calls(count):
+    template = _generation_env().from_string(
+        (_ASSETS / "gpt_oss_templates/gpt_oss_unsloth_training.jinja").read_text()
+    )
+    messages = [
+        {"role": "user", "content": "Look up both"},
+        {
+            "role": "assistant",
+            "content": "Looking up",
+            "tool_calls": [
+                {"function": {"name": f"lookup_{i}", "arguments": {}}} for i in range(count)
+            ],
+        },
+    ]
+    if count > 1:
+        with pytest.raises(ValueError, match="parallel tool calls"):
+            template.render(messages=messages, tools=None, add_generation_prompt=False)
+    else:
+        rendered = template.render(messages=messages, tools=None, add_generation_prompt=False)
+        assert "Looking up" in rendered
+        if count:
+            assert "functions.lookup_0" in rendered
