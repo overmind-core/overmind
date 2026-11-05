@@ -1,8 +1,10 @@
 import pytest
-from factories import make_connector, make_project, make_span, make_user
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from factories import make_connector, make_project, make_span, make_user, member_client
 
 from overbae.management.commands.seed_demo import SLUG, reset_demo_billing
-from overbae.models import BillingTelemetry, Capability
+from overbae.models import BillingTelemetry, Capability, Cell, Dataset
 from overbae.services.connectors.capabilities import relabel_connector_capabilities
 from overbae.services.connectors.schema import (
     CONNECTOR_CAPABILITY_KEY_ATTR,
@@ -55,3 +57,39 @@ def test_relabel_clears_removed_assignments_and_handles_missing_agent_keys():
         )
     assert relabel_connector_capabilities(credential) == 3
     assert not project.spans.filter(capability__isnull=False).exists()
+
+
+@pytest.mark.covers("capacity")
+def test_capability_list_dataset_queries_stay_bounded_as_the_page_grows():
+    project = make_project()
+    client = member_client(project)
+
+    def add(index):
+        capability = Capability.objects.create(
+            project=project, name=f"Agent {index}", slug=f"agent-{index}"
+        )
+        dataset = Dataset.objects.create(project=project, capability=capability, name="Evaluation")
+        Cell.objects.create(
+            dataset=dataset,
+            position=0,
+            title="Ready",
+            state="ok",
+            rows=7,
+            intent_report={"eval": {"has_reference": True}},
+        )
+
+    add(0)
+    with CaptureQueriesContext(connection) as small:
+        response = client.get("/api/capabilities/", {"project": str(project.pk)})
+        assert response.status_code == 200, response.data
+    for index in range(1, 12):
+        add(index)
+    with CaptureQueriesContext(connection) as large:
+        response = client.get("/api/capabilities/", {"project": str(project.pk)})
+        assert response.status_code == 200, response.data
+    assert len(large) <= len(small)
+    assert len(response.data["results"]) == 12
+    assert all(
+        row["dataset_size"] == 7 and row["dataset_has_expected_output"]
+        for row in response.data["results"]
+    )

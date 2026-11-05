@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Manager, Max, Q
+from django.db.models import Count, Manager, Max, Prefetch, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -23,6 +23,7 @@ from overbae.models import (
     APIToken,
     BillingTelemetry,
     Capability,
+    Cell,
     ConnectorCredential,
     ConnectorSyncRun,
     Conversation,
@@ -389,15 +390,43 @@ def _validate_project_ownership(serializer_instance, value):
     return value
 
 
-def _capability_product(capability):
-    """The newest active cell among the datasets bound to the capability."""
-    from overbae.models import Dataset  # noqa: PLC0415
+def capability_products(queryset):
+    datasets = (
+        Dataset.objects.select_related("active")
+        .prefetch_related(
+            Prefetch(
+                "cells",
+                queryset=Cell.objects.filter(state=Cell.State.OK).order_by("-position")[:1],
+                to_attr="latest_ok_cells",
+            )
+        )
+        .order_by("-updated_at")[:5]
+    )
+    return queryset.prefetch_related(
+        Prefetch("datasets", queryset=datasets, to_attr="product_datasets")
+    )
 
-    for dataset in Dataset.objects.filter(capability=capability).order_by("-updated_at")[:5]:
-        cell = dataset.active_cell
+
+def _capability_product(capability):
+    if hasattr(capability, "_product_cell"):
+        return capability._product_cell
+    datasets = getattr(capability, "product_datasets", None)
+    if datasets is None:
+        datasets = (
+            capability_products(Capability.objects.filter(pk=capability.pk)).get().product_datasets
+        )
+    capability._product_cell = None
+    for dataset in datasets:
+        active = dataset.active
+        cell = (
+            active
+            if active and active.dataset_id == dataset.pk and active.state == Cell.State.OK
+            else next(iter(dataset.latest_ok_cells), None)
+        )
         if cell is not None:
-            return cell
-    return None
+            capability._product_cell = cell
+            break
+    return capability._product_cell
 
 
 def _capability_live_dataset_size(capability) -> int:
