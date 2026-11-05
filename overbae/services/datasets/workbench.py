@@ -831,6 +831,9 @@ def external_rows(records):
 
 
 def cancel(dataset):
+    if operations.cancel(dataset.pk, only_landing=True) is not None:
+        events.publish(dataset.pk, {"type": "dataset_changed"})
+        return 0
     with transaction.atomic():
         Dataset.objects.select_for_update().get(pk=dataset.pk)
         changed = dataset.pipeline_runs.filter(state__in=["queued", "running"]).update(
@@ -840,8 +843,6 @@ def cancel(dataset):
             Dataset.objects.filter(pk=dataset.pk).update(
                 state=Dataset.State.IDLE, updated_at=timezone.now()
             )
-        elif Dataset.objects.filter(pk=dataset.pk, state=Dataset.State.LANDING).exists():
-            operations.cancel(dataset.pk)
         transaction.on_commit(lambda: events.publish(dataset.pk, {"type": "dataset_changed"}))
     return changed
 
