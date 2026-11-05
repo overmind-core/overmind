@@ -32,24 +32,29 @@ def working_changes(root):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Qualify training and workshop changes without live services or GPU calls."
+        description="Qualify training and workshop changes with local PostgreSQL and network fakes; no live provider or GPU calls."
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "DJANGO_SETTINGS_MODULE": "tests.settings", "UV_NO_SYNC": "1"}
+    env = {
+        **os.environ,
+        "DJANGO_SETTINGS_MODULE": "tests.settings",
+        "UV_NO_SYNC": "1",
+        "PYTHONPATH": str(root),
+    }
     checks = [
         (
             "backend",
             root,
             [sys.executable, "-m", "pytest", "tests/", "-q", "-ra", "--no-cov", "--tb=short"],
         ),
-        ("backend_lint", root, [str(root / ".venv/bin/ruff"), "check", "."]),
+        ("backend_lint", root, [str(root / ".venv/bin/ruff"), "check", "--no-fix", "."]),
         ("backend_format", root, [str(root / ".venv/bin/ruff"), "format", "--check", "."]),
         ("frontend", root / "frontend", ["bun", "run", "test"]),
-        ("frontend_lint", root / "frontend", ["bun", "run", "check"]),
+        ("frontend_lint", root / "frontend", ["bun", "run", "lint"]),
         ("build", root / "frontend", ["bun", "run", "build"]),
         (
             "sdk",
@@ -62,17 +67,20 @@ def main():
                 "-m",
                 "pytest",
                 "tests/",
-                "--ignore=tests/test_spans.py",
                 "-q",
                 "-ra",
             ],
         ),
-        ("sdk_lint", root / "overmind", ["uv", "run", "--no-sync", "ruff", "check"]),
+        ("sdk_lint", root / "overmind", ["uv", "run", "--no-sync", "ruff", "check", "--no-fix"]),
         ("sdk_format", root / "overmind", ["uv", "run", "--no-sync", "ruff", "format", "--check"]),
         ("types", root / "frontend", ["bun", "run", "typecheck"]),
         ("design", root / "frontend", ["bun", "run", "check:all"]),
         ("schema", root, [sys.executable, "manage.py", "makemigrations", "--check", "--dry-run"]),
-        ("migration_execution", root, [sys.executable, "manage.py", "migrate", "--noinput"]),
+        (
+            "migration_execution",
+            root,
+            [sys.executable, "scripts/validate_migration_upgrade.py", "fresh"],
+        ),
     ]
     receipt = {
         "started_at": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -81,13 +89,13 @@ def main():
         ).strip(),
         "working_changes_at_start": working_changes(root),
         "environment": {
-            "database": "in-memory SQLite via tests.settings",
+            "database": "pytest PostgreSQL test database; migration replay in a disposable loopback PostgreSQL database",
             "python": sys.version,
             "root": str(root),
         },
         "limits": [
             "Provider calls are replaced by workflow fixtures; no live worker deployment or GPU qualification.",
-            "SQLite migration execution does not prove production PostgreSQL lock/concurrency behavior.",
+            "Fresh migration replay does not prove an upgrade from a deployed database; use validate_migration_upgrade.py with that baseline.",
             "Browser visual qualification and network transfer have separate receipts.",
         ],
         "checks": [],
