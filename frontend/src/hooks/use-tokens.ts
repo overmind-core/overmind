@@ -6,11 +6,16 @@ import { notify } from "@/lib/notify";
 export function useTokensList(projectId?: string) {
   return useQuery({
     enabled: !!projectId,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const pid = projectId ?? "";
-      const res = await apiClient.auth.authApiKeysList({ page: undefined, search: undefined });
+      const tokens = [];
+      for (let page = 1; ; page++) {
+        const res = await apiClient.auth.authApiKeysList({ page }, { signal });
+        tokens.push(...res.results);
+        if (!res.next) break;
+      }
       return {
-        tokens: res.results
+        tokens: tokens
           .filter(
             (k) =>
               k.project === pid ||
