@@ -4,7 +4,7 @@ import pytest
 from asgiref.sync import async_to_sync
 from factories import make_project
 
-from overbae.innermind import comparison, deterministic
+from overbae.innermind import comparison, deterministic, evidence
 from overbae.models import EvalRun, EvalScore, Span
 
 pytestmark = pytest.mark.covers("metrics-math")
@@ -41,3 +41,10 @@ def test_deterministic_nonfinite_scores_are_errors(value):
     )
     assert result["outcome"] == "error"
     assert result["score"] is None
+
+
+@pytest.mark.covers("capacity")
+def test_cyclic_ancestry_terminates_without_inventing_intent():
+    a = Span(span_id="a", parent_span_id="b", attributes={})
+    b = Span(span_id="b", parent_span_id="a", attributes={})
+    assert evidence.read_intent(a, {"a": a, "b": b}) == ""

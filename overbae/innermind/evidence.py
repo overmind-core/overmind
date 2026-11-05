@@ -231,7 +231,9 @@ def read_intent(span: Span, trace: dict[str, Span], fallback: str = "") -> str:
     """The nearest declared intent up the arrived ancestry, else the root's input if it
     has arrived, else ``fallback`` (the capability description)."""
     node = span
-    while True:
+    visited = set()
+    while node.span_id not in visited:
+        visited.add(node.span_id)
         intent = declared_intent(node)
         if intent:
             return intent
@@ -241,3 +243,4 @@ def read_intent(span: Span, trace: dict[str, Span], fallback: str = "") -> str:
         if parent is None:
             return fallback
         node = parent
+    return fallback
