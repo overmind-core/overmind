@@ -37,7 +37,7 @@ from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import BASE_MANIFEST, read_base_manifest
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
-IS_PROD = MODAL_ENVIRONMENT == "overmind-prod"
+IS_DEV = MODAL_ENVIRONMENT == "overmind-dev"
 
 MINUTES = 60  # seconds
 
@@ -345,9 +345,9 @@ class _BaseVLLMWorker:
         full_path = f"{WEIGHTS_MOUNT}/{self.model_path}"
 
         # /sleep and /wake_up exist only in dev mode, and a snapshot engine calls both.
-        # Dev mode also returns exception stacks to clients.
+        # Dev mode also returns exception stacks to clients. Staging matches production.
         needs_dev_routes = self.snapshot_weights or getattr(self, "snapshot_engine", False)
-        _os.environ["VLLM_SERVER_DEV_MODE"] = "1" if needs_dev_routes or not IS_PROD else "0"
+        _os.environ["VLLM_SERVER_DEV_MODE"] = "1" if needs_dev_routes or IS_DEV else "0"
 
         # A container's Volume mount is a point-in-time view, so weights RegisterAPIServer
         # commits after this container is scheduled stay invisible until reload(). Deploy
