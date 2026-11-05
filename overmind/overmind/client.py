@@ -54,7 +54,8 @@ DEFAULT_BASE_URL = "https://api.overmindlab.ai"
 @dataclass
 class CompletionMessage:
     role: str
-    content: str
+    content: str | None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -85,6 +86,7 @@ class ChatCompletion:
 class Delta:
     role: str | None = None
     content: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -136,7 +138,8 @@ def _parse_chat_completion(data: dict) -> ChatCompletion:
             index=c.get("index", i),
             message=CompletionMessage(
                 role=c["message"]["role"],
-                content=c["message"].get("content") or "",
+                content=c["message"].get("content"),
+                tool_calls=c["message"].get("tool_calls"),
             ),
             finish_reason=c.get("finish_reason"),
         )
@@ -169,6 +172,7 @@ def _parse_chunk(data: dict) -> ChatCompletionChunk:
             delta=Delta(
                 role=c.get("delta", {}).get("role"),
                 content=c.get("delta", {}).get("content"),
+                tool_calls=c.get("delta", {}).get("tool_calls"),
             ),
             finish_reason=c.get("finish_reason"),
         )
