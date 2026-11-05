@@ -52,10 +52,10 @@ class ClerkAuthentication(BaseAuthentication):
         clerk_user_id = request_state.payload["sub"]
 
         user = User.objects.filter(clerk_user_id=clerk_user_id).first()
-        if user:
-            return (user, request_state.payload)
-
-        user = self._provision_user(clerk_user_id)
+        if user is None:
+            user = self._provision_user(clerk_user_id)
+        if not user.is_active:
+            raise AuthenticationFailed("User inactive or deleted.")
         return (user, request_state.payload)
 
     def authenticate_header(self, request):
@@ -89,6 +89,8 @@ class ClerkAuthentication(BaseAuthentication):
         # case; an exact match would create a duplicate user.
         user = User.objects.filter(email__iexact=email).first()
         if user:
+            if not user.is_active:
+                raise AuthenticationFailed("User inactive or deleted.")
             user.clerk_user_id = clerk_user_id
             user.save(update_fields=["clerk_user_id"])
             claim_pending_invites(user)
@@ -111,5 +113,7 @@ class ClerkAuthentication(BaseAuthentication):
             )
             if user is None:
                 raise
+        if not user.is_active:
+            raise AuthenticationFailed("User inactive or deleted.")
         claim_pending_invites(user)
         return user

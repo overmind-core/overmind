@@ -198,3 +198,19 @@ def test_removed_membership_revokes_project_key_access():
     assert client.get(f"/api/projects/{project.pk}/").status_code == 200
     membership.delete()
     assert client.get(f"/api/projects/{project.pk}/").status_code == 401
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_clerk_rejects_inactive_accounts(clerk, linked):
+    user = make_user(is_active=False)
+    clerk_id = clerk.user(user.email)
+    if linked:
+        user.clerk_user_id = clerk_id
+        user.save(update_fields=["clerk_user_id"])
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {clerk.token(clerk_id)}")
+    assert client.get("/api/auth/me/").status_code == 401
+    user.refresh_from_db()
+    assert user.is_active is False
+    if not linked:
+        assert user.clerk_user_id != clerk_id
