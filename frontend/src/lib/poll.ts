@@ -1,11 +1,9 @@
-/** Stops the poll loop rather than hammering a failing endpoint; any later
- *  successful fetch (a refocus refetch, say) resets the count and resumes it. */
-const POLL_FAILURE_LIMIT = 3;
-
+/** A fetch exhausts its configured retries before entering error state.
+ * Refocus or an explicit refetch can recover it and resume polling. */
 export function backoffPolling(
-  query: { state: { fetchFailureCount: number } },
+  query: { state: { status: string } },
   interval: number | false | (() => number | false)
 ): number | false {
-  if (query.state.fetchFailureCount >= POLL_FAILURE_LIMIT) return false;
+  if (query.state.status === "error") return false;
   return typeof interval === "function" ? interval() : interval;
 }
