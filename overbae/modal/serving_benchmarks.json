@@ -521,6 +521,40 @@
         }
       }
     },
+    "LiquidAI/LFM3-1.7B": {
+      "lora_bf16": {
+        "L4": {
+          "ttft_ms_p50": null,
+          "tokens_per_second_p50": 67.4,
+          "measured_at": "2026-11-05T01:05:00Z",
+          "runtime": "sglang-dev-lfm3"
+        },
+        "L40S": {
+          "ttft_ms_p50": null,
+          "tokens_per_second_p50": 177.5,
+          "measured_at": "2026-11-05T01:05:00Z",
+          "runtime": "sglang-dev-lfm3"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": null,
+          "tokens_per_second_p50": 250.1,
+          "measured_at": "2026-11-05T01:05:00Z",
+          "runtime": "sglang-dev-lfm3"
+        },
+        "H100": {
+          "ttft_ms_p50": null,
+          "tokens_per_second_p50": 442.2,
+          "measured_at": "2026-11-05T01:05:00Z",
+          "runtime": "sglang-dev-lfm3"
+        },
+        "H200": {
+          "ttft_ms_p50": null,
+          "tokens_per_second_p50": 393.0,
+          "measured_at": "2026-11-05T01:05:00Z",
+          "runtime": "sglang-dev-lfm3"
+        }
+      }
+    },
     "LiquidAI/LFM2.5-1.2B-Instruct": {
       "merged_fp8": {
         "H200": {

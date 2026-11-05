@@ -1,6 +1,6 @@
 ---
 name: finetuning-model-onboarding
-description: Rules for adding a new model or model family to the finetuning pipeline, or changing finetuning behavior for an existing one — engine-agnostic customization via family hooks instead of if/else in the shared script, TRL-compatible chat templates ({% generation %} / pretok_trl), H100-before-H200 GPU probing, populating real_max_context_length/validated_context_length in models.json, and setting finetuning cost/pricing for a new model. Use when onboarding a model to Modal+Unsloth finetuning, adding a ModelFamily, pretok_trl falls back with a training-compatible chat template error, a model fails on its assigned GPU/context length, or pricing a new model's training cost.
+description: Rules for adding a new model or model family to the finetuning pipeline, or changing finetuning behavior for an existing one — engine-agnostic customization via family hooks instead of if/else in the shared script, TRL-compatible chat templates ({% generation %} / pretok_trl), H100-before-H200 GPU probing, populating real_max_context_length/validated_context_length in models.json, setting finetuning cost/pricing, and measuring dedicated inference (thinking off, vLLM vs SGLang, MTP/DFlash, GPU tokens/s). Use when onboarding a model to Modal+Unsloth finetuning, adding a ModelFamily, pretok_trl falls back with a training-compatible chat template error, a model fails on its assigned GPU/context length, pricing a new model's training cost, or choosing a dedicated serving engine.
 ---
 
 # Finetuning model onboarding
@@ -91,6 +91,16 @@ If the family has no existing icon mapping, it falls through to a generic simple
 1. If a dedicated icon should render (not the CDN fallback), import the `@lobehub/icons` component and add it to `PROVIDER_ICONS` in `frontend/src/components/model-provider-chip.tsx`.
 1. Extend `inferProviderFromModelId()` if the model id doesn't carry an explicit provider prefix.
 
+## 8. Dedicated inference is part of onboarding
+
+A catalog row that only trains is unfinished. Serving is measured on Modal `--env overmind-dev`. Independent GPU jobs run at the same time.
+
+1. **Thinking has to turn off.** `is_always_on_thinking_template` must be false for the live `hf_model_id` chat template. Then one completion with `chat_template_kwargs.enable_thinking=false` (dedicated serving sets this on every request). `content` has to be the answer. An open `<think>`, or an empty `content` whose answer sits only in `reasoning_content`, is the LFM2.5-2.6B failure: leave the row `disabled` and do not train it.
+1. **Engine.** First boot the pinned dedicated vLLM image and the pinned SGLang image on L4. If both refuse the architecture, try the vendor image and record which image actually loaded. A new serve stack is a new image key (`modal_shared/stacks.py`), not a pin edit on an existing key. `engine_for` gets the winner from measured tokens/s, not from the vendor's preference.
+1. **Speculative decoding.** Native MTP only when the checkpoint config has the MTP head (`mtp_for`). DFlash or DFlash2 only when a draft repo exists (`draft_for`). EAGLE with no draft is a refusal. No draft means the server stays on the base.
+1. **GPUs.** After one engine loads, repeat on every dedicated GPU that fits: L4, L40S, A100-80GB, H100, H200. Record tokens/s. A missing cell in `serving_benchmarks.json` stays unmeasured in the Console.
+1. **Order.** Catalog row first. Then a `MAX_STEPS=2` LoRA through Docker Compose (the Training API, not a side Modal app), which also checks pretok Path A. Then serverless completions of the base and of that adapter. Then dedicated speed on that same adapter (`lora_bf16`, and `merged_fp8` only when `fp8_supported` is true), including H100 when the weights fit in 80 GB. A longer training run can overlap the serving sweep. Context-length probes still follow §4 and are what flips `validated_context_length`.
+
 ## Checklist for onboarding a new model
 
 - [ ] Family resolves correctly (`modal_shared/modelfam/registry.py` pattern order) — add a `FamilySpec` only if genuinely new, otherwise reuse
@@ -105,4 +115,8 @@ If the family has no existing icon mapping, it falls through to a generic simple
 - [ ] `pricing.train_from_usd` + `pricing.run_from_usd_per_1m_output` set for the model library display
 - [ ] Frontend icon mapped if the family is new
 - [ ] Benchmark artifact (`overbae/services/benchmarks/data/benchmark_results.json`) refreshed by a maintainer once the model is in `models.json`, so its benchmark results feed model recommendations; the sync runs outside this repo
+- [ ] Thinking can be disabled: template gate plus one live completion whose `content` is the answer with `enable_thinking=false`
+- [ ] Dedicated engine chosen from a pinned-image bake-off (vLLM, SGLang, then a vendor image only if both refuse). `engine_for` matches the measured winner
+- [ ] Speculative decoding recorded: native MTP, DFlash, or DFlash2 when a head or draft exists; otherwise left off
 - [ ] `overbae/modal/serving_benchmarks.json` has a row per eligible GPU and serving shape (`lora_bf16`, `merged_fp8`, and `decision` where that contract exists), including H100 when the model fits in 80 GB. Leave a GPU out and the Console shows that speed as unmeasured. Nothing benches from the API process
+- [ ] Quick LoRA (`MAX_STEPS=2`) and a longer run went through Docker Compose, then serverless base and LoRA completions, then dedicated tokens/s on that adapter

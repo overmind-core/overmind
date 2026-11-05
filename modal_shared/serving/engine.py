@@ -30,7 +30,14 @@ _SGLANG = frozenset(
 )
 
 
+# Pinned vLLM and SGLang both refuse this architecture. The class suffix selects
+# dedicated_sglang_lfm3_image.
+_SGLANG_LFM3 = frozenset({"LiquidAI/LFM3-1.7B"})
+
+
 def engine_for(repo: str) -> str:
+    if repo in _SGLANG_LFM3:
+        return "sglang_lfm3"
     if repo in _SGLANG:
         return "sglang"
     return "vllm"

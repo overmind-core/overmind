@@ -120,6 +120,21 @@ MUSE_GLIMMER = FamilySpec(
     hooks_module="families.muse_glimmer",
 )
 
+LFM3 = FamilySpec(
+    key="lfm3",
+    patterns=("lfm3",),
+    train_image=TRAIN_U2026_10_7,
+    trust_remote_code=True,
+    # Attention out-proj is o_proj; conv out-proj stays out_proj. gate_proj is optional.
+    lora_target_modules="q_proj,k_proj,v_proj,o_proj,in_proj,out_proj,w1,w2,w3",
+    pretok_headers=(r"<\|im_start\|>(\w+)\n",),
+    tool_call_parser="qwen3_coder",
+    reasoning_parser="qwen3",
+    dtype_override="bfloat16",
+    notes="Tri-hybrid conv + sliding + full attention. Custom code. Thinking closes when enable_thinking is false.",
+    hooks_module="families.lfm3",
+)
+
 LFM2 = FamilySpec(
     key="lfm2",
     patterns=("lfm2", "liquidai/", "/lfm"),

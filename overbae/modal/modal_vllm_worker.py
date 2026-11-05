@@ -99,6 +99,7 @@ from modal_shared.images.serve import (  # noqa: E402
     SERVE_IMAGES,
     api_server_image,
     dedicated_sglang_image,
+    dedicated_sglang_lfm3_image,
     dedicated_vllm_image,
 )
 from modal_shared.stacks import GPU_TIER, WORKER_CLS, WORKER_MEMORY_MIB  # noqa: E402
@@ -393,7 +394,7 @@ class _BaseVLLMWorker:
         engine = getattr(self, "engine", "vllm")
         if adapter_rel:
             adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
-            if engine == "sglang":
+            if engine.startswith("sglang"):
                 from modal_shared.serving.merge import write_folded_checkpoint
 
                 folded = Path("/tmp/overmind-folded")
@@ -466,7 +467,7 @@ class _BaseVLLMWorker:
             f"tool_parser={spec.tool_call_parser} family={spec.key} "
             f"max_num_seqs={max_num_seqs} vram_gb={vram_gb})"
         )
-        if engine == "sglang":
+        if engine.startswith("sglang"):
             from modal_shared.serving.sglang import build_sglang_args
 
             # gpt-oss has no thinking-off switch. The parser keeps analysis out of content.
@@ -1192,6 +1193,21 @@ def register_dedicated_classes(target_app, owner) -> None:
             image_override=dedicated_sglang_image,
         )
         owner[sglang_name] = sglang_slot[sglang_name]
+        lfm3_name = f"{token}_sglang_lfm3_dedicated"
+        lfm3_slot = {}
+        _register_worker(
+            lfm3_name,
+            gpu_type,
+            "vllm",
+            target_app=target_app,
+            pin_resources=True,
+            snapshot=False,
+            engine="sglang_lfm3",
+            max_containers=8,
+            owner=lfm3_slot,
+            image_override=dedicated_sglang_lfm3_image,
+        )
+        owner[lfm3_name] = lfm3_slot[lfm3_name]
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
