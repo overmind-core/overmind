@@ -131,7 +131,8 @@ def test_native_performance_rejects_changed_model_and_runtime():
         )
 
 
-def test_native_measurement_collects_saved_calls_and_reports_observer_latency_unknown():
+@pytest.mark.parametrize("failed", [False, True])
+def test_native_measurement_collects_saved_calls_and_reports_observer_latency_unknown(failed):
 
     plan, _, decision = fixture()
     native_evaluation.seal_suite(plan, "final")
@@ -171,7 +172,10 @@ def test_native_measurement_collects_saved_calls_and_reports_observer_latency_un
         "worker_instance": "worker-1",
     }
     call = Mock(object_id="fc-existing")
-    call.get.side_effect = [TimeoutError("observer timeout"), reply]
+    call.get.side_effect = [
+        TimeoutError("observer timeout"),
+        RuntimeError("worker failed") if failed else reply,
+    ]
     worker = Mock()
     worker.predict.spawn.side_effect = AssertionError("never repeat a submitted call")
     with (
@@ -190,8 +194,8 @@ def test_native_measurement_collects_saved_calls_and_reports_observer_latency_un
     run.refresh_from_db()
     assert run.state == "completed"
     measurement = run.results["participants"]["base"]
-    assert measurement["valid_decisions"] == 1
-    assert measurement["unmeasured_latency_requests"] == 1
+    assert measurement["valid_decisions"] == (0 if failed else 1)
+    assert measurement["unmeasured_latency_requests"] == (0 if failed else 1)
     assert measurement["latency_ms"]["p50"] is None
     assert measurement["marginal_recorded_usd_per_valid_decision"] is None
     assert measurement["amortized_recorded_component_usd_per_decision"] is None
