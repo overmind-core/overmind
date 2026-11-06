@@ -5,7 +5,7 @@ from __future__ import annotations
 import modal
 
 from modal_shared.images import attach_modelfam, attach_serving_args
-from modal_shared.stacks import SERVE_VLLM
+from modal_shared.stacks import SERVE_SGLANG, SERVE_SGLANG_LFM3, SERVE_VLLM
 
 _SERVE_ENV = {
     # Container-local. Serving resolves every model by path — a merged checkpoint, or an adapter
@@ -52,13 +52,11 @@ def _from_vllm_openai(tag: str, *extra_pip: str, snapshot: bool = False) -> moda
     )
 
 
-# CUDA 13.0. Modal's host driver is 580 / CUDA 13.0. Do not pip-downgrade
-# transformers: 0.30.0 ships 5.16.1, and Gemma 4 head_dim (#49797) plus Muse
-# LoRA get_mm_mapping (#53513) both need this release.
-_VLLM_TAG = "v0.30.0"
+# Modal's host driver is 580 / CUDA 13.0. Shared and dedicated pools use this tag.
+# A snapshot captured on 0.30.0 does not restore here; the next boot captures a new one.
+_VLLM_TAG = "v0.33.0"
 vllm_image = _from_vllm_openai(_VLLM_TAG)
-# Dedicated pools only. The shared inference app stays on _VLLM_TAG.
-_DEDICATED_VLLM_TAG = "v0.33.0"
+_DEDICATED_VLLM_TAG = _VLLM_TAG
 dedicated_vllm_image = _from_vllm_openai(_DEDICATED_VLLM_TAG)
 # v0.5.23-cu130 lowered Qwen3.5-4B from 443 to 347 tok/s on H100.
 _DEDICATED_SGLANG_TAG = "v0.5.22"
@@ -79,6 +77,8 @@ dedicated_sglang_lfm3_image = attach_serving_args(
 
 SERVE_IMAGES: dict[str, modal.Image] = {
     SERVE_VLLM: vllm_image,
+    SERVE_SGLANG: dedicated_sglang_image,
+    SERVE_SGLANG_LFM3: dedicated_sglang_lfm3_image,
 }
 
 # The snapshot reader uses a version-specific pinned-buffer allocation site.

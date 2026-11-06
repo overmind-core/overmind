@@ -64,7 +64,9 @@ def test_catalog_unsloth_image_matches_family() -> None:
 
 def test_worker_cls_table() -> None:
     assert GPU_CLASS_MAP["L4"] == "L4_vllm"
-    assert SERVE_CLASS_MAP == {}
+    assert SERVE_CLASS_MAP[("L4", "sglang")] == "L4_sglang"
+    assert SERVE_CLASS_MAP[("L4", "sglang_lfm3")] == "L4_sglang_lfm3"
+    assert ("L4", "vllm") not in SERVE_CLASS_MAP
     assert worker_cls_name("H200") == "H200_vllm"
     shared = {gpu for gpu, image in WORKER_CLS if image == "vllm"}
     assert set(GPU_TIER) - shared == {"H100"}

@@ -379,6 +379,7 @@ def start_serving_snapshot(job, *, base: dict, rank: int) -> None:
     if not serves_as_adapter(job) or not isinstance(base, dict):
         return
     try:
+        from modal_shared.modelfam import serve_image_key
         from modal_shared.shared import base_pool_name
         from modal_shared.stacks import worker_cls_name
 
@@ -389,11 +390,12 @@ def start_serving_snapshot(job, *, base: dict, rank: int) -> None:
         gpu, _ = select_gpu(cfg, length)
         rel = str(base.get("base_model_path") or "").removeprefix("/weights/").lstrip("/")
         identity = str(base.get("base_identity") or "")
-        if not rel or not identity:
+        image = serve_image_key(job.base_model)
+        if not rel or not identity or image != "vllm":
             return
         modal.Cls.from_name(
             "overmind-inference",
-            worker_cls_name(gpu, "vllm", enable_lora=True),
+            worker_cls_name(gpu, image, enable_lora=True),
             environment_name=modal_environment(),
         )(
             model_path=rel,

@@ -114,7 +114,7 @@ MUSE_GLIMMER = FamilySpec(
     multimodal_id_tokens=("muse-glimmer", "muse_glimmer"),
     notes=(
         "Meta Muse Glimmer multimodal agentic; FastModel; LoRA-only; dedicated u2026_8_tf515 "
-        "train image. Serves on the shared vLLM image — v0.30.0 has the LoRA "
+        "train image. Serves on the shared vLLM image — v0.33.0 has the LoRA "
         "multimodal-mapping fix (vLLM #53513)."
     ),
     hooks_module="families.muse_glimmer",

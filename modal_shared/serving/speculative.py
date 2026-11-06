@@ -49,8 +49,22 @@ def mtp_for(repo: str) -> tuple[int, int, int] | None:
     return _MTP.get(repo)
 
 
-def draft_for(repo: str) -> tuple[str, int] | None:
-    return _DRAFTS.get(repo)
+# 15-token DFlash on this hybrid leaves 2.9 GiB of KV on an 80GB GPU, and the
+# configured 16384 context needs 3.35. H200 (141) and larger still take the draft.
+_DRAFT_MIN_VRAM_GB = {
+    "Qwen/Qwen3.5-27B": 141,
+    "unsloth/Qwen3.5-27B": 141,
+}
+
+
+def draft_for(repo: str, *, vram_gb: float | None = None) -> tuple[str, int] | None:
+    found = _DRAFTS.get(repo)
+    if found is None:
+        return None
+    floor = _DRAFT_MIN_VRAM_GB.get(repo)
+    if floor is not None and vram_gb is not None and vram_gb < floor:
+        return None
+    return found
 
 
 def draft_volume_path(mount: str, draft_repo: str) -> str:
