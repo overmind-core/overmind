@@ -214,21 +214,28 @@ def test_overwatch_slack_is_not_a_product_worker():
     )
 
 
-def test_new_producers_wait_for_healthy_landing_capacity():
+def test_services_roll_together_after_migrate():
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
     jobs = workflow["jobs"]
 
-    def prerequisites(name):
-        needs = jobs[name].get("needs", [])
-        needs = [needs] if isinstance(needs, str) else needs
-        return set(needs).union(*(prerequisites(n) for n in needs))
+    def needs(name):
+        value = jobs[name].get("needs", [])
+        return [value] if isinstance(value, str) else list(value)
 
-    assert "deploy-landing" in jobs, "Provisioned landing consumers need a deployment gate"
-    assert "migrate" in prerequisites("deploy-landing"), "New workers require the migrated schema"
-    assert "deploy-landing" in prerequisites("deploy-api"), "Publishers must follow ready consumers"
-    assert "deploy-landing" in prerequisites("deploy-workers")
+    assert needs("migrate") == ["build-and-push", "preflight"]
+    deploy_jobs = [
+        "deploy-sandbox",
+        "deploy-landing",
+        "deploy-control",
+        "deploy-traces",
+        "deploy-workers",
+        "deploy-beat",
+        "deploy-api",
+    ]
+    for name in deploy_jobs:
+        assert needs(name) == ["build-and-push", "migrate"]
+        assert any("deploy_ecs.py" in step.get("run", "") for step in jobs[name]["steps"])
     landing_steps = jobs["deploy-landing"]["steps"]
-    assert any("deploy_ecs.py" in step.get("run", "") for step in landing_steps)
     assert any(
         step.get("env", {}).get("SERVICE") == "celery-landing-worker" for step in landing_steps
     )
