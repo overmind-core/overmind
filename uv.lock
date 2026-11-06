@@ -368,7 +368,7 @@ requires-dist = [
     { name = "overmind", specifier = ">=0.1.97" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "pgvector", specifier = ">=0.4.2" },
-    { name = "posthog", specifier = ">=7.56.0" },
+    { name = "posthog", specifier = ">=7.84.2" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyarrow", specifier = ">=17" },
@@ -2919,7 +2919,7 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "7.56.0"
+version = "7.84.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -2927,9 +2927,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ba/c8/f4b196681c306527c1caf32806a75cb992035ede9728b0c920e8699b9ded/posthog-7.56.0.tar.gz", hash = "sha256:719749951faa2f034479aa5b43aa195d2e204bb3e666d2d0f660b06c9abb1883", size = 591272, upload-time = "2026-09-17T20:31:14.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/bc/cfe9298758f358e30940ca6c353f1073b384f322c6bda50493d910093628/posthog-7.84.2.tar.gz", hash = "sha256:48080116094c12423c50b2d916d15a000b584b0bd2595649d7caacdfbe41db51", size = 904946, upload-time = "2026-11-06T08:17:58.573Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/a5/6cae46f168efc86cc181ead915f426d7e1ba1497ca037659c04565804581/posthog-7.56.0-py3-none-any.whl", hash = "sha256:6f6e2be095e2952fec5691afcc0a92dd70b55dea0ea8212a67eafde20edbbfdd", size = 690954, upload-time = "2026-09-17T20:31:12.853Z" },
+    { url = "https://files.pythonhosted.org/packages/34/bb/36d1a6180a2ca8b09a6a0b654ab8b1cc54c489fa374b5c2fb162c1899059/posthog-7.84.2-py3-none-any.whl", hash = "sha256:a3765d4f3078bb3e1eba755885bb7b284353c8d02599cf906f4072c22a5759cc", size = 1047790, upload-time = "2026-11-06T08:17:56.326Z" },
 ]
 
 [[package]]

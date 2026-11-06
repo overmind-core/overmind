@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api-error";
+import { retryAuthLoad } from "@/lib/auth-load-recovery";
 import { isChunkLoadError } from "@/lib/chunk-error";
 import { errorMessage } from "@/lib/notify";
 
@@ -172,6 +173,10 @@ export function RouteNotFound() {
 }
 
 export function AuthenticationLoadError() {
+  useEffect(() => {
+    retryAuthLoad("script");
+  }, []);
+
   return (
     <ConnectionScene>
       <PageHeader className={connectionHeading} title="Sign in unavailable" />

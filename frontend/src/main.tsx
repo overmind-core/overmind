@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 
 import { ClerkFailed, ClerkLoaded, ClerkLoading, ClerkProvider } from "@clerk/clerk-react";
@@ -21,10 +21,12 @@ import "./analytics";
 import { config } from "./config";
 import { AuthProvider } from "./contexts/auth-context";
 import { getContext } from "./integrations/tanstack-query";
+import { installClerkChunkRecovery, markAuthLoaded } from "./lib/auth-load-recovery";
 import { installAutohideScrollbars } from "./lib/autohide-scrollbars";
 import { routeTree } from "./routeTree.gen";
 
 installAutohideScrollbars();
+if (config.clerkReady) installClerkChunkRecovery();
 
 export function getRouter() {
   const router = createTanStackRouter({
@@ -47,6 +49,11 @@ declare module "@tanstack/react-router" {
 
 const router = getRouter();
 
+function ClerkReady() {
+  useEffect(markAuthLoaded, []);
+  return null;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -61,6 +68,7 @@ function App() {
             <AuthenticationLoadError />
           </ClerkFailed>
           <ClerkLoaded>
+            <ClerkReady />
             <AuthRouter router={router} />
           </ClerkLoaded>
         </>
