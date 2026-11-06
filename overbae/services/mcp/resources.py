@@ -85,6 +85,7 @@ from overbae.services.mcp.contracts.instrumentation import MAX_INSTRUMENTATION_S
 from overbae.services.mcp.errors import MCPError, error_payload, internal_error
 from overbae.services.mcp.references import project_references, uuid_reference
 from overbae.services.model_activation import activation_progress
+from overbae.services.signal_insights import signal_insights
 from overbae.services.training_preparation import live_progress_for_job
 from overbae.services.training_record import run_record
 from sandbox.documents.languages import LANGUAGES
@@ -969,14 +970,28 @@ def _eval_run_resource(project, value: str, uri: str) -> dict:
     }
 
 
+INSIGHT_DAYS = 7
+
+
 def _signal_events_resource(project, uri: str) -> dict:
     events = list(
         SignalEvent.objects.filter(project=project).select_related("capability")[:_MAX_LIST]
     )
+    insights = signal_insights(SignalEvent.objects.filter(project=project), INSIGHT_DAYS)
     return {
         "uri": uri,
         "kind": "signal_events",
         "unseen": SignalEvent.objects.filter(project=project, seen_at__isnull=True).count(),
+        "insight_days": INSIGHT_DAYS,
+        "insights": [
+            {
+                **{key: value for key, value in insight.items() if key != "trace_ids"},
+                "capability": str(insight["capability"]) if insight["capability"] else None,
+                "latest_event": str(insight["latest_event"]),
+                "trace_ids": insight["trace_ids"][:20],
+            }
+            for insight in insights["insights"][:_MAX_LIST]
+        ],
         "events": [
             {
                 "id": str(event.id),
@@ -1836,7 +1851,7 @@ def resource_list() -> list[types.Resource]:
             name="signal-events",
             title="Signal events",
             uri="overmind://signal-events",
-            description="The project's newest signal events and its unseen count. Account connections must add ?project_id=ID.",
+            description="Ranked signal insights for the last 7 days (what is failing, where, its top causes and trend), the newest signal events and the unseen count. Account connections must add ?project_id=ID.",
             mimeType=JSON_MIME,
         ),
         types.Resource(

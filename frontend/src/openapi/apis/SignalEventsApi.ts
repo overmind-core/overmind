@@ -18,6 +18,7 @@ import type {
   PaginatedSignalEventList,
   SignalEventSeenRequest,
   SignalEventSeenResponse,
+  SignalInsights,
 } from '../models/index';
 import {
     PaginatedSignalEventListFromJSON,
@@ -26,7 +27,21 @@ import {
     SignalEventSeenRequestToJSON,
     SignalEventSeenResponseFromJSON,
     SignalEventSeenResponseToJSON,
+    SignalInsightsFromJSON,
+    SignalInsightsToJSON,
 } from '../models/index';
+
+export interface SignalEventsInsightsRetrieveRequest {
+    project: string;
+    capability?: string;
+    conversation?: string;
+    days?: number;
+    ordering?: string;
+    search?: string;
+    signalType?: string;
+    traceId?: string;
+    unseen?: boolean;
+}
 
 export interface SignalEventsListRequest {
     capability?: string;
@@ -49,6 +64,98 @@ export interface SignalEventsMarkSeenCreateRequest {
  *
  */
 export class SignalEventsApi extends runtime.BaseAPI {
+
+    /**
+     * Signal insights: events grouped by signal and capability, ranked
+     */
+    async signalEventsInsightsRetrieveRaw(requestParameters: SignalEventsInsightsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SignalInsights>> {
+        if (requestParameters['project'] == null) {
+            throw new runtime.RequiredError(
+                'project',
+                'Required parameter "project" was null or undefined when calling signalEventsInsightsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['capability'] != null) {
+            queryParameters['capability'] = requestParameters['capability'];
+        }
+
+        if (requestParameters['conversation'] != null) {
+            queryParameters['conversation'] = requestParameters['conversation'];
+        }
+
+        if (requestParameters['days'] != null) {
+            queryParameters['days'] = requestParameters['days'];
+        }
+
+        if (requestParameters['ordering'] != null) {
+            queryParameters['ordering'] = requestParameters['ordering'];
+        }
+
+        if (requestParameters['project'] != null) {
+            queryParameters['project'] = requestParameters['project'];
+        }
+
+        if (requestParameters['search'] != null) {
+            queryParameters['search'] = requestParameters['search'];
+        }
+
+        if (requestParameters['signalType'] != null) {
+            queryParameters['signal_type'] = requestParameters['signalType'];
+        }
+
+        if (requestParameters['traceId'] != null) {
+            queryParameters['trace_id'] = requestParameters['traceId'];
+        }
+
+        if (requestParameters['unseen'] != null) {
+            queryParameters['unseen'] = requestParameters['unseen'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/signal-events/insights/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SignalInsightsFromJSON(jsonValue));
+    }
+
+    /**
+     * Signal insights: events grouped by signal and capability, ranked
+     */
+    async signalEventsInsightsRetrieve(requestParameters: SignalEventsInsightsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SignalInsights> {
+        const response = await this.signalEventsInsightsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * List signal events, newest first
