@@ -247,3 +247,14 @@ def test_saved_key_cannot_follow_an_endpoint_override(tmp_path, monkeypatch, ove
         "explicit-other-key",
         "https://different.example",
     )
+
+
+@pytest.mark.covers("authentication")
+def test_project_key_reference_resolves_before_the_account_key(monkeypatch):
+    cfg = Config(api_key="env:PROJECT_KEY", base_url="https://api.example", project_id="project")
+    monkeypatch.setenv("OVERMIND_API_KEY", "account-key")
+    monkeypatch.delenv("OVERMIND_API_URL", raising=False)
+    monkeypatch.setenv("PROJECT_KEY", "project-key")
+    assert resolve_api_credentials("", "", cfg) == ("project-key", "https://api.example")
+    monkeypatch.delenv("PROJECT_KEY")
+    assert resolve_api_credentials("", "", cfg) == ("account-key", "https://api.example")

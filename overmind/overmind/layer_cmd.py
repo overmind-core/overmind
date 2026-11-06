@@ -379,7 +379,10 @@ def run_finetune(
 
 def _client(api_key: str, api_url: str, path) -> tuple[Client, Config]:
     config = load(path) if path.exists() else Config()
-    key, url = resolve_api_credentials(api_key, api_url, config)
+    try:
+        key, url = resolve_api_credentials(api_key, api_url, config)
+    except ValueError as exc:
+        raise LayerError(str(exc)) from exc
     if not key:
         raise LayerError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
     session = requests.Session()

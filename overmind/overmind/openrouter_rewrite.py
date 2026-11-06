@@ -142,7 +142,7 @@ def _has_import(tree: ast.AST, module: str, name: str) -> bool:
         isinstance(node, ast.ImportFrom)
         and node.module == module
         and any(a.name == name and a.asname in (None, name) for a in node.names)
-        for node in tree.body
+        for node in ast.walk(tree)
     )
 
 

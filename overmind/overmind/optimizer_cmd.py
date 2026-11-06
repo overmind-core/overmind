@@ -52,7 +52,11 @@ def _load_config() -> config_mod.Config:
 
 
 def _make_api(cfg: config_mod.Config) -> OptimizerAPI:
-    api_key, base_url = resolve_api_credentials("", "", cfg)
+    try:
+        api_key, base_url = resolve_api_credentials("", "", cfg)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
     if not api_key:
         console.print("[red]No API key. Run `overmind sync` or set OVERMIND_API_KEY.[/]")
         raise typer.Exit(1)

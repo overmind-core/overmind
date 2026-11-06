@@ -155,18 +155,17 @@ class Config:
         self.capabilities = caps
 
 
+def _expand_key(value: str) -> str:
+    return os.environ.get(value[4:], "") if value.startswith("env:") else value
+
+
 def resolve_api_key(cli_key: str, config: Config | None) -> str:
     if cli_key:
         return cli_key
-    if config and config.project_id and config.api_key:
-        return config.api_key
-    env_key = os.environ.get("OVERMIND_API_KEY", "")
-    if env_key:
-        return env_key
-    toml_key = (config.api_key if config else "") or ""
-    if toml_key.startswith("env:"):
-        toml_key = os.environ.get(toml_key[4:], "")
-    return toml_key
+    toml_key = _expand_key(config.api_key if config else "")
+    if config and config.project_id and toml_key:
+        return toml_key
+    return os.environ.get("OVERMIND_API_KEY", "") or toml_key
 
 
 def resolve_api_url(cli_url: str, config: Config | None) -> str:
@@ -183,9 +182,7 @@ def resolve_api_url(cli_url: str, config: Config | None) -> str:
 def resolve_api_credentials(api_key: str, api_url: str, config: Config | None) -> tuple[str, str]:
     key = resolve_api_key(api_key, config)
     url = resolve_api_url(api_url, config)
-    bound_key = config.api_key if config else ""
-    if bound_key.startswith("env:"):
-        bound_key = os.environ.get(bound_key[4:], "")
+    bound_key = _expand_key(config.api_key if config else "")
     if bound_key and key == bound_key and url != config.base_url.rstrip("/"):
         raise ValueError(
             "Repository credentials belong to a different API. "

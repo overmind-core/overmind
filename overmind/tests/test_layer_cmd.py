@@ -296,3 +296,16 @@ def test_cli_requires_models():
     result = CliRunner().invoke(app, ["backtest"])
     assert result.exit_code == 1
     assert "models" in result.output.lower()
+
+
+def test_cli_reports_a_saved_key_meeting_another_endpoint(tmp_path, monkeypatch):
+    from overmind.config import dump
+
+    monkeypatch.chdir(tmp_path)
+    dump(Config(api_key="saved-key", base_url="https://api.example", project_id="p"), tmp_path / "overmind.toml")
+    monkeypatch.setenv("OVERMIND_API_URL", "https://other.example")
+    monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    result = CliRunner().invoke(app, ["backtest", "--models", "openai/gpt-5-mini", "--capability", "cap"])
+    assert result.exit_code == 1
+    assert "different API" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
