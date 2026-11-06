@@ -19,8 +19,13 @@ const client = enabled
       .catch(() => undefined)
   : undefined;
 
+// Browsers mask cross-origin errors as "Script error.", ResizeObserver loop notices are benign,
+// and wallet extensions inject scripts that throw on window.ethereum. None has an actionable frame.
+const IGNORED_WINDOW_ERRORS = [/^Script error\.?$/, /ResizeObserver loop/, /window\.ethereum/];
+
 if (enabled && typeof window !== "undefined") {
   window.addEventListener("error", (event) => {
+    if (IGNORED_WINDOW_ERRORS.some((pattern) => pattern.test(String(event.message)))) return;
     void client?.then((posthog) =>
       posthog?.captureException(event.error ?? new Error(String(event.message)))
     );
