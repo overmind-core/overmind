@@ -11,6 +11,7 @@ import {
   completionToastCopy,
   detectCompletedJobs,
   type RunningJobItem,
+  rememberActive,
 } from "@/lib/running-jobs";
 import {
   clearUnseenCompletions,
@@ -101,8 +102,7 @@ export function useRunningJobs(projectId: string | undefined) {
     }
 
     const completed = detectCompletedJobs(previouslyActive.current, current, latest);
-    for (const job of current) previouslyActive.current.set(job.key, job);
-    for (const job of completed) previouslyActive.current.delete(job.key);
+    rememberActive(previouslyActive.current, current, completed);
 
     if (completed.length === 0) return;
 

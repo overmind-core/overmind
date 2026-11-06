@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 
-import { keepPreviousData, useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { EntityRef } from "@/components/entity-ref";
@@ -127,9 +127,16 @@ function Payload({ title, value }: { title: string; value: unknown }) {
 
 export function GeneratedRunResults({ runs }: { runs: EvalRun[] }) {
   const datapointsRef = useRef<HTMLElement>(null);
+  const queryClient = useQueryClient();
   const queries = useQueries({
     queries: runs.map((run) => ({
-      placeholderData: keepPreviousData,
+      // The key changes when a run finishes; show the rows polled while it ran.
+      placeholderData: () =>
+        queryClient.getQueryData<Awaited<ReturnType<typeof fetchEvalRunRows>>>([
+          "eval-run-rows",
+          run.id,
+          true,
+        ]),
       queryFn: ({ signal }: { signal: AbortSignal }) => fetchEvalRunRows(run.id, signal),
       queryKey: ["eval-run-rows", run.id, isActiveRunStatus(run.status)],
       refetchInterval: (q: { state: { status: string; data?: { count: number } } }) =>

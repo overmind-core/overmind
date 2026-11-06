@@ -8,14 +8,15 @@ export function useTokensList(projectId?: string) {
     enabled: !!projectId,
     queryFn: async ({ signal }) => {
       const pid = projectId ?? "";
-      const tokens = [];
+      // A key created mid-walk shifts later pages, so one key can arrive twice.
+      const byId = new Map();
       for (let page = 1; ; page++) {
         const res = await apiClient.auth.authApiKeysList({ page }, { signal });
-        tokens.push(...res.results);
+        for (const key of res.results) byId.set(key.id, key);
         if (!res.next) break;
       }
       return {
-        tokens: tokens
+        tokens: [...byId.values()]
           .filter(
             (k) =>
               k.project === pid ||

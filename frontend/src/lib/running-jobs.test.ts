@@ -6,6 +6,7 @@ import {
   completionToastCopy,
   detectCompletedJobs,
   type RunningJobItem,
+  rememberActive,
 } from "./running-jobs";
 
 describe("buildRunningJobs", () => {
@@ -346,4 +347,23 @@ it("does not declare a training group complete while a known member is absent", 
       finetuning: [{ groupId: "g", id: "one", status: "succeeded" }],
     })
   ).toEqual([]);
+});
+
+it("keeps a group member that left the polled page", () => {
+  const job = (memberIds: string[]) =>
+    ({
+      id: "f1",
+      key: "ft:g1",
+      kind: "finetuning",
+      memberIds,
+      status: "running",
+    }) as RunningJobItem;
+  const tracked = new Map<string, RunningJobItem>();
+  rememberActive(tracked, [job(["f1", "f2"])], []);
+  rememberActive(tracked, [job(["f1"])], []);
+  expect(tracked.get("ft:g1")?.memberIds).toEqual(["f1", "f2"]);
+  const done = detectCompletedJobs(tracked, [], {
+    finetuning: [{ groupId: "g1", id: "f1", name: "swift fox", status: "succeeded" }],
+  });
+  expect(done).toEqual([]);
 });

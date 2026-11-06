@@ -327,3 +327,18 @@ export function completionToastCopy(job: RunningJobItem): { message: string; des
     message: `${kind} ${ok}`,
   };
 }
+
+/** Tracks active jobs between polls. A group keeps every member it has shown,
+ *  so a member that leaves the first page still gates its completion. */
+export function rememberActive(
+  previous: Map<string, RunningJobItem>,
+  current: RunningJobItem[],
+  completed: RunningJobItem[]
+) {
+  for (const job of current) {
+    const seen = previous.get(job.key)?.memberIds ?? [];
+    const memberIds = job.memberIds && [...new Set([...seen, ...job.memberIds])];
+    previous.set(job.key, { ...job, memberIds });
+  }
+  for (const job of completed) previous.delete(job.key);
+}

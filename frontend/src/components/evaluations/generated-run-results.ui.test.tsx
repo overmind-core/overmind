@@ -7,6 +7,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { EvalRun, EvalRunRow } from "@/openapi";
 import { GeneratedRunResults } from "./generated-run-results";
 
+vi.mock("@/client", () => ({
+  default: { evalRunRows: { evalRunRowsList: () => new Promise(() => {}) } },
+}));
+
 beforeEach(() => {
   vi.stubGlobal(
     "ResizeObserver",
@@ -70,5 +74,19 @@ it("opens all model outputs together, retaining full text, reasoning, errors and
   expect(dialog.queryByRole("combobox")).toBeNull();
   expect(dialog.getByRole("region", { name: "Model outputs" }).getAttribute("tabindex")).toBe("0");
   fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+  client.clear();
+});
+
+it("keeps the rows polled while a run was active during its final fetch", () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const run = { cell: "cell", id: "alpha", label: "alpha", status: "completed", summary: {} };
+  const row = { id: 1, input: "in", metrics: {}, output: "out", rowIndex: 0, run: "alpha" };
+  client.setQueryData(["eval-run-rows", "alpha", true], { count: 1, results: [row] });
+  render(
+    <QueryClientProvider client={client}>
+      <GeneratedRunResults runs={[run as EvalRun]} />
+    </QueryClientProvider>
+  );
+  expect(screen.getByRole("button", { name: "Open alpha output for datapoint 0" })).toBeTruthy();
   client.clear();
 });

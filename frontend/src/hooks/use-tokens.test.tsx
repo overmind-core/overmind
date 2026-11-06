@@ -33,3 +33,18 @@ it("finds project keys after the first account page", async () => {
   expect(list).toHaveBeenCalledTimes(2);
   client.clear();
 });
+it("keeps one entry per key when a key shifts between pages", async () => {
+  const key = { id: "target", project: "project", scope: {} };
+  list
+    .mockResolvedValueOnce({ next: "page2", results: [key] })
+    .mockResolvedValueOnce({ next: null, results: [key] });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result } = renderHook(() => useTokensList("project"), {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.tokens.map((token) => token.id)).toEqual(["target"]);
+  client.clear();
+});
