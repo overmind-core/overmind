@@ -45,6 +45,16 @@ def test_kv_cache_is_fp8(tmp_path: Path) -> None:
     assert cmd[cmd.index("--kv-cache-dtype") + 1] == "fp8"
 
 
+def test_ampere_triton_families_keep_bf16_kv(tmp_path: Path) -> None:
+    for base in ("openai/gpt-oss-20b", "google/gemma-4-26B-A4B-it", "google/gemma-4-E4B-it"):
+        cmd = _args(_checkpoint(tmp_path), base_model=base, gpu_type="A100-80GB")
+        assert cmd[cmd.index("--kv-cache-dtype") + 1] == "bfloat16"
+    kept = _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3-32B", gpu_type="A100-80GB")
+    assert kept[kept.index("--kv-cache-dtype") + 1] == "fp8"
+    hopper = _args(_checkpoint(tmp_path), base_model="openai/gpt-oss-20b", gpu_type="H200")
+    assert hopper[hopper.index("--kv-cache-dtype") + 1] == "fp8"
+
+
 def test_capture_sizes_stay_within_the_sequence_cap(tmp_path: Path) -> None:
     cmd = _args(_checkpoint(tmp_path), max_num_seqs=4)
     start = cmd.index("--cudagraph-capture-sizes") + 1
@@ -281,6 +291,9 @@ def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
     assert draft_for("unsloth/gemma-4-26B-A4B-it") == ("z-lab/gemma-4-26B-A4B-it-DFlash", 15)
     assert draft_for("unsloth/gemma-4-31B-it") == ("z-lab/gemma-4-31B-it-DFlash", 15)
     assert draft_for("unsloth/Qwen3.5-27B") == ("z-lab/Qwen3.5-27B-DFlash", 15)
+    assert draft_for("unsloth/Qwen3.5-27B", vram_gb=80) is None
+    assert draft_for("Qwen/Qwen3.5-27B", vram_gb=80) is None
+    assert draft_for("unsloth/Qwen3.5-27B", vram_gb=141) == ("z-lab/Qwen3.5-27B-DFlash", 15)
     assert draft_for("unsloth/Qwen3.5-35B-A3B") == ("z-lab/Qwen3.5-35B-A3B-DFlash", 15)
     assert draft_for("Qwen/Qwen3-14B") is None
     assert "--speculative-config" not in _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3-14B")

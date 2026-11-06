@@ -60,11 +60,31 @@ def snap_lora_rank(rank: int) -> int:
 def lora_load_request(name: str, path: str) -> dict:
     config = json.loads((Path(path) / "adapter_config.json").read_text())
     parameters = config.get("target_parameters") or []
+    modules = config.get("target_modules") or ""
+    expert = any("experts" in str(item) for item in (*parameters, modules))
     return {
         "lora_name": name,
         "lora_path": path,
-        "is_3d_lora_weight": any(p.endswith("experts.gate_up_proj") for p in parameters),
+        "is_3d_lora_weight": expert,
     }
+
+
+def kv_cache_dtype(gpu_type: str, spec: FamilySpec) -> str:
+    """FP8 KV, except where vLLM 0.33's Triton attention rejects it.
+
+    Triton on Ampere (A100, SM80) raises unless the cache is bf16. These two
+    families select Triton; FlashInfer families on the same GPU keep FP8.
+    """
+    if gpu_type.startswith("A100") and spec.key in {"gpt_oss", "gemma4"}:
+        return "bfloat16"
+    return "fp8"
+
+
+def mixed_moe_lora(spec: FamilySpec, base_model: str) -> bool:
+    """Gemma 4 26B-A4B is the only Gemma 4 whose expert LoRA is the fused 3D layout."""
+    if spec.mixed_moe_lora_format:
+        return True
+    return spec.key == "gemma4" and "a4b" in base_model.lower()
 
 
 @dataclass(frozen=True)
@@ -93,6 +113,8 @@ class VllmServeContext:
     draft_tokens: int = 0
     # In-checkpoint MTP. Qwen3.5's hybrid cache accepts one token on this method.
     mtp_tokens: int = 0
+    # Empty keeps FP8 KV. A100 is SM80; see kv_cache_dtype.
+    gpu_type: str = ""
 
 
 def _serve_chat_template_path(model_path: str) -> str | None:
@@ -136,7 +158,7 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         "--max-num-seqs",
         str(ctx.max_num_seqs),
         "--kv-cache-dtype",
-        "fp8",
+        kv_cache_dtype(ctx.gpu_type, spec),
         "--enable-force-include-usage",
         "--enable-auto-tool-choice",
         "--tool-call-parser",
@@ -166,7 +188,7 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
         cmd += ["--dtype", spec.dtype_override or "bfloat16"]
 
     if ctx.lora_adapters or ctx.enable_lora:
-        if spec.mixed_moe_lora_format:
+        if mixed_moe_lora(spec, ctx.base_model or ctx.model_name):
             cmd.append("--enable-mixed-moe-lora-format")
         # A pool that loads adapters at runtime has none to count, so it takes the full
         # slot allowance.

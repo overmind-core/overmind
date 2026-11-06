@@ -9,7 +9,10 @@ pytestmark = pytest.mark.covers("model-runtime")
 
 @pytest.mark.parametrize("fused", [False, True])
 def test_adapter_request_declares_expert_format(tmp_path, fused):
-    config = {"target_parameters": ["mlp.experts.gate_up_proj", "mlp.experts.down_proj"]}
+    config = {
+        "target_parameters": ["mlp.experts.gate_up_proj", "mlp.experts.down_proj"],
+        "target_modules": ["q_proj"],
+    }
     (tmp_path / "adapter_config.json").write_text(json.dumps(config if fused else {}))
     request = lora_load_request("adapter", str(tmp_path))
     assert request == {
@@ -24,6 +27,8 @@ def test_adapter_request_declares_expert_format(tmp_path, fused):
     [
         ("Qwen/Qwen3-Coder-30B-A3B-Instruct", True, True),
         ("Qwen/Qwen3-Coder-30B-A3B-Instruct", False, False),
+        ("google/gemma-4-26B-A4B-it", True, True),
+        ("google/gemma-4-E4B-it", True, False),
         ("Qwen/Qwen3-8B", True, False),
     ],
 )

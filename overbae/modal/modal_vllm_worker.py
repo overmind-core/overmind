@@ -445,9 +445,10 @@ class _BaseVLLMWorker:
         draft_model = ""
         draft_tokens = 0
         bf16 = (quantization or "bf16") in ("bf16", "none", "")
+        vram_gb = GPU_VRAM_GB.get(getattr(self, "gpu_type", ""), 0)
         # An FP8 merged checkpoint stays on the base; the head and the drafts are BF16.
         mtp = mtp_for(base_model) if bf16 else None
-        found = None if mtp or not bf16 else draft_for(base_model)
+        found = None if mtp or not bf16 else draft_for(base_model, vram_gb=vram_gb or None)
         if found:
             repo, draft_tokens = found
             draft_model = draft_volume_path(WEIGHTS_MOUNT, repo)
@@ -455,7 +456,6 @@ class _BaseVLLMWorker:
                 raise RuntimeError(
                     f"DFlash draft {repo} is not on the weights volume ({draft_model})"
                 )
-        vram_gb = GPU_VRAM_GB.get(getattr(self, "gpu_type", ""), 0)
         cap = sequence_cap_for_checkpoint(
             Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
         )
@@ -504,6 +504,7 @@ class _BaseVLLMWorker:
                         base_model=base_model,
                         enable_lora=self.enable_lora,
                         max_lora_rank=self.max_lora_rank,
+                        gpu_type=getattr(self, "gpu_type", ""),
                         draft_model=draft_model,
                         draft_tokens=draft_tokens,
                     ),
