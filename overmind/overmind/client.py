@@ -48,7 +48,7 @@ from typing import Any
 
 import requests
 
-DEFAULT_BASE_URL = "https://api.overmindlab.ai"
+from overmind.config import DEFAULT_BASE_URL
 
 
 @dataclass

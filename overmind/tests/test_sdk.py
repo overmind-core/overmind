@@ -124,6 +124,27 @@ def test_init_uses_synced_local_credential(no_api_key, mock_opentelemetry, tmp_p
     )
 
 
+@pytest.mark.covers("authentication")
+@pytest.mark.parametrize("strict", [False, True])
+def test_init_disables_tracing_when_the_saved_key_meets_another_endpoint(
+    no_api_key, mock_opentelemetry, tmp_path, monkeypatch, strict
+):
+    from overmind import tracing
+    from overmind.config import Config, dump
+
+    monkeypatch.chdir(tmp_path)
+    dump(Config(api_key="ovr_project_key", base_url="https://api.example", project_id="p"), tmp_path / "overmind.toml")
+    monkeypatch.setenv("OVERMIND_API_URL", "https://other.example")
+    monkeypatch.setattr(tracing, "_strict_mode", strict)
+
+    if strict:
+        with pytest.raises(RuntimeError, match="different API"):
+            tracing.init()
+    else:
+        assert tracing.init() is False
+    mock_opentelemetry["exporter"].assert_not_called()
+
+
 def test_observe_calls_through_when_uninitialised(no_api_key):
     from overmind import tracing
 

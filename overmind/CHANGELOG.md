@@ -8,9 +8,11 @@ entries here cover the SDK surface.
 
 ### Fixed
 
-- Bind saved SDK credentials to their API endpoint.
+- Bind saved SDK credentials to their API endpoint. `init()` disables tracing
+  with a warning when they meet another endpoint, and raises in strict mode.
 
-- Preserve tool calls in SDK chat responses.
+- Preserve tool calls in SDK chat responses. `CompletionMessage.content` is
+  `None` when the model returns only tool calls.
 
 - Restore SDK compatibility with Python 3.10.
 

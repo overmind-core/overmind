@@ -53,8 +53,6 @@ _init_lock = threading.Lock()
 # "tracing disabled" line on every run — log it once per process, then DEBUG.
 _keyless_logged = False
 
-DEFAULT_BASE_URL = os.getenv("OVERMIND_API_URL", "https://api.overmindlab.ai")
-
 
 def _local_config() -> Config | None:
     try:
@@ -784,9 +782,17 @@ def init(
             return True
 
         local_config = _local_config()
-        overmind_api_key, overmind_base_url = resolve_api_credentials(
-            overmind_api_key or "", overmind_base_url or "", local_config
-        )
+        try:
+            overmind_api_key, overmind_base_url = resolve_api_credentials(
+                overmind_api_key or "", overmind_base_url or "", local_config
+            )
+        except ValueError as exc:
+            if _strict_mode:
+                _track_sdk_init("strict-fail", providers=providers, capability_id=capability_id)
+                raise RuntimeError(f"Overmind tracing disabled: {exc}") from exc
+            logger.warning("Overmind tracing disabled: %s", exc)
+            _track_sdk_init("endpoint-mismatch", providers=providers, capability_id=capability_id)
+            return False
         if not overmind_api_key:
             msg = "Overmind tracing disabled: no project credential. Run `overmind sync` or set OVERMIND_API_KEY."
             if _strict_mode:

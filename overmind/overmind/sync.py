@@ -40,7 +40,6 @@ SYNC_PATH = "/api/v1/sync"
 PROJECTS_PATH = "/api/projects/"
 API_KEYS_PATH = "/api/auth/api-keys/"
 API_KEY_CURRENT_PATH = "/api/auth/api-keys/current/"
-DEFAULT_BASE_URL = "https://api.overmindlab.ai"
 
 console = Console()
 
