@@ -51,7 +51,7 @@ not rewrite old manifests. Current recipes do not install dependencies at runtim
    and finally API. Restore recorded capacity explicitly; the script refuses to
    guess counts for stopped services. Each deployment waits for readiness before
    continuing. Keep maintenance mode until the checks below pass. Later automated
-   releases preserve desired counts and follow the same consumer-first ordering.
+   releases preserve desired counts and roll every service together after migrate.
 1. Verify source upload/export, OCR, pipeline preview/publication/cancellation,
    preparation, bounded training, held-out evaluation and inference through the
    intended project-scoped MCP endpoint. Check sandbox runtime identity and interactive consumer health,
