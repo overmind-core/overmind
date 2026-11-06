@@ -19,6 +19,7 @@ def ip_allowed(token: APIToken, client_ip: str | None) -> bool:
         address = ipaddress.ip_address(client_ip)
     except ValueError:
         return False
+    address = getattr(address, "ipv4_mapped", None) or address
 
     for value in allowed_ips:
         if not isinstance(value, str):

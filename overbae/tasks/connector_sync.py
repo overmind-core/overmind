@@ -144,8 +144,10 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
         repaired = bool(
             (current.attributes or {}).get("connector.incomplete_ancestry")
             and not (s.get("attributes") or {}).get("connector.incomplete_ancestry")
-            and incoming_version is not None
-            and incoming_version >= (current_version if current_version is not None else -1)
+            and (
+                incoming_version is None
+                or incoming_version >= (current_version if current_version is not None else -1)
+            )
         )
         if not repaired and (
             incoming_version is None

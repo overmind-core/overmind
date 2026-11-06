@@ -18,7 +18,7 @@ import pytest
 from django.db import close_old_connections, connection
 from django.utils import timezone
 
-from overbae.models import Dataset, DatasetImport, Project
+from overbae.models import Cell, Dataset, DatasetImport, DatasetPipelineRun, Project
 from overbae.services.datasets import dispatch, files, imports, workbench
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks import datasets as dataset_tasks
@@ -617,3 +617,13 @@ def test_cancellation_and_import_claim_use_the_same_lock_order(imported_source):
     dataset.refresh_from_db()
     assert run.state == "cancelled"
     assert dataset.state == "idle"
+
+
+def test_cancelling_a_landing_dataset_cancels_its_pipeline_runs(imported_source):
+    dataset, run = create_import(imported_source)
+    cell = Cell.objects.create(dataset=dataset, position=0)
+    pipeline_run = DatasetPipelineRun.objects.create(dataset=dataset, source=cell, request_key="k")
+    assert workbench.cancel(dataset) == 1
+    run.refresh_from_db()
+    pipeline_run.refresh_from_db()
+    assert (run.state, pipeline_run.state) == ("cancelled", "cancelled")

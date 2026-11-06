@@ -307,8 +307,11 @@ def test_galileo_honors_saved_history_bounds_and_unbounded_history(connected, sl
 
 
 @pytest.mark.django_db
-def test_complete_langsmith_tree_repairs_equal_version_partial_span(connected, slept):
-    _api, _steps, adapter = connected("langsmith")
+@pytest.mark.parametrize("vendor", ["langsmith", "langfuse"])
+def test_complete_tree_repairs_a_partial_span_at_an_equal_or_absent_version(
+    vendor, connected, slept
+):
+    _api, _steps, adapter = connected(vendor)
     credential = adapter.credential
     page = adapter.fetch_page({"mode": "live"})
     spans = adapter.to_span_dicts(page.units[0], credential=credential)

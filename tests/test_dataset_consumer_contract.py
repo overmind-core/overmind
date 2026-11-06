@@ -113,6 +113,9 @@ def test_identifier_aliases_find_cross_format_contamination_without_using_answer
         "expected_output": {"packet_id": "case-1"},
     }
     assert not contamination_keys(train) & contamination_keys(other)
+    assert contamination_keys({"span_id": "s1", "input": "a"}) & contamination_keys(
+        {"span_id": "s1", "input": "b"}
+    )
 
 
 def test_model_and_application_targets_remain_separate():

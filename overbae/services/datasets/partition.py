@@ -88,6 +88,7 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
         "trace_id",
         "source_trace_id",
         "origin_trace_id",
+        "span_id",
         "conversation_id",
         "group_id",
         "document_id",

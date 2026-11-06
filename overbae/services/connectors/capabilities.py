@@ -296,6 +296,7 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
     Returns the number of spans whose ``capability_id`` changed.
     """
     from overbae.models import Conversation, Span
+    from overbae.services.capabilities import identity
 
     mapping = credential.capability_mapping or {}
     cred_id = str(credential.id)
@@ -308,6 +309,15 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
     distinct_keys = set(
         qs.values_list(f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}", flat=True).distinct()
     )
+    by_name: dict[str, Any] = {}
+
+    def name_match(name: str):
+        # Sync falls back to a name match for spans the mapping leaves unassigned.
+        if name.lower() not in by_name:
+            match = identity.lookup(project.id, name)
+            by_name[name.lower()] = match.id if match else None
+        return by_name[name.lower()]
+
     updated = 0
     for agent_key in distinct_keys:
         capability = resolve_capability(agent_key, mapping, project)
@@ -321,8 +331,9 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
             matching = qs.filter(**{f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}": agent_key})
         to_update = []
         for span in matching:
-            if span.capability_id != capability_id:
-                span.capability_id = capability_id
+            target = capability_id or (name_match(span.name) if span.name else None)
+            if span.capability_id != target:
+                span.capability_id = target
                 to_update.append(span)
         if to_update:
             Span.objects.bulk_update(to_update, ["capability"])

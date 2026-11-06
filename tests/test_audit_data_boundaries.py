@@ -59,6 +59,24 @@ def test_relabel_clears_removed_assignments_and_handles_missing_agent_keys():
     assert not project.spans.filter(capability__isnull=False).exists()
 
 
+@pytest.mark.covers("vendor-connectors")
+def test_relabel_keeps_name_matched_capabilities_without_a_mapping():
+    project = make_project()
+    capability = Capability.objects.create(project=project, name="Agent", slug="agent")
+    credential = make_connector("langsmith", project=project)
+    span = make_span(
+        project,
+        trace_id="trace",
+        name="Agent",
+        capability=capability,
+        attributes={CONNECTOR_CAPABILITY_KEY_ATTR: "unmapped"},
+        resource_attrs={CONNECTOR_CREDENTIAL_ID_ATTR: str(credential.pk)},
+    )
+    assert relabel_connector_capabilities(credential) == 0
+    span.refresh_from_db()
+    assert span.capability_id == capability.pk
+
+
 @pytest.mark.covers("capacity")
 def test_capability_list_dataset_queries_stay_bounded_as_the_page_grows():
     project = make_project()
