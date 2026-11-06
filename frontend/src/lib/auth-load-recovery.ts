@@ -34,7 +34,7 @@ export function retryAuthLoad(failure: AuthLoadFailure): boolean {
 export function markAuthLoaded() {
   const failure = readRetry();
   if (failure !== "script" && failure !== "chunk") return;
-  writeRetry("done");
+  if (!writeRetry("done")) return;
   trackEvent("auth_load_recovered", { failure });
 }
 

@@ -23,12 +23,15 @@ beforeEach(() => {
   });
 });
 
-it("reloads once after an auth load failure and records the recovery", async () => {
-  const { markAuthLoaded, retryAuthLoad } = await import("./auth-load-recovery");
+it("reloads once after an auth load failure and records the recovery after the reload", async () => {
+  const before = await import("./auth-load-recovery");
+  expect(before.retryAuthLoad("script")).toBe(true);
 
-  expect(retryAuthLoad("script")).toBe(true);
-  markAuthLoaded();
-  expect(retryAuthLoad("script")).toBe(false);
+  vi.resetModules();
+  const after = await import("./auth-load-recovery");
+  after.markAuthLoaded();
+  after.markAuthLoaded();
+  expect(after.retryAuthLoad("script")).toBe(false);
   await vi.dynamicImportSettled();
 
   expect(reload).toHaveBeenCalledOnce();
@@ -36,9 +39,12 @@ it("reloads once after an auth load failure and records the recovery", async () 
   expect(capture).toHaveBeenCalledWith("auth_load_recovered", { failure: "script" });
 });
 
-it("reloads on a Clerk chunk failure but not on an app chunk failure", async () => {
+it("reloads once on a Clerk chunk failure but not on an app chunk failure", async () => {
   const { installClerkChunkRecovery } = await import("./auth-load-recovery");
   installClerkChunkRecovery();
+  const clerkChunkError = new Error(
+    "Loading chunk 9573 failed. (error: https://clerk.example.com/npm/@clerk/clerk-js@5/dist/ui-common.js)"
+  );
 
   window.dispatchEvent(
     new ErrorEvent("error", {
@@ -47,12 +53,7 @@ it("reloads on a Clerk chunk failure but not on an app chunk failure", async () 
   );
   expect(reload).not.toHaveBeenCalled();
 
-  window.dispatchEvent(
-    new ErrorEvent("error", {
-      error: new Error(
-        "Loading chunk 9573 failed. (error: https://clerk.example.com/npm/@clerk/clerk-js@5/dist/ui-common.js)"
-      ),
-    })
-  );
+  window.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: clerkChunkError }));
+  window.dispatchEvent(new ErrorEvent("error", { error: clerkChunkError }));
   expect(reload).toHaveBeenCalledOnce();
 });

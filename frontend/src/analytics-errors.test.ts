@@ -25,8 +25,7 @@ it("drops browser noise from window error capture and keeps app errors", async (
       error: new TypeError(
         "undefined is not an object (evaluating 'window.ethereum.selectedAddress')"
       ),
-      message:
-        "TypeError: undefined is not an object (evaluating 'window.ethereum.selectedAddress')",
+      message: "",
     })
   );
   window.dispatchEvent(new ErrorEvent("error", { error: appError, message: "boom" }));

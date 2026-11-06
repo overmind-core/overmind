@@ -25,7 +25,8 @@ const IGNORED_WINDOW_ERRORS = [/^Script error\.?$/, /ResizeObserver loop/, /wind
 
 if (enabled && typeof window !== "undefined") {
   window.addEventListener("error", (event) => {
-    if (IGNORED_WINDOW_ERRORS.some((pattern) => pattern.test(String(event.message)))) return;
+    const text = `${event.message} ${event.error instanceof Error ? event.error.message : ""}`;
+    if (IGNORED_WINDOW_ERRORS.some((pattern) => pattern.test(text.trim()))) return;
     void client?.then((posthog) =>
       posthog?.captureException(event.error ?? new Error(String(event.message)))
     );
