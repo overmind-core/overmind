@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from typer.testing import CliRunner
@@ -136,7 +136,7 @@ def test_backtest_scores_each_model_and_exits_on_regression():
         capability_id="cap",
         capability_slug="support",
         models=["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"],
-        since=datetime(2026, 1, 1, tzinfo=UTC),
+        since=datetime(2026, 1, 1, tzinfo=timezone.utc),
         until=None,
         limit=200,
         from_model="",
@@ -168,7 +168,7 @@ def test_backtest_fails_when_a_metric_does_not_score():
         capability_id="cap",
         capability_slug="support",
         models=["openai/gpt-5-mini"],
-        since=datetime(2026, 1, 1, tzinfo=UTC),
+        since=datetime(2026, 1, 1, tzinfo=timezone.utc),
         until=None,
         limit=10,
         from_model="",
@@ -186,7 +186,7 @@ def test_unknown_model_does_not_create_a_dataset():
             capability_id="cap",
             capability_slug="support",
             models=["openai/gpt-5-mini"],
-            since=datetime(2026, 1, 1, tzinfo=UTC),
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
             until=None,
             limit=10,
             from_model="",
@@ -218,7 +218,7 @@ def test_finetune_starts_one_job_per_model_in_one_group():
         capability_id="cap",
         capability_slug="support",
         models=["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"],
-        since=datetime(2026, 1, 1, tzinfo=UTC),
+        since=datetime(2026, 1, 1, tzinfo=timezone.utc),
         until=None,
         limit=200,
         from_model="",
@@ -257,7 +257,7 @@ def test_a_later_finetune_failure_reports_the_jobs_already_queued():
             capability_id="cap",
             capability_slug="support",
             models=["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"],
-            since=datetime(2026, 1, 1, tzinfo=UTC),
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
             until=None,
             limit=20,
             from_model="",
@@ -283,7 +283,7 @@ def test_backtest_times_out_while_the_run_is_still_going():
             capability_id="cap",
             capability_slug="support",
             models=["openai/gpt-5-mini"],
-            since=datetime(2026, 1, 1, tzinfo=UTC),
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
             until=None,
             limit=10,
             from_model="",
@@ -296,3 +296,16 @@ def test_cli_requires_models():
     result = CliRunner().invoke(app, ["backtest"])
     assert result.exit_code == 1
     assert "models" in result.output.lower()
+
+
+def test_cli_reports_a_saved_key_meeting_another_endpoint(tmp_path, monkeypatch):
+    from overmind.config import dump
+
+    monkeypatch.chdir(tmp_path)
+    dump(Config(api_key="saved-key", base_url="https://api.example", project_id="p"), tmp_path / "overmind.toml")
+    monkeypatch.setenv("OVERMIND_API_URL", "https://other.example")
+    monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    result = CliRunner().invoke(app, ["backtest", "--models", "openai/gpt-5-mini", "--capability", "cap"])
+    assert result.exit_code == 1
+    assert "different API" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)

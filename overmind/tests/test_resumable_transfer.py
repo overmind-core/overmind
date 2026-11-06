@@ -1,6 +1,12 @@
 import hashlib
 import json
 import time
+from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 import pytest
 import requests
@@ -370,10 +376,6 @@ def test_readiness_preserves_auth_permission_and_redirect_failures(monkeypatch, 
 
 @pytest.mark.covers("authentication")
 def test_global_setup_uses_one_connection_without_pinning_a_project(tmp_path, monkeypatch):
-    from pathlib import Path
-
-    import tomllib
-
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("OVERMIND_API_KEY", "secret-key")

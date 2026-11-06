@@ -8,10 +8,10 @@ computation with real edge cases.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 
-class Severity(StrEnum):
+class Severity(str, Enum):  # noqa: UP042 — shared with the Python 3.10 SDK suite.
     # A security breach, a wrong charge, or lost or changed data.
     CRITICAL = "S1"
     # A vertical, or the platform, stops for every customer.
@@ -21,12 +21,18 @@ class Severity(StrEnum):
     # A heuristic or a presentation detail is wrong.
     LOW = "S4"
 
+    def __str__(self):
+        return self.value
 
-class Kind(StrEnum):
+
+class Kind(str, Enum):  # noqa: UP042 — shared with the Python 3.10 SDK suite.
     PROMISE = "promise"
     INVARIANT = "invariant"
     CONTRACT = "contract"
     LOGIC = "logic"
+
+    def __str__(self):
+        return self.value
 
 
 @dataclass(frozen=True)

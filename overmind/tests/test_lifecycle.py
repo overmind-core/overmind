@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import dataclasses
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -285,3 +286,41 @@ def test_bare_run_decoration_raises():
 
         @run
         def main() -> None: ...
+
+
+def test_run_restores_outer_conversation(exporter):
+    with tracing.session("outer"):
+        with run("first", conversation_id="customer-1"):
+            pass
+        with run("second"):
+            pass
+    assert _by_name(exporter, "first").attributes["conversation.id"] == "customer-1"
+    assert _by_name(exporter, "second").attributes["conversation.id"] == "outer"
+
+
+def test_turns_with_same_behavior_are_separate_per_capability(exporter):
+    with run("root"):
+        for identity in ["cap-a", "cap-b", "cap-a"]:
+            with tracing.capability(id=identity), task("answer", unit="turn"):
+                pass
+    turns = [s for s in exporter.get_finished_spans() if s.name == "answer"]
+    assert len(turns) == 2
+    assert {s.attributes[attrs.CAPABILITY_ID] for s in turns} == {"cap-a", "cap-b"}
+
+
+@pytest.mark.covers("privacy")
+def test_run_redacts_nested_dataclass_fields(exporter):
+    @dataclasses.dataclass
+    class Credentials:
+        password: str
+        count: int
+
+    @run("secret-result")
+    def operation():
+        return {"result": Credentials(password="never-export-this", count=3)}
+
+    operation()
+    output = _by_name(exporter, "secret-result").attributes["outputs"]
+    assert "never-export-this" not in output
+    assert "redacted" in output
+    assert "3" in output

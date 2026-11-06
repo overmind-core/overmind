@@ -18,8 +18,9 @@ import json
 from pathlib import PurePath
 
 import pytest
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from overmind.tracing import _coerce_to_otel_attribute, _normalize_for_json
+from overmind.tracing import _coerce_to_otel_attribute, _normalize_for_json, normalize_messages
 
 pytestmark = pytest.mark.covers("sdk-wire")
 
@@ -163,3 +164,14 @@ class TestCoerceToOtelAttribute:
         out = _coerce_to_otel_attribute([1, "a"])
         assert isinstance(out, str)
         assert json.loads(out) == [1, "a"]
+
+
+@pytest.mark.parametrize("object_form", [False, True])
+def test_messages_keep_tool_call_identity_and_arguments(object_form):
+    calls = [{"id": "call-1", "type": "function", "function": {"name": "lookup", "arguments": '{"id":42}'}}]
+    message = {"role": "assistant", "content": "Looking up", "tool_calls": calls}
+    if object_form:
+        message = ChatCompletionMessage(**message)
+    [result] = normalize_messages([message])
+    assert result["tool_calls"] == calls
+    assert result["content"] == "Looking up"

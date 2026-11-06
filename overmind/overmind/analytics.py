@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import platform
-import re
 import sys
 import threading
 import uuid
@@ -43,15 +42,6 @@ _DEFAULT_HOST = "https://v.overmindlab.ai"
 _TIMEOUT_S = 2.0
 _ANALYTICS_ID_PATH = Path.home() / ".overmind" / "analytics_id"
 _IDENTITY_CACHE_PATH = Path.home() / ".overmind" / "analytics_identity"
-
-_SECRET_FLAGS = frozenset({
-    "--api-key",
-    "--token",
-    "--password",
-    "--secret",
-    "--authorization",
-    "-k",  # common short form for keys in some CLIs
-})
 
 # Caller-supplied property names never forwarded to PostHog.
 _BLOCKED_PROP_KEYS = frozenset({
@@ -163,19 +153,12 @@ def _resolve_api_credentials(
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> tuple[str, str] | None:
-    """Return ``(api_key, base_url)`` from args / env / overmind.toml, or None."""
-    key = (api_key or "").strip()
-    url = (base_url or "").strip()
-    if not key or not url:
-        # Lazy: overmind.sync pulls the Typer CLI stack into library imports.
-        from overmind.sync import DEFAULT_BASE_URL, resolve_api_key, resolve_api_url
-
+    try:
         cfg = config.load(config.DEFAULT_PATH) if config.DEFAULT_PATH.exists() else None
-        key = key or (resolve_api_key("", cfg) or "").strip()
-        url = url or resolve_api_url("", cfg) or DEFAULT_BASE_URL
-    if not key or not url:
+        key, url = config.resolve_api_credentials(api_key or "", base_url or "", cfg)
+    except (OSError, ValueError):
         return None
-    return key, url.rstrip("/")
+    return (key, url) if key else None
 
 
 def _fetch_me(api_key: str, base_url: str) -> dict[str, Any] | None:
@@ -283,115 +266,22 @@ def _common_properties() -> dict[str, Any]:
 # --- CLI argv parsing and redaction ---
 
 
-def _looks_like_secret(value: str) -> bool:
-    if len(value) < 16:
-        return False
-    if value.lower().startswith(("om_", "sk-", "phc_", "pk_", "rk_")):
-        return True
-    # Long opaque tokens.
-    return bool(re.fullmatch(r"[A-Za-z0-9_\-]{32,}", value))
-
-
-def _argv_parts(argv: list[str] | None = None) -> list[str]:
-    """Normalise argv so installs via ``python -m`` / console script look alike."""
-    raw = list(argv if argv is not None else sys.argv)
-    if not raw:
-        return []
-    if (
-        raw[0].endswith(".py")
-        or "python" in Path(raw[0]).name.lower()
-        or Path(raw[0]).name in {"overmind", "overmind.exe"}
-    ):
-        return ["overmind", *raw[1:]]
-    return [Path(raw[0]).name, *raw[1:]]
-
-
-def _redact_parts(parts: list[str]) -> list[str]:
-    out: list[str] = []
-    redact_next = False
-    for part in parts:
-        if redact_next:
-            out.append("[redacted]")
-            redact_next = False
-            continue
-        flag = part.lower().split("=", 1)[0]
-        if flag in _SECRET_FLAGS:
-            if "=" in part:
-                out.append(f"{part.split('=', 1)[0]}=[redacted]")
-            else:
-                out.append(part)
-                redact_next = True
-            continue
-        if _looks_like_secret(part):
-            out.append("[redacted]")
-            continue
-        out.append(part)
-    return out
-
-
-def _redact_argv(argv: list[str] | None = None) -> str:
-    """Return the invoked CLI line with secret flag values redacted."""
-    return " ".join(_redact_parts(_argv_parts(argv)))
-
-
-def _looks_like_path(token: str) -> bool:
-    if "/" in token or "\\" in token:
-        return True
-    # Positional file-like args (keep subcommands like ``upload``).
-    return bool(re.search(r"\.[A-Za-z0-9]{1,8}$", token))
-
-
 def cli_command_from_argv(argv: list[str] | None = None) -> str:
-    """Subcommand path from argv: leading non-flag tokens that are not paths.
+    # Walk registered commands only: positional text can resemble a command name.
+    from typer.main import get_command
 
-    ``overmind dataset upload ./data.jsonl --json`` → ``dataset upload``.
-    """
+    from overmind.__main__ import app  # Lazy to avoid the CLI/analytics import cycle.
+
     raw = list(argv if argv is not None else sys.argv)
-    tokens: list[str] = []
-    for part in raw[1:]:  # drop the program name
-        if part.startswith("-") or _looks_like_path(part):
+    command = get_command(app)
+    path = []
+    for part in raw[1:]:
+        child = getattr(command, "commands", {}).get(part)
+        if child is None:
             break
-        tokens.append(part)
-    return " ".join(tokens)
-
-
-def cli_flags_and_args(
-    argv: list[str] | None = None,
-) -> tuple[dict[str, str | bool], list[str]]:
-    """Parse redacted flags and positionals after the nested command path.
-
-    ``overmind init --ide cursor --env production`` →
-    ``({"ide": "cursor", "env": "production"}, [])``.
-
-    ``overmind dataset upload data.jsonl --json`` →
-    ``({"json": True}, ["data.jsonl"])``.
-    """
-    raw = list(argv if argv is not None else sys.argv)
-    parts = _redact_parts(_argv_parts(raw))
-    if not parts:
-        return {}, []
-    path = cli_command_from_argv(["overmind", *raw[1:]])
-    rest = parts[1 + len(path.split()) :]
-    flags: dict[str, str | bool] = {}
-    args: list[str] = []
-    i = 0
-    while i < len(rest):
-        tok = rest[i]
-        if not tok.startswith("-"):
-            args.append(tok)
-            i += 1
-            continue
-        key = tok.lstrip("-").split("=", 1)[0]
-        if "=" in tok:
-            flags[key] = tok.split("=", 1)[1]
-            i += 1
-        elif i + 1 < len(rest) and not rest[i + 1].startswith("-"):
-            flags[key] = rest[i + 1]
-            i += 2
-        else:
-            flags[key] = True
-            i += 1
-    return flags, args
+        path.append(part)
+        command = child
+    return " ".join(path)
 
 
 # --- Public event API ---
@@ -416,22 +306,15 @@ def track_cli_invocation(
     exit_code: int = 0,
     duration_ms: int = 0,
 ) -> None:
-    """Emit ``cli.invoked``; ``command`` kwarg is the nested path only.
-
-    Properties: ``command`` = full redacted argv, ``command_path`` = nested
-    path, ``flags`` / ``args`` = parsed options and positionals. Flushes so
-    process teardown does not drop the event. Never raises.
-    """
+    """Emit command identity and outcome without arguments or option values."""
     if not enabled():
         return
     try:
         ensure_identified()
-        flags, args = cli_flags_and_args()
         props = {
-            "command": _redact_argv(),
-            "command_path": (command or "").strip() or cli_command_from_argv(),
-            "flags": flags,
-            "args": args,
+            "command_path": cli_command_from_argv(["overmind", *command.split()])
+            if command
+            else cli_command_from_argv(),
             "exit_code": int(exit_code or 0),
             "duration_ms": max(0, int(duration_ms)),
             "success": int(exit_code or 0) == 0,

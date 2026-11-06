@@ -25,7 +25,7 @@ from overmind.tracing import (
     deliver,
     env_identity,
     flush_traces,
-    set_conversation_id,
+    session,
     start_span,
 )
 from overmind.tracing import capability as _capability_scope
@@ -83,13 +83,14 @@ def _run_scope(
     if tags:
         attributes.update(tags)
     try:
-        with scope:
-            if conversation_id:
-                set_conversation_id(str(conversation_id))
-            with start_span(name, span_type=SpanType.ENTRY_POINT, unit="run", attributes=attributes or None) as span:
-                if intent:
-                    _intent(str(intent))
-                yield RunHandle(span)
+        with (
+            scope,
+            session(str(conversation_id)) if conversation_id else nullcontext(),
+            start_span(name, span_type=SpanType.ENTRY_POINT, unit="run", attributes=attributes or None) as span,
+        ):
+            if intent:
+                _intent(str(intent))
+            yield RunHandle(span)
     finally:
         # After the boundary span ends, so this run's turn spans (closed by the
         # run span's own on_end) export in the flush. Never end_all(): another

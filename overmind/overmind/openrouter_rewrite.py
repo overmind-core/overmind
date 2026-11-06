@@ -137,22 +137,18 @@ def _openai_ctor_source(node: ast.Call, *, name: str) -> str:
     return f"{name}({', '.join([*positional, *parts])})"
 
 
-def _has_import(tree: ast.AST, module: str, name: str | None = None) -> bool:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            if any(a.name == module or a.name.startswith(module + ".") for a in node.names):
-                return True
-        elif isinstance(node, ast.ImportFrom) and node.module == module:
-            if name is None:
-                return True
-            if any(a.name == name for a in node.names):
-                return True
-    return False
+def _has_import(tree: ast.AST, module: str, name: str) -> bool:
+    return any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == module
+        and any(a.name == name and a.asname in (None, name) for a in node.names)
+        for node in ast.walk(tree)
+    )
 
 
 def _has_name_import_os(tree: ast.AST) -> bool:
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import) and any(a.name == "os" or a.name.startswith("os.") for a in node.names):
+        if isinstance(node, ast.Import) and any(a.name == "os" and a.asname in (None, "os") for a in node.names):
             return True
     return False
 
@@ -196,15 +192,14 @@ def _import_insert_pos(src: str) -> int:
     return pos
 
 
-def _insert_imports(src: str, *, need_os: bool, need_openai: bool, async_client: bool) -> str:
-    if not need_os and not need_openai:
+def _insert_imports(src: str, *, need_os: bool, openai_names: set[str]) -> str:
+    if not need_os and not openai_names:
         return src
     lines: list[str] = []
     if need_os:
         lines.append("import os")
-    if need_openai:
-        name = "AsyncOpenAI" if async_client else "OpenAI"
-        lines.append(f"from openai import {name}")
+    if openai_names:
+        lines.append(f"from openai import {', '.join(sorted(openai_names))}")
     block = "\n".join(lines) + "\n"
     pos = _import_insert_pos(src)
     return src[:pos] + block + src[pos:]
@@ -221,8 +216,7 @@ def _rewrite_python(path: Path, src: str) -> tuple[str, list[str], bool]:
     starts = _line_starts(src)
     replacements: list[tuple[int, int, str]] = []
     need_os = False
-    need_openai = False
-    used_async = False
+    openai_names: set[str] = set()
     rewrote_anthropic = False
 
     for node in ast.walk(tree):
@@ -241,10 +235,9 @@ def _rewrite_python(path: Path, src: str) -> tuple[str, list[str], bool]:
 
         if name in _ANTHROPIC_CTORS:
             ctor_name = "AsyncOpenAI" if name.startswith("Async") else "OpenAI"
-            used_async = used_async or ctor_name.startswith("Async")
+            openai_names.add(ctor_name)
             replacements.append((start, end, _openai_ctor_source(node, name=ctor_name)))
             need_os = True
-            need_openai = True
             rewrote_anthropic = True
             continue
 
@@ -252,7 +245,7 @@ def _rewrite_python(path: Path, src: str) -> tuple[str, list[str], bool]:
             base = _kw(node, "base_url")
             if base is not None and _already_openrouter(base.value):
                 continue
-            replacements.append((start, end, _openai_ctor_source(node, name=name)))
+            replacements.append((start, end, _openai_ctor_source(node, name=ast.unparse(node.func))))
             need_os = True
             continue
 
@@ -325,10 +318,8 @@ def _rewrite_python(path: Path, src: str) -> tuple[str, list[str], bool]:
         leftover.append(f"{path}: rewrite produced invalid Python")
         return src, leftover, False
     inject_os = need_os and not _has_name_import_os(tree_after)
-    inject_openai = need_openai and not (
-        _has_import(tree_after, "openai", "OpenAI") or _has_import(tree_after, "openai", "AsyncOpenAI")
-    )
-    new_src = _insert_imports(new_src, need_os=inject_os, need_openai=inject_openai, async_client=used_async)
+    missing_names = {name for name in openai_names if not _has_import(tree_after, "openai", name)}
+    new_src = _insert_imports(new_src, need_os=inject_os, openai_names=missing_names)
     return new_src, leftover, new_src != src
 
 

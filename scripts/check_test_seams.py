@@ -60,8 +60,7 @@ def _working() -> dict[str, str]:
         "--others",
         "--exclude-standard",
         "--",
-        "tests",
-        "frontend/src",
+        *ROOTS,
     )
     return {
         path: Path(path).read_text(encoding="utf-8")

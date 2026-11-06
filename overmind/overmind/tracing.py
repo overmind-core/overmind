@@ -36,7 +36,7 @@ from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import Status, StatusCode
 
 from overmind import attrs
-from overmind.config import DEFAULT_PATH, Config, load, saved_project_api_key
+from overmind.config import DEFAULT_PATH, Config, load, resolve_api_credentials
 from overmind.genai_usage import canonical_usage_updates
 
 logger = logging.getLogger(__name__)
@@ -53,8 +53,6 @@ _init_lock = threading.Lock()
 # "tracing disabled" line on every run — log it once per process, then DEBUG.
 _keyless_logged = False
 
-DEFAULT_BASE_URL = os.getenv("OVERMIND_API_URL", "https://api.overmindlab.ai")
-
 
 def _local_config() -> Config | None:
     try:
@@ -68,16 +66,10 @@ def get_api_settings(
     base_url: str | None = None,
 ) -> tuple[str, str]:
     local_config = _local_config()
-    saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-    overmind_api_key = (
-        overmind_api_key or saved_key or os.getenv("OVERMIND_API_KEY") or (local_config.api_key if local_config else "")
-    )
-    if not overmind_api_key:
+    key, url = resolve_api_credentials(overmind_api_key or "", base_url or "", local_config)
+    if not key:
         raise RuntimeError("Missing Overmind API key. Run `overmind sync` or set OVERMIND_API_KEY.")
-    resolved_url = (
-        base_url or os.getenv("OVERMIND_API_URL") or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-    )
-    return overmind_api_key, resolved_url.rstrip("/")
+    return key, url
 
 
 # Guards against cyclic / mock-heavy inputs that recurse forever.
@@ -127,7 +119,12 @@ def _normalize_for_json(obj: Any, *, _depth: int = 0) -> Any:
     if isinstance(obj, (int, float, bool, type(None))):
         return obj
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {f.name: _normalize_for_json(getattr(obj, f.name), _depth=_depth + 1) for f in dataclasses.fields(obj)}
+        return {
+            f.name: "<redacted>"
+            if _is_secret_key(f.name)
+            else _normalize_for_json(getattr(obj, f.name), _depth=_depth + 1)
+            for f in dataclasses.fields(obj)
+        }
     if _should_skip_value(obj):
         return f"<{type(obj).__name__}>"
     if isinstance(obj, dict):
@@ -222,10 +219,7 @@ def normalize_messages(messages: Any) -> list[dict[str, Any]]:
             tool_call_id = getattr(message, "tool_call_id", None)
         entry: dict[str, Any] = {"role": _MESSAGE_ROLE_MAP.get(role, role), "content": _message_text(content)}
         if tool_calls:
-            entry["tool_calls"] = [
-                {"name": tc.get("name"), "args": tc.get("args")} if isinstance(tc, dict) else str(tc)
-                for tc in tool_calls
-            ]
+            entry["tool_calls"] = _normalize_for_json(tool_calls)
         if tool_call_id:
             entry["tool_call_id"] = str(tool_call_id)
         out.append(entry)
@@ -788,13 +782,17 @@ def init(
             return True
 
         local_config = _local_config()
-        saved_key = saved_project_api_key(DEFAULT_PATH) if local_config else ""
-        overmind_api_key = (
-            overmind_api_key
-            or saved_key
-            or os.getenv("OVERMIND_API_KEY")
-            or (local_config.api_key if local_config else "")
-        )
+        try:
+            overmind_api_key, overmind_base_url = resolve_api_credentials(
+                overmind_api_key or "", overmind_base_url or "", local_config
+            )
+        except ValueError as exc:
+            if _strict_mode:
+                _track_sdk_init("strict-fail", providers=providers, capability_id=capability_id)
+                raise RuntimeError(f"Overmind tracing disabled: {exc}") from exc
+            logger.warning("Overmind tracing disabled: %s", exc)
+            _track_sdk_init("endpoint-mismatch", providers=providers, capability_id=capability_id)
+            return False
         if not overmind_api_key:
             msg = "Overmind tracing disabled: no project credential. Run `overmind sync` or set OVERMIND_API_KEY."
             if _strict_mode:
@@ -804,11 +802,6 @@ def init(
             _keyless_logged = True
             _track_sdk_init("keyless", providers=providers, capability_id=capability_id)
             return False
-        overmind_base_url = (
-            overmind_base_url
-            or os.getenv("OVERMIND_API_URL")
-            or (local_config.base_url if local_config else DEFAULT_BASE_URL)
-        ).rstrip("/")
         project_id = project_id or (local_config.project_id if local_config else None)
 
         environment = (
@@ -1066,8 +1059,12 @@ def capability(name: str | None = None, *, id: str | None = None) -> _Capability
     return _CapabilityScope(name, id)
 
 
+def _capability_identity() -> str:
+    return str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
+
+
 class _TurnRegistry:
-    """Open turn-unit spans keyed by (trace_id, behaviour key).
+    """Open turn-unit spans keyed by (trace_id, capability, behaviour key).
 
     A behaviour's activity is non-contiguous in loop-shaped agents (debate
     rounds interleave with other phases), so its turn span outlives each task
@@ -1076,21 +1073,22 @@ class _TurnRegistry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._spans: dict[tuple[int, str], trace.Span] = {}
-        self._last_activity_ns: dict[tuple[int, str], int] = {}
+        self._spans: dict[tuple[int, str, str], trace.Span] = {}
+        self._last_activity_ns: dict[tuple[int, str, str], int] = {}
 
     def get_or_start(self, key: str) -> trace.Span:
         ambient = trace.get_current_span().get_span_context()
+        identity = _capability_identity()
         evicted: list[tuple[trace.Span, int | None]] = []
         with self._lock:
-            if ambient.is_valid and (span := self._spans.pop((ambient.trace_id, key), None)) is not None:
+            if ambient.is_valid and (span := self._spans.pop((ambient.trace_id, identity, key), None)) is not None:
                 # Re-insert so eviction takes the least recently used entry.
-                self._spans[(ambient.trace_id, key)] = span
+                self._spans[(ambient.trace_id, identity, key)] = span
                 return span
             span = get_tracer().start_span(
                 key, attributes=_declared_attributes(SpanType.FUNCTION, None, "turn", behaviour_key=key)
             )
-            self._spans[(span.get_span_context().trace_id, key)] = span
+            self._spans[(span.get_span_context().trace_id, identity, key)] = span
             # Without a run boundary nothing ever ends these; cap like the
             # evidence registry so a long-lived process cannot leak live spans.
             while len(self._spans) > _MAX_TRACKED_TRACES:
@@ -1101,7 +1099,8 @@ class _TurnRegistry:
         return span
 
     def touch(self, span: trace.Span, key: str) -> None:
-        entry = (span.get_span_context().trace_id, key)
+        identity = _capability_identity()
+        entry = (span.get_span_context().trace_id, identity, key)
         with self._lock:
             # Only a still-tracked span records activity — a touch after
             # eviction must not resurrect the bookkeeping for an ended span.
@@ -1115,7 +1114,7 @@ class _TurnRegistry:
     def end_all(self) -> None:
         self._end(lambda entry: True)
 
-    def _end(self, match: Callable[[tuple[int, str]], bool]) -> None:
+    def _end(self, match: Callable[[tuple[int, str, str]], bool]) -> None:
         with self._lock:
             entries = [entry for entry in self._spans if match(entry)]
             ended = [(self._spans.pop(entry), self._last_activity_ns.pop(entry, None)) for entry in entries]

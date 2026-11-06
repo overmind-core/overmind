@@ -140,46 +140,23 @@ def test_capture_swallows_client_errors(monkeypatch, posthog_client):
     analytics.capture("sdk_init", outcome="keyless")
 
 
-def test_redact_argv_strips_secrets():
-    line = analytics._redact_argv([
-        "overmind",
-        "sync",
-        "--api-key",
-        "om_super_secret_value_123456",
-        "--project-id",
-        "proj_abc",
-    ])
-    assert line == "overmind sync --api-key [redacted] --project-id proj_abc"
-    assert "om_super_secret" not in line
-
-
 @pytest.mark.parametrize(
-    "argv,flags,args",
+    "argv,expected",
     [
-        (
-            ["overmind", "init", "--ide", "cursor", "--env", "production"],
-            {"ide": "cursor", "env": "production"},
-            [],
-        ),
-        (
-            ["overmind", "dataset", "upload", "data.jsonl", "--json"],
-            {"json": True},
-            ["data.jsonl"],
-        ),
-        (
-            ["overmind", "sync", "--api-key", "om_super_secret_value_123456"],
-            {"api-key": "[redacted]"},
-            [],
-        ),
-        (
-            ["overmind", "init", "--ide=cursor"],
-            {"ide": "cursor"},
-            [],
-        ),
+        (["overmind", "init", "--brief", "private business plan"], "init"),
+        (["overmind", "dataset", "upload", "/private/customers.jsonl", "--json"], "dataset upload"),
+        (["overmind", "connector", "add", "private-provider"], "connector add"),
+        (["overmind", "unknown-private-text"], ""),
     ],
 )
-def test_cli_flags_and_args(argv, flags, args):
-    assert analytics.cli_flags_and_args(argv) == (flags, args)
+def test_cli_tracks_registered_commands_only(monkeypatch, posthog_client, argv, expected):
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
+    assert analytics.cli_command_from_argv() == expected
+    analytics.track_cli_invocation()
+    properties = posthog_client.capture.call_args.kwargs["properties"]
+    assert properties["command_path"] == expected
+    assert not {"command", "flags", "args"} & properties.keys()
 
 
 def test_ensure_identified_caches_per_key(monkeypatch, tmp_path, posthog_client):

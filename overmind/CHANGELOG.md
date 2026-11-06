@@ -8,6 +8,17 @@ entries here cover the SDK surface.
 
 ### Fixed
 
+- Bind saved SDK credentials to their API endpoint. `init()` disables tracing
+  with a warning when they meet another endpoint, and raises in strict mode.
+- Preserve tool calls in SDK chat responses. `CompletionMessage.content` is
+  `None` when the model returns only tool calls.
+- Restore SDK compatibility with Python 3.10.
+- Exclude freeform CLI arguments from analytics.
+- Redact secret fields in traced dataclass values.
+- Restore the outer conversation after an SDK run.
+- Scope turn reuse to capability identity.
+- Preserve captured tool call identity and arguments.
+- Preserve constructor aliases in OpenRouter rewrites.
 - `convert_json_to_toml` keeps the scan's `modes` and `llm_utilities` (in the
   capability card, utilities under their `called_by` parent) and its
   `decision_logic` and `policy_markdown`; `overmind sync` sends and round-trips

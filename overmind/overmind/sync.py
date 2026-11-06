@@ -14,7 +14,6 @@ before pushing. Project-scoped keys still require an explicit ``project-id``.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -34,13 +33,13 @@ from overmind.config import (
     ensure_project_name,
     load,
     protect_secret_file,
+    resolve_api_credentials,
 )
 
 SYNC_PATH = "/api/v1/sync"
 PROJECTS_PATH = "/api/projects/"
 API_KEYS_PATH = "/api/auth/api-keys/"
 API_KEY_CURRENT_PATH = "/api/auth/api-keys/current/"
-DEFAULT_BASE_URL = "https://api.overmindlab.ai"
 
 console = Console()
 
@@ -181,43 +180,11 @@ def ensure_project_id(config: Config, path: Path, api_key: str, base_url: str) -
     return config, True
 
 
-def resolve_api_key(cli_key: str, config: Config | None) -> str:
-    if cli_key:
-        return cli_key
-    if config and config.project_id and config.api_key:
-        return config.api_key
-    env_key = os.environ.get("OVERMIND_API_KEY", "")
-    if env_key:
-        return env_key
-    toml_key = (config.api_key if config else "") or ""
-    if toml_key.startswith("env:"):
-        toml_key = os.environ.get(toml_key[4:], "")
-    return toml_key
-
-
-def resolve_api_url(cli_url: str, config: Config | None) -> str:
-    if cli_url:
-        return cli_url.rstrip("/")
-    env = os.environ.get("OVERMIND_API_URL")
-    if env:
-        return env.rstrip("/")
-    if config and config.base_url:
-        return config.base_url.rstrip("/")
-    return DEFAULT_BASE_URL
-
-
 def _sync_connection(api_key: str, api_url: str, config: Config) -> tuple[str, str]:
-    key = resolve_api_key(api_key, config)
-    url = resolve_api_url(api_url, config)
-    bound_key = config.api_key
-    if bound_key.startswith("env:"):
-        bound_key = os.environ.get(bound_key[4:], "")
-    if bound_key and key == bound_key and url != config.base_url.rstrip("/"):
-        raise SyncError(
-            "Repository credentials belong to a different API. "
-            "Use the repository's saved endpoint or an explicit matching connection. No request was sent."
-        )
-    return key, url
+    try:
+        return resolve_api_credentials(api_key, api_url, config)
+    except ValueError as exc:
+        raise SyncError(str(exc)) from exc
 
 
 def run_up(path: Path, api_key: str, api_url: str) -> Config:

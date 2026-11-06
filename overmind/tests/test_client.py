@@ -287,3 +287,25 @@ class TestModelsDelete:
         c._session.delete = MagicMock(side_effect=requests.exceptions.ConnectionError("refused"))
         with pytest.raises(OvermindInferenceError, match="Failed to delete model"):
             c.models.delete("ft-test")
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_completion_preserves_tool_calls_and_arguments(monkeypatch, stream):
+    calls = [{"id": "call-1", "type": "function", "function": {"name": "lookup", "arguments": '{"id":42}'}}]
+    part = {"role": "assistant", "content": None, "tool_calls": calls}
+    data = {"id": "response", "choices": [{"index": 0, "delta" if stream else "message": part}]}
+    response = (
+        _sse_response([f"data: {json.dumps(data)}", "data: [DONE]"]) if stream else _mock_response(json_data=data)
+    )
+    sent = []
+
+    def post(_session, _url, **kwargs):
+        sent.append(kwargs["json"])
+        return response
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    result = _make_client().chat.completions.create(model="m", messages=[], stream=stream, tools=[{"type": "function"}])
+    message = list(result)[0].choices[0].delta if stream else result.choices[0].message
+    assert message.tool_calls == calls
+    assert message.content is None
+    assert sent[0]["tools"] == [{"type": "function"}]
