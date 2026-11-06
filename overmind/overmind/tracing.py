@@ -1059,6 +1059,10 @@ def capability(name: str | None = None, *, id: str | None = None) -> _Capability
     return _CapabilityScope(name, id)
 
 
+def _capability_identity() -> str:
+    return str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
+
+
 class _TurnRegistry:
     """Open turn-unit spans keyed by (trace_id, capability, behaviour key).
 
@@ -1074,7 +1078,7 @@ class _TurnRegistry:
 
     def get_or_start(self, key: str) -> trace.Span:
         ambient = trace.get_current_span().get_span_context()
-        identity = str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
+        identity = _capability_identity()
         evicted: list[tuple[trace.Span, int | None]] = []
         with self._lock:
             if ambient.is_valid and (span := self._spans.pop((ambient.trace_id, identity, key), None)) is not None:
@@ -1095,7 +1099,7 @@ class _TurnRegistry:
         return span
 
     def touch(self, span: trace.Span, key: str) -> None:
-        identity = str(get_value(attrs.CAPABILITY_ID) or get_value(attrs.CAPABILITY_NAME) or "")
+        identity = _capability_identity()
         entry = (span.get_span_context().trace_id, identity, key)
         with self._lock:
             # Only a still-tracked span records activity — a touch after
