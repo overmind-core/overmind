@@ -86,28 +86,26 @@ def train_function_name(stack_or_alias: str | None) -> str:
 
 
 # --- serve stacks (FamilySpec.serve_image / routing headers) ---------------
-# One image. v0.30.0 has Muse Glimmer (#51655) and the LoRA mapping fix
-# (#53513), so Muse no longer needs its own tag.
+# vLLM 0.33.0 is the shared pool and the dedicated pool. SGLang is the shared
+# pool for the adapter bake-off winners only. LFM3 has its own image.
 
 SERVE_VLLM = "vllm"
+SERVE_SGLANG = "sglang"
+SERVE_SGLANG_LFM3 = "sglang_lfm3"
 
-SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM,)
+SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM, SERVE_SGLANG, SERVE_SGLANG_LFM3)
 
 SERVE_STACK_PINS: dict[str, str] = {
-    SERVE_VLLM: "vllm/vllm-openai:v0.30.0 + runai-model-streamer>=0.15.7",
+    SERVE_VLLM: "vllm/vllm-openai:v0.33.0 + runai-model-streamer>=0.15.7",
+    SERVE_SGLANG: "lmsysorg/sglang:v0.5.22",
+    SERVE_SGLANG_LFM3: "lmsysorg/sglang:dev-lfm3",
 }
 
 # (gpu_type, serve_image) pairs we deploy. Cls name is ``{gpu}_{serve_image}``
 # with hyphens stripped from gpu (A100-80GB → A10080GB_vllm).
+_SERVERLESS_GPUS = ("L4", "L40S", "A100-80GB", "H200", "B200", "B300")
 WORKER_ALLOWED: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("L4", SERVE_VLLM),
-        ("L40S", SERVE_VLLM),
-        ("A100-80GB", SERVE_VLLM),
-        ("H200", SERVE_VLLM),
-        ("B200", SERVE_VLLM),
-        ("B300", SERVE_VLLM),
-    }
+    (gpu, image) for image in SERVE_STACKS for gpu in _SERVERLESS_GPUS
 )
 
 

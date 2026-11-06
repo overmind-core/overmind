@@ -122,7 +122,7 @@ def test_base_keeps_its_name_without_adapters(tmp_path: Path) -> None:
 
 
 def test_sglang_dflash_argv_and_engine_choice() -> None:
-    from modal_shared.serving.engine import engine_for
+    from modal_shared.serving.engine import engine_for, serverless_engine
     from modal_shared.serving.sglang import build_sglang_args, sglang_tool_parser
 
     cmd = build_sglang_args(
@@ -152,6 +152,13 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
     assert oss[oss.index("--attention-backend") + 1] == "triton"
     assert cmd[cmd.index("--tool-call-parser") + 1] == "qwen3_coder"
     assert cmd[cmd.index("--reasoning-parser") + 1] == "gpt-oss"
+    nemotron = build_sglang_args(
+        model_path="/tmp/folded",
+        served_name="dedicated/ft",
+        port=8000,
+        reasoning_parser="nemotron_v3",
+    )
+    assert nemotron[nemotron.index("--reasoning-parser") + 1] == "nemotron_3"
     assert sglang_tool_parser("openai") == "gpt-oss"
     assert sglang_tool_parser("llama3_json") == "llama3"
     assert sglang_tool_parser("muse_glimmer") == "muse"
@@ -180,6 +187,42 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
     assert engine_for("meta-llama/Llama-3.1-8B-Instruct") == "vllm"
     assert engine_for("Qwen/Qwen3-14B") == "vllm"
     assert engine_for("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
+    assert serverless_engine("Qwen/Qwen3-14B") == "sglang"
+    assert serverless_engine("unsloth/Llama-3.2-1B-Instruct") == "sglang"
+    assert serverless_engine("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
+    assert serverless_engine("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
+    assert serverless_engine("openai/gpt-oss-20b") == "vllm"
+    gemma = build_sglang_args(
+        model_path="/tmp/folded",
+        served_name="dedicated/ft",
+        port=8000,
+        gpu_type="L40S",
+        model="google/gemma-4-E2B-it",
+    )
+    assert gemma[gemma.index("--attention-backend") + 1] == "triton"
+    lora_cmd = build_sglang_args(
+        model_path="/tmp/base",
+        served_name="base",
+        port=8000,
+        gpu_type="L4",
+        enable_lora=True,
+        max_lora_rank=16,
+    )
+    assert lora_cmd[lora_cmd.index("--max-lora-rank") + 1] == "16"
+    assert lora_cmd[lora_cmd.index("--lora-target-modules") + 1] == "all"
+    named = build_sglang_args(
+        model_path="/tmp/base",
+        served_name="base",
+        port=8000,
+        gpu_type="L4",
+        enable_lora=True,
+        lora_target_modules="q_proj,k_proj",
+        mem_fraction="0.92",
+    )
+    start = named.index("--lora-target-modules")
+    assert named[start + 1 : start + 3] == ["q_proj", "k_proj"]
+    assert named[named.index("--mem-fraction-static") + 1] == "0.92"
+    assert "--enable-lora" not in cmd
     lfm3 = build_sglang_args(
         model_path="/tmp/folded",
         served_name="dedicated/lfm3",
@@ -206,6 +249,10 @@ def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
         "num_speculative_tokens": 15,
     }
     assert "--cudagraph-capture-sizes" not in cmd
+    mtp = _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3.5-4B", mtp_tokens=1)
+    mtp_payload = json.loads(mtp[mtp.index("--speculative-config") + 1])
+    assert mtp_payload == {"method": "mtp", "num_speculative_tokens": 1}
+    assert "--cudagraph-capture-sizes" not in mtp
     for repo in (
         "Qwen/Qwen3.5-4B",
         "unsloth/Qwen3.5-4B",
@@ -306,3 +353,37 @@ def test_systemone_probabilities_follow_the_option_order() -> None:
     assert probabilities_for(request, {"probabilities": {"low": 0.2, "high": 0.8}}) == [0.2, 0.8]
     noul = {**request, "kind": "noul"}
     assert probabilities_for(noul, {"noul": 0.75}) == [0.25, 0.75]
+
+
+def test_nemotron_expert_lora_is_marked_3d() -> None:
+    from modal_shared.serving.nemotron_lora import mark
+
+    class NemotronHForCausalLM:
+        is_non_gated_moe = True
+
+    mark(NemotronHForCausalLM)
+    assert NemotronHForCausalLM.is_3d_moe_weight is True
+
+
+def test_lfm3_hidden_dims_and_unsloth_target_rewrite(tmp_path: Path) -> None:
+    from modal_shared.serving.lfm3_lora import hidden_dim, stacked_multiply
+    from modal_shared.serving.sglang import normalize_sglang_adapter
+
+    assert hidden_dim("in_proj", 2048, 7680) == (2048, 6144)
+    assert hidden_dim("out_proj", 2048, 7680) == (2048, 2048)
+    assert hidden_dim("w1", 2048, 7680) == (2048, 7680)
+    assert hidden_dim("w3", 2048, 7680) == (2048, 7680)
+    assert hidden_dim("w2", 2048, 7680) == (7680, 2048)
+    assert hidden_dim("q_proj", 2048, 7680) is None
+    assert stacked_multiply("in_proj") == 3
+    assert stacked_multiply("w1") is None
+
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+    config = adapter / "adapter_config.json"
+    config.write_text(json.dumps({"target_modules": "model\\.layers.*"}))
+    normalize_sglang_adapter(adapter, keep_targets="q_proj,in_proj")
+    assert json.loads(config.read_text())["target_modules"] == ["q_proj", "in_proj"]
+    config.write_text(json.dumps({"target_modules": "model\\.layers.*"}))
+    normalize_sglang_adapter(adapter)
+    assert json.loads(config.read_text())["target_modules"] == "all-linear"

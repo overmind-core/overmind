@@ -471,6 +471,9 @@ class _BaseVLLMWorker:
             from modal_shared.serving.sglang import build_sglang_args
 
             # gpt-oss has no thinking-off switch. The parser keeps analysis out of content.
+            # The LFM3 image's --lora-target-modules allowlist has no conv or MLP
+            # names. "all" admits them; the hidden-dim patch supplies their shapes.
+            lora_targets = "all" if engine == "sglang_lfm3" else (spec.lora_target_modules or "")
             cmd = build_sglang_args(
                 model_path=full_path,
                 served_name=self.model_name,
@@ -482,6 +485,9 @@ class _BaseVLLMWorker:
                 reasoning_parser=spec.reasoning_parser or "",
                 gpu_type=getattr(self, "gpu_type", ""),
                 model=base_model,
+                enable_lora=self.enable_lora,
+                max_lora_rank=self.max_lora_rank,
+                lora_target_modules=lora_targets,
             )
         else:
             cmd = (
@@ -539,7 +545,16 @@ class _BaseVLLMWorker:
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
         # are not mangled by the shell.
         self._journal.emit("starting_engine_process")
-        self._proc = subprocess.Popen(cmd)  # noqa: S603
+        launch_env = None
+        if engine == "sglang_lfm3":
+            from modal_shared.serving.lfm3_lora import process_env
+
+            launch_env = process_env()
+        elif spec.key == "nemotron35" and engine == "vllm":
+            from modal_shared.serving.nemotron_lora import process_env as nemotron_env
+
+            launch_env = nemotron_env()
+        self._proc = subprocess.Popen(cmd, env=launch_env)  # noqa: S603
         _wait_for_vllm(proc=self._proc, journal=self._journal)
         if getattr(self, "snapshot_engine", False):
             # Level 1 copies weights into CPU memory so the snapshot keeps them.
@@ -617,11 +632,26 @@ class _BaseVLLMWorker:
                 shutil.rmtree(staged)
             staged.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(source, staged)
+            engine = str(getattr(self, "engine", "vllm"))
+            if engine.startswith("sglang"):
+                from modal_shared.modelfam import resolve
+                from modal_shared.serving.sglang import normalize_sglang_adapter
+
+                spec = resolve(getattr(self, "base_identity", "") or "")
+                if engine == "sglang_lfm3":
+                    from modal_shared.serving.lfm3_lora import SGLANG_TARGETS
+
+                    keep_targets = SGLANG_TARGETS
+                else:
+                    keep_targets = spec.lora_target_modules or ""
+                normalize_sglang_adapter(staged, keep_targets=keep_targets)
+                load_url = f"http://localhost:{VLLM_PORT}/load_lora_adapter"
+                payload = {"lora_name": name, "lora_path": str(staged)}
+            else:
+                load_url = f"http://localhost:{VLLM_PORT}/v1/load_lora_adapter"
+                payload = lora_load_request(name, str(staged))
             async with httpx.AsyncClient(timeout=300) as client:
-                resp = await client.post(
-                    f"http://localhost:{VLLM_PORT}/v1/load_lora_adapter",
-                    json=lora_load_request(name, str(staged)),
-                )
+                resp = await client.post(load_url, json=payload)
             text = resp.text or ""
             # vLLM answers 400 "has already been loaded" when another container in this pool
             # got there first, which is success as far as the caller is concerned.
@@ -1068,6 +1098,7 @@ def _register_worker(
     image_override=None,
     snapshot=True,
     engine="vllm",
+    runtime_lora: bool = False,
 ) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = image_override or (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
@@ -1082,10 +1113,13 @@ def _register_worker(
         "model_path": modal.parameter(),
         "model_name": modal.parameter(),
         "max_model_len": modal.parameter(default=default_len),
-        "enable_lora": modal.parameter(default=lora),
+        "enable_lora": modal.parameter(default=runtime_lora or lora),
         "max_lora_rank": modal.parameter(default=16),
         "gpu_type": gpu_type,
     }
+    if runtime_lora:
+        parameters["__annotations__"]["base_identity"] = str
+        parameters["base_identity"] = modal.parameter(default="")
     if lora:
         parameters["__annotations__"]["base_identity"] = str
         parameters["base_identity"] = modal.parameter(default="")
@@ -1211,9 +1245,20 @@ def register_dedicated_classes(target_app, owner) -> None:
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():
-    _register_worker(_cls_name, _gpu, _serve_image)
+    if _serve_image == "vllm":
+        _register_worker(_cls_name, _gpu, _serve_image)
+        _register_worker(
+            worker_cls_name(_gpu, _serve_image, enable_lora=True), _gpu, _serve_image, lora=True
+        )
+        continue
+    # SGLang shared pools load the adapter at request time. They do not snapshot.
+    _register_worker(_cls_name, _gpu, _serve_image, engine=_serve_image)
     _register_worker(
-        worker_cls_name(_gpu, _serve_image, enable_lora=True), _gpu, _serve_image, lora=True
+        worker_cls_name(_gpu, _serve_image, enable_lora=True),
+        _gpu,
+        _serve_image,
+        engine=_serve_image,
+        runtime_lora=True,
     )
 
 dedicated_app = modal.App("overmind-dedicated")

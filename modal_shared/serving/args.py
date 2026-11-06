@@ -91,6 +91,8 @@ class VllmServeContext:
     # DFlash draft directory on the weights volume. Empty leaves speculative decoding off.
     draft_model: str = ""
     draft_tokens: int = 0
+    # In-checkpoint MTP. Qwen3.5's hybrid cache accepts one token on this method.
+    mtp_tokens: int = 0
 
 
 def _serve_chat_template_path(model_path: str) -> str | None:
@@ -193,7 +195,7 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
     ]
     # The short capture list drops DFlash acceptance to about 5%, and the draft
     # overhead then makes the server slower than the base. vLLM's own list does not.
-    if not ctx.draft_model:
+    if not ctx.draft_model and not ctx.mtp_tokens:
         cmd += [
             "--cudagraph-capture-sizes",
             *([str(s) for s in CUDAGRAPH_CAPTURE_SIZES if s <= ctx.max_num_seqs] or ["1"]),
@@ -202,7 +204,15 @@ def build_vllm_args(ctx: VllmServeContext, spec: FamilySpec | None = None) -> li
     chat_tmpl = _serve_chat_template_path(ctx.chat_template_dir or ctx.model_path)
     if chat_tmpl:
         cmd += ["--chat-template", chat_tmpl]
-    if ctx.draft_model:
+    if ctx.mtp_tokens:
+        cmd += [
+            "--speculative-config",
+            json.dumps(
+                {"method": "mtp", "num_speculative_tokens": ctx.mtp_tokens},
+                separators=(",", ":"),
+            ),
+        ]
+    elif ctx.draft_model:
         cmd += [
             "--speculative-config",
             json.dumps(

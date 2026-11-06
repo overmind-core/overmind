@@ -84,7 +84,11 @@ def test_models_json_all_resolve() -> None:
 def test_serve_image_key_from_base_model() -> None:
     assert serve_image_key("ft-abc", "unsloth/Muse-Glimmer-30B") == "vllm"
     assert serve_image_key("ft-abc") == "vllm"
-    assert serve_image_key("Qwen/Qwen3-8B") == "vllm"
+    assert serve_image_key("ft-abc", "Qwen/Qwen3-8B") == "sglang"
+    assert serve_image_key("Qwen/Qwen3-8B") == "sglang"
+    assert serve_image_key("unsloth/Qwen3-14B") == "sglang"
+    assert serve_image_key("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
+    assert serve_image_key("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
 
 
 def test_serve_image_from_checkpoint_finetune_ids() -> None:
@@ -111,7 +115,7 @@ def test_serve_image_from_checkpoint_finetune_ids() -> None:
             base_model="Qwen/Qwen3-0.6B",
             model_type="qwen3",
         )
-        == "vllm"
+        == "sglang"
     )
     assert serve_image_from_checkpoint(model_name="ft-4ff3114a-muse-glimmer-30b") == "vllm"
 

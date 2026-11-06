@@ -43,7 +43,35 @@ def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
     assert obj._serve_command[obj._serve_command.index("--tool-call-parser") + 1] == "qwen3_coder"
 
 
-@pytest.mark.parametrize("gpu,image", sorted(WORKER_ALLOWED))
+def test_lfm3_starts_on_its_image_with_conv_targets(monkeypatch, tmp_path):
+    obj = serving._BaseVLLMWorker()
+    obj.engine = "sglang_lfm3"
+    obj.model_path = "base"
+    obj._journal = Mock()
+    obj.model_name = "opaque-deployment-id"
+    obj.max_model_len = 512
+    obj.enable_lora = True
+    obj.max_lora_rank = 16
+    (tmp_path / "base").mkdir()
+    monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr(
+        serving,
+        "read_base_manifest",
+        Mock(return_value={"repo": "LiquidAI/LFM3-1.7B"}),
+    )
+    popen = Mock()
+    monkeypatch.setattr(serving.subprocess, "Popen", popen)
+    monkeypatch.setattr(serving, "_wait_for_vllm", Mock())
+    obj._startup_inner(_json=json, _os=os)
+    cmd = obj._serve_command
+    assert "--enable-lora" in cmd
+    assert cmd[cmd.index("--lora-target-modules") + 1] == "all"
+    env = popen.call_args.kwargs["env"]
+    assert "overmind-lfm3" in env["PYTHONPATH"]
+
+
+@pytest.mark.parametrize("gpu,image", sorted(pair for pair in WORKER_ALLOWED if pair[1] == "vllm"))
 def test_every_gpu_image_has_a_separate_shared_base_worker(gpu, image):
     regular = getattr(serving, worker_cls_name(gpu, image))._get_user_cls()
     shared = getattr(serving, worker_cls_name(gpu, image, enable_lora=True))._get_user_cls()
@@ -54,7 +82,22 @@ def test_every_gpu_image_has_a_separate_shared_base_worker(gpu, image):
     assert set(regular.__annotations__) < set(shared.__annotations__)
 
 
-@pytest.mark.parametrize("gpu,image", sorted(WORKER_ALLOWED))
+def test_sglang_shared_pool_is_not_a_gpu_snapshot(gpu="L4", image="sglang"):
+    regular = getattr(serving, worker_cls_name(gpu, image))._get_user_cls()
+    shared = getattr(serving, worker_cls_name(gpu, image, enable_lora=True))._get_user_cls()
+    assert not issubclass(shared, serving._SharedBaseVLLMWorker)
+    assert regular.engine == "sglang"
+    assert shared.engine == "sglang"
+    assert not shared.snapshot_weights
+    assert shared.__annotations__["base_identity"] is str
+    discovery = importlib.import_module("modal._partial_function")
+    flags = discovery._PartialFunctionFlags
+    find = discovery._find_partial_methods_for_user_cls
+    assert set(find(shared, flags.ENTER_POST_SNAPSHOT)) == {"startup"}
+    assert find(shared, flags.ENTER_PRE_SNAPSHOT) == {}
+
+
+@pytest.mark.parametrize("gpu,image", sorted(pair for pair in WORKER_ALLOWED if pair[1] == "vllm"))
 def test_modal_discovers_only_the_intended_lifecycle_hooks(gpu, image):
     discovery = importlib.import_module("modal._partial_function")
     flags = discovery._PartialFunctionFlags

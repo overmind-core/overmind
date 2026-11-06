@@ -70,10 +70,19 @@ def resolve(model_id: str) -> FamilySpec:
 
 
 def serve_image_key(*blobs: str) -> str:
-    """First non-default FamilySpec.serve_image across id fragments, else ``vllm``."""
+    """Shared-pool image for these ids.
+
+    A bake-off winner is matched by model id before the family default, because
+    one family contains both SGLang and vLLM winners.
+    """
+    from modal_shared.serving.engine import serverless_engine
+
     for blob in blobs:
         if not blob:
             continue
+        engine = serverless_engine(blob)
+        if engine != "vllm":
+            return engine
         key = resolve(blob).serve_image
         if key != "vllm":
             return key
