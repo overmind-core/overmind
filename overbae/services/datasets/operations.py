@@ -42,13 +42,15 @@ def check_cancelled(dataset_id):
 
 
 @transaction.atomic
-def cancel(dataset_id):
+def cancel(dataset_id, *, only_landing=False):
     receipts = list(
         DatasetImport.objects.select_for_update().filter(
             Q(dataset_id=dataset_id) | Q(evaluation_id=dataset_id), state__in=["queued", "running"]
         )
     )
     dataset = Dataset.objects.select_for_update().get(pk=dataset_id)
+    if only_landing and dataset.state != Dataset.State.LANDING:
+        return None
     if receipts:
         DatasetImport.objects.filter(pk__in=[run.pk for run in receipts]).update(
             state="cancelled", owner=None, lease_until=None, updated_at=timezone.now()

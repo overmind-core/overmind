@@ -1,11 +1,17 @@
 // covers: console-logic
 import { describe, expect, it } from "vitest";
 
-import type { ConnectorShapeCandidate } from "@/openapi";
+import type {
+  ConnectorCapabilityProposal,
+  ConnectorCredential,
+  ConnectorShapeCandidate,
+} from "@/openapi";
 import {
   ancestorsOfSelected,
   buildShapeTree,
   descendantNames,
+  initialState,
+  mergeSuggestedAssignments,
   namesMatching,
 } from "./setup-wizard";
 
@@ -137,4 +143,35 @@ describe("namesMatching", () => {
   it("treats a blank query as unfiltered", () => {
     expect(namesMatching(tree, "   ")).toEqual(new Set());
   });
+});
+
+it("keeps an explicit unmapped choice when discovery suggests it again", () => {
+  const assignments = { chosen: "existing", rejected: "" };
+  const proposals = Object.fromEntries(
+    ["rejected", "chosen", "new"].map((name) => [
+      name,
+      { capabilityId: "suggested" } as ConnectorCapabilityProposal,
+    ])
+  );
+  expect(mergeSuggestedAssignments(assignments, proposals)).toEqual({
+    chosen: "existing",
+    new: "suggested",
+    rejected: "",
+  });
+});
+
+it("reopens the saved historical range without widening it", () => {
+  const start = new Date("2025-01-01T00:00:00Z"),
+    end = new Date("2025-01-03T00:00:00Z");
+  const existing = {
+    activeConfig: { backfillFrom: start, backfillTo: end, lookbackDays: 30 },
+  } as ConnectorCredential;
+  expect(initialState("project", existing)).toMatchObject({
+    customTimeRange: { gte: start.toISOString(), lte: end.toISOString() },
+    timeRange: "custom",
+  });
+  expect(
+    initialState("project", { activeConfig: { lookbackDays: null } } as ConnectorCredential)
+      .timeRange
+  ).toBe("all");
 });

@@ -281,7 +281,7 @@ def map_return(value):
                 "passed": value, "explanation": ""}}
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         score = float(value)
-        if score < 0.0 or score > 1.0:
+        if not 0.0 <= score <= 1.0:
             return {{"outcome": "error", "score": None, "passed": None,
                     "explanation": f"score {{score}} is outside [0, 1]"}}
         return {{"outcome": "scored", "score": score, "passed": score >= 0.5,
@@ -294,7 +294,7 @@ def map_return(value):
                     "passed": score_part, "explanation": reason_text}}
         if isinstance(score_part, (int, float)) and not isinstance(score_part, bool):
             score = float(score_part)
-            if score < 0.0 or score > 1.0:
+            if not 0.0 <= score <= 1.0:
                 return {{"outcome": "error", "score": None, "passed": None,
                         "explanation": f"score {{score}} is outside [0, 1]"}}
             return {{"outcome": "scored", "score": score, "passed": score >= 0.5,

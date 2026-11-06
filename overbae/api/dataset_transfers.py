@@ -7,12 +7,12 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
+from overbae.api.authentication import ip_allowed
 from overbae.api.scoping import project_ids_for
 from overbae.api.uploads import OctetStreamParser
 from overbae.models import APIToken, Capability, Dataset, DatasetTransfer, Project
 from overbae.services.datasets import files, transfers
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.mcp.auth import ip_allowed
 
 
 class TransferFileInputSerializer(serializers.Serializer):

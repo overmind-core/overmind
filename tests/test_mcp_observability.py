@@ -179,3 +179,18 @@ def test_query_traces_exact_session_counts_root_traces():
         first_trace,
         second_trace,
     }
+
+
+@pytest.mark.parametrize("status", ["error", "2"])
+def test_error_status_aliases_return_error_traces(status):
+    context, capability, _ = _context()
+    for code in (0, 1, 2):
+        Span.objects.create(
+            span_id=f"status-{code}",
+            trace_id=str(code) * 32,
+            project=context.project,
+            capability=capability,
+            status_code=code,
+        )
+    result = call_tool("query_traces", {"status": status}, context)
+    assert [trace["trace_id"] for trace in result.structuredContent["traces"]] == ["2" * 32]

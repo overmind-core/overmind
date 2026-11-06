@@ -207,6 +207,7 @@ def test_compare_pairs_rows_against_the_group_baseline():
 
     output = _call("compare_evaluations", {"run": str(candidate.id)}, context).structuredContent
 
+    assert output["coverage"] == {"observed_rows": 2, "baseline_scored": 2, "candidate_scored": 2}
     assert output["overall"]["status"] == "improved"
     assert output["overall"]["delta"] == pytest.approx(0.25)
     assert (output["paired"], output["wins"], output["losses"], output["ties"]) == (2, 1, 0, 1)

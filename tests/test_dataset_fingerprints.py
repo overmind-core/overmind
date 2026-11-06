@@ -69,3 +69,9 @@ def test_declared_decision_inputs_group_target_variants_across_wire_formats(shap
         else:
             row = {"input": {"decision": request}, "expected_output": {"probabilities": target}}
         assert content_key(row) == canonical
+
+
+def test_call_origin_and_trace_identity_detect_contamination():
+    a = {"origin_trace_id": "shared", "input": "first turn"}
+    b = {"trace_id": "shared", "input": "later turn"}
+    assert contamination_keys(a) & contamination_keys(b)

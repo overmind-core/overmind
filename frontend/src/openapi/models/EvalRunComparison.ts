@@ -20,6 +20,13 @@ import {
     MetricComparisonToJSON,
     MetricComparisonToJSONTyped,
 } from './MetricComparison';
+import type { ComparisonCoverage } from './ComparisonCoverage';
+import {
+    ComparisonCoverageFromJSON,
+    ComparisonCoverageFromJSONTyped,
+    ComparisonCoverageToJSON,
+    ComparisonCoverageToJSONTyped,
+} from './ComparisonCoverage';
 import type { OverallComparison } from './OverallComparison';
 import {
     OverallComparisonFromJSON,
@@ -72,6 +79,12 @@ export interface EvalRunComparison {
     paired: number;
     /**
      *
+     * @type {ComparisonCoverage}
+     * @memberof EvalRunComparison
+     */
+    coverage: ComparisonCoverage;
+    /**
+     *
      * @type {number}
      * @memberof EvalRunComparison
      */
@@ -112,6 +125,7 @@ export function instanceOfEvalRunComparison(value: object): value is EvalRunComp
     if (!('candidateLabel' in value) || value['candidateLabel'] === undefined) return false;
     if (!('overall' in value) || value['overall'] === undefined) return false;
     if (!('paired' in value) || value['paired'] === undefined) return false;
+    if (!('coverage' in value) || value['coverage'] === undefined) return false;
     if (!('wins' in value) || value['wins'] === undefined) return false;
     if (!('losses' in value) || value['losses'] === undefined) return false;
     if (!('ties' in value) || value['ties'] === undefined) return false;
@@ -136,6 +150,7 @@ export function EvalRunComparisonFromJSONTyped(json: any, ignoreDiscriminator: b
         'candidateLabel': json['candidate_label'],
         'overall': OverallComparisonFromJSON(json['overall']),
         'paired': json['paired'],
+        'coverage': ComparisonCoverageFromJSON(json['coverage']),
         'wins': json['wins'],
         'losses': json['losses'],
         'ties': json['ties'],
@@ -161,6 +176,7 @@ export function EvalRunComparisonToJSONTyped(value?: EvalRunComparison | null, i
         'candidate_label': value['candidateLabel'],
         'overall': OverallComparisonToJSON(value['overall']),
         'paired': value['paired'],
+        'coverage': ComparisonCoverageToJSON(value['coverage']),
         'wins': value['wins'],
         'losses': value['losses'],
         'ties': value['ties'],

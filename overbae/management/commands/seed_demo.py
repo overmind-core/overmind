@@ -32,6 +32,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import connection
+from django.db.models import Q
 from django.utils import timezone
 
 from overbae.innermind import comparison
@@ -611,6 +612,14 @@ def seed_model_workflows(project):
         )
 
 
+def reset_demo_billing(owner_email: str) -> None:
+    # Delete before the project cascade clears the ledger's project foreign key.
+    BillingTelemetry.objects.filter(
+        Q(project__slug__in=(SLUG, *RETIRED_SLUGS))
+        | Q(user__email=owner_email, idempotency_key="topup:cs_live_seed_a1B2c3")
+    ).delete()
+
+
 class Command(BaseCommand):
     help = "Seed the Support Copilot demo project"
 
@@ -680,6 +689,7 @@ class Command(BaseCommand):
 
         self.stdout.write("Clearing the previous seed...")
 
+        reset_demo_billing(owner_email)
         slugs = (SLUG, *RETIRED_SLUGS)
         doomed_datasets = list(
             Dataset.objects.filter(project__slug__in=slugs).values_list("id", flat=True)
@@ -708,10 +718,6 @@ class Command(BaseCommand):
         User.objects.filter(email__endswith=f"@{RETIRED_DOMAIN}").delete()
         User.objects.filter(email__endswith=f"@{TEAM_DOMAIN}").delete()
         Feedback.objects.filter(user__isnull=True).delete()
-        # Ledger rows outlive the project cascade; a re-run must not trip their idempotency keys.
-        BillingTelemetry.objects.filter(user__email=owner_email).exclude(
-            service=BillingService.FREE_CREDITS
-        ).delete()
 
         # ── People and project ───────────────────────────────────────────────────────────
 

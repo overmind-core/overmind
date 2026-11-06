@@ -236,16 +236,11 @@ class APIToken(models.Model):
         return (self.scope or {}).get("scope") == "account"
 
     def allowed_project_ids(self):
-        if self.is_account_scoped:
-            return list(
-                ProjectMembership.objects.filter(user_id=self.user_id).values_list(
-                    "project_id", flat=True
-                )
-            )
-        raw = (self.scope or {}).get("resourceIds") or []
-        if raw:
-            return raw
-        return [self.project_id] if self.project_id else []
+        memberships = ProjectMembership.objects.filter(user_id=self.user_id)
+        if not self.is_account_scoped:
+            resource_ids = (self.scope or {}).get("resourceIds") or [self.project_id]
+            memberships = memberships.filter(project_id__in=resource_ids)
+        return list(memberships.values_list("project_id", flat=True))
 
     @staticmethod
     def hash_raw_key(raw: str) -> str:

@@ -91,6 +91,7 @@ models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts
 models/CommandResultInputRequest.ts
+models/ComparisonCoverage.ts
 models/ConfidenceEnum.ts
 models/ConnectorActiveConfig.ts
 models/ConnectorCapabilities.ts

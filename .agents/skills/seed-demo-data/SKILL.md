@@ -23,7 +23,8 @@ docker compose exec api python manage.py seed_demo [--owner EMAIL]
 ~10 min, deterministic (seeded RNG, uuid5 ids for capabilities, jobs and
 groups, timestamps anchored to NOW) and idempotent: the reset deletes the
 project by slug (plus the retired Undermind demo slugs), the `@ledgerline.dev`
-team users, and the owner's non-free-credit ledger rows before it seeds. The
+team users, demo-project ledger rows and the exact seeded top-up before it seeds.
+Unrelated account charges, top-ups and free credits are retained. The
 project belongs to `--owner` (default `frey@overmindlab.ai`); the
 account is created with password `password` when it does not exist. Plaintext
 API keys print at the end. Activity and onboarding examples are terminal receipts

@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
+from django.db import close_old_connections, connection
 from django.utils import timezone
 
-from overbae.models import Dataset, DatasetImport, Project
-from overbae.services.datasets import dispatch, files
+from overbae.models import Cell, Dataset, DatasetImport, DatasetPipelineRun, Project
+from overbae.services.datasets import dispatch, files, imports, workbench
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks import datasets as dataset_tasks
 from overbae.tasks.cleanup_tmp import cleanup_uploads
@@ -572,3 +575,55 @@ def test_rolling_deploy_accepts_dataset_inserts_without_ocr_language_field(impor
             [legacy_id, dataset.pk],
         )
     assert Dataset.objects.get(pk=legacy_id).ocr_languages == []
+
+
+def test_cancellation_and_import_claim_use_the_same_lock_order(imported_source):
+    dataset, run = create_import(imported_source)
+    receipt_locked, cancellation_entered = threading.Event(), threading.Event()
+
+    def claim():
+        def observe(execute, sql, params, many, context):
+            result = execute(sql, params, many, context)
+            if '"overbae_datasetimport"' in sql and "FOR UPDATE" in sql:
+                receipt_locked.set()
+                assert cancellation_entered.wait(5)
+            return result
+
+        try:
+            with connection.execute_wrapper(observe):
+                return imports.claim(run.pk)
+        finally:
+            close_old_connections()
+
+    def cancel():
+        def observe(execute, sql, params, many, context):
+            if '"overbae_datasetimport"' in sql and "FOR UPDATE" in sql:
+                cancellation_entered.set()
+            return execute(sql, params, many, context)
+
+        try:
+            with connection.execute_wrapper(observe):
+                return workbench.cancel(dataset)
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        publisher = executor.submit(claim)
+        assert receipt_locked.wait(5)
+        canceller = executor.submit(cancel)
+        publisher.result(timeout=10)
+        canceller.result(timeout=10)
+    run.refresh_from_db()
+    dataset.refresh_from_db()
+    assert run.state == "cancelled"
+    assert dataset.state == "idle"
+
+
+def test_cancelling_a_landing_dataset_cancels_its_pipeline_runs(imported_source):
+    dataset, run = create_import(imported_source)
+    cell = Cell.objects.create(dataset=dataset, position=0)
+    pipeline_run = DatasetPipelineRun.objects.create(dataset=dataset, source=cell, request_key="k")
+    assert workbench.cancel(dataset) == 1
+    run.refresh_from_db()
+    pipeline_run.refresh_from_db()
+    assert (run.state, pipeline_run.state) == ("cancelled", "cancelled")

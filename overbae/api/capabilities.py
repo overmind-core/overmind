@@ -20,6 +20,7 @@ from overbae.api.serializers import (
     CapabilityListSerializer,
     CapabilitySerializer,
     PromptSerializer,
+    capability_products,
 )
 from overbae.api.sync import RepositorySnapshotSerializer
 from overbae.models import Capability, Project
@@ -69,7 +70,9 @@ def _capabilities_for(request):
 
 
 def _annotated(qs):
-    return qs.annotate(trace_count=Count("spans__trace_id", distinct=True))
+    return capability_products(qs.select_related("activation")).annotate(
+        trace_count=Count("spans__trace_id", distinct=True)
+    )
 
 
 @extend_schema_view(

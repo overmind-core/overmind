@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Manager, Max, Q
+from django.db.models import Count, Manager, Max, Prefetch, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -23,6 +23,7 @@ from overbae.models import (
     APIToken,
     BillingTelemetry,
     Capability,
+    Cell,
     ConnectorCredential,
     ConnectorSyncRun,
     Conversation,
@@ -66,10 +67,6 @@ from overbae.services.training_preparation import setup_job_for_launch
 from overbae.services.training_record import requested_configuration, run_record
 
 logger = logging.getLogger(__name__)
-
-
-def _user_project_ids(user):
-    return set(ProjectMembership.objects.filter(user=user).values_list("project_id", flat=True))
 
 
 def _first_float(attrs: dict, *keys: str) -> float | None:
@@ -387,21 +384,49 @@ class UserOnboardingSerializer(serializers.ModelSerializer):
 
 def _validate_project_ownership(serializer_instance, value):
     """Shared validation: ensure project belongs to the requesting user."""
-    user = serializer_instance.context["request"].user
-    if value.id not in _user_project_ids(user):
+    request = serializer_instance.context["request"]
+    if value.id not in project_ids_for(request.user, getattr(request, "auth", None)):
         raise serializers.ValidationError("You are not a member of this project.")
     return value
 
 
-def _capability_product(capability):
-    """The newest active cell among the datasets bound to the capability."""
-    from overbae.models import Dataset  # noqa: PLC0415
+def capability_products(queryset):
+    datasets = (
+        Dataset.objects.select_related("active")
+        .prefetch_related(
+            Prefetch(
+                "cells",
+                queryset=Cell.objects.filter(state=Cell.State.OK).order_by("-position")[:1],
+                to_attr="latest_ok_cells",
+            )
+        )
+        .order_by("-updated_at")[:5]
+    )
+    return queryset.prefetch_related(
+        Prefetch("datasets", queryset=datasets, to_attr="product_datasets")
+    )
 
-    for dataset in Dataset.objects.filter(capability=capability).order_by("-updated_at")[:5]:
-        cell = dataset.active_cell
+
+def _capability_product(capability):
+    if hasattr(capability, "_product_cell"):
+        return capability._product_cell
+    datasets = getattr(capability, "product_datasets", None)
+    if datasets is None:
+        datasets = (
+            capability_products(Capability.objects.filter(pk=capability.pk)).get().product_datasets
+        )
+    capability._product_cell = None
+    for dataset in datasets:
+        active = dataset.active
+        cell = (
+            active
+            if active and active.dataset_id == dataset.pk and active.state == Cell.State.OK
+            else next(iter(dataset.latest_ok_cells), None)
+        )
         if cell is not None:
-            return cell
-    return None
+            capability._product_cell = cell
+            break
+    return capability._product_cell
 
 
 def _capability_live_dataset_size(capability) -> int:
@@ -2364,6 +2389,8 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
             if config.target_project_id
             else None,
             "lookback_days": config.lookback_days,
+            "backfill_from": config.backfill_from.isoformat() if config.backfill_from else None,
+            "backfill_to": config.backfill_to.isoformat() if config.backfill_to else None,
             "effective_from": config.effective_from.isoformat(),
         }
 
@@ -2371,7 +2398,9 @@ class ConnectorCredentialSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is None:
             return value
-        allowed = {str(pid) for pid in project_ids_for(request.user, request.auth)}
+        allowed = {
+            str(pid) for pid in project_ids_for(request.user, getattr(request, "auth", None))
+        }
         if str(value.pk) not in allowed:
             raise serializers.ValidationError(
                 "This API key is scoped to another project."

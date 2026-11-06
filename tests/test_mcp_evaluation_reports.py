@@ -7,7 +7,7 @@ from starlette.testclient import TestClient
 from test_data_first_workflow import workspace
 from test_mcp_research_journey import call
 
-from overbae.models import APIToken, NativeEvaluationPlan, Project
+from overbae.models import APIToken, NativeEvaluationPlan, Project, ProjectMembership
 from overbae.services.mcp.server import create_mcp_application
 from overbae.services.native_evaluation import directory
 
@@ -92,6 +92,7 @@ def test_mcp_summary_counts_every_benchmark_and_links_complete_project_scoped_re
     assert len(report["comparisons"]["candidate"]["raw"]["benchmarks"]) == 105
     assert "source-104" in report["comparisons"]["candidate"]["raw"]["benchmarks"]
     foreign = Project.objects.create(name="Foreign", slug="foreign-reports")
+    ProjectMembership.objects.create(project=foreign, user=plan.project.memberships.first().user)
     foreign_key, _ = APIToken.create_for_user(
         plan.project.memberships.first().user, project=foreign, permission=["read"]
     )

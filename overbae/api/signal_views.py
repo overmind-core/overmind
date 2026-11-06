@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from overbae.api.filters import SignalEventFilter
+from overbae.api.scoping import project_ids_for
 from overbae.api.signal_serializers import (
     SignalCatalogEntrySerializer,
     SignalEventSeenResponseSerializer,
@@ -13,7 +14,6 @@ from overbae.api.signal_serializers import (
     SignalEventSerializer,
     SignalSubscriptionSerializer,
 )
-from overbae.api.views import _user_project_ids
 from overbae.innermind.signals import signal_factory
 from overbae.models import Project, SignalEvent, SignalSubscription
 
@@ -35,7 +35,7 @@ class SignalSubscriptionViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return SignalSubscription.objects.none()
         return SignalSubscription.objects.filter(
-            project_id__in=_user_project_ids(self.request.user, self.request.auth)
+            project_id__in=project_ids_for(self.request.user, self.request.auth)
         )
 
     def perform_create(self, serializer):
@@ -59,7 +59,7 @@ class SignalEventViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         if getattr(self, "swagger_fake_view", False):
             return SignalEvent.objects.none()
         return SignalEvent.objects.filter(
-            project_id__in=_user_project_ids(self.request.user, self.request.auth)
+            project_id__in=project_ids_for(self.request.user, self.request.auth)
         ).select_related("capability")
 
     @extend_schema(
@@ -73,7 +73,7 @@ class SignalEventViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         serializer = SignalEventSeenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         project_id = serializer.validated_data["project"]
-        allowed = _user_project_ids(request.user, request.auth)
+        allowed = project_ids_for(request.user, request.auth)
         if not Project.objects.filter(id=project_id, id__in=allowed).exists():
             raise PermissionDenied("You are not a member of this project.")
         events = SignalEvent.objects.filter(project_id=project_id, seen_at__isnull=True)

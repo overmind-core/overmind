@@ -152,10 +152,6 @@ from overbae.tasks.training_preparation import inspect_preparation
 logger = logging.getLogger(__name__)
 
 
-# Other api modules import the private name from here.
-_user_project_ids = project_ids_for
-
-
 @extend_schema_view(
     list=extend_schema(summary="List projects"),
     retrieve=extend_schema(summary="Get project"),
@@ -176,7 +172,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return Project.objects.none()
         return (
-            Project.objects.filter(id__in=_user_project_ids(self.request.user, self.request.auth))
+            Project.objects.filter(id__in=project_ids_for(self.request.user, self.request.auth))
             .annotate(member_count=Count("memberships"))
             .prefetch_related("memberships__user")
         )
@@ -227,7 +223,7 @@ class ProjectMembershipViewSet(
         project_id = self.kwargs.get("project_id")
         if not project_id:
             return ProjectMembership.objects.none()
-        allowed = _user_project_ids(self.request.user, self.request.auth)
+        allowed = project_ids_for(self.request.user, self.request.auth)
         if not Project.objects.filter(id=project_id, id__in=allowed).exists():
             return ProjectMembership.objects.none()
         return ProjectMembership.objects.filter(project_id=project_id).select_related("user")
@@ -239,7 +235,7 @@ class ProjectMembershipViewSet(
 
     def _project(self):
         return get_object_or_404(
-            Project.objects.filter(id__in=_user_project_ids(self.request.user, self.request.auth)),
+            Project.objects.filter(id__in=project_ids_for(self.request.user, self.request.auth)),
             id=self.kwargs["project_id"],
         )
 
@@ -300,14 +296,14 @@ class ProjectInviteViewSet(
         project_id = self.kwargs.get("project_id")
         if not project_id:
             return ProjectInvite.objects.none()
-        allowed = _user_project_ids(self.request.user, self.request.auth)
+        allowed = project_ids_for(self.request.user, self.request.auth)
         if not Project.objects.filter(id=project_id, id__in=allowed).exists():
             return ProjectInvite.objects.none()
         return ProjectInvite.objects.filter(project_id=project_id).select_related("invited_by")
 
     def _project(self):
         return get_object_or_404(
-            Project.objects.filter(id__in=_user_project_ids(self.request.user, self.request.auth)),
+            Project.objects.filter(id__in=project_ids_for(self.request.user, self.request.auth)),
             id=self.kwargs["project_id"],
         )
 
@@ -434,7 +430,7 @@ class SpanViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Span.objects.none()
-        project_ids = _user_project_ids(self.request.user)
+        project_ids = project_ids_for(self.request.user, self.request.auth)
         queryset = Span.objects.filter(project_id__in=project_ids).select_related("capability")
         if self.request.query_params.get("all_spans"):
             return queryset  # if value exists, let filterset handle it
@@ -480,7 +476,7 @@ class SpanViewSet(
             "on",
         )
         if not all_spans:
-            project_ids = _user_project_ids(request.user)
+            project_ids = project_ids_for(request.user, request.auth)
             self._trace_usage = trace_usage_totals(project_ids, [span.trace_id for span in rows])
         serializer = self.get_serializer(rows, many=True)
         if page is not None:
@@ -504,7 +500,7 @@ class SpanViewSet(
             (s for s in spans if s.parent_span_id is None or s.parent_span_id not in local_ids),
             None,
         )
-        project_ids = _user_project_ids(request.user)
+        project_ids = project_ids_for(request.user, request.auth)
         usage = trace_usage_totals(project_ids, [trace_id]).get(trace_id) or {
             "total_tokens": None,
             "total_cost": None,
@@ -555,7 +551,7 @@ class SpanViewSet(
         # Models live on child LLM spans, so search every visible span, with the same
         # expression ``?model=`` filters on — option list and filter can never disagree.
         spans = self.filter_queryset(
-            Span.objects.filter(project_id__in=_user_project_ids(request.user))
+            Span.objects.filter(project_id__in=project_ids_for(request.user, request.auth))
         )
         model_ids = (
             spans.annotate(_model=RawSQL(llm_model_sql(), []))
@@ -617,7 +613,9 @@ class SessionViewSet(
         if getattr(self, "swagger_fake_view", False):
             return Conversation.objects.none()
         return (
-            Conversation.objects.filter(project_id__in=_user_project_ids(self.request.user))
+            Conversation.objects.filter(
+                project_id__in=project_ids_for(self.request.user, self.request.auth)
+            )
             .select_related("capability")
             .annotate(
                 trace_count=Count("spans__trace_id", distinct=True),
@@ -665,7 +663,7 @@ class SessionViewSet(
         page = self.paginate_queryset(queryset)
         rows = page if page is not None else list(queryset)
         self._session_usage = conversation_usage_totals(
-            _user_project_ids(request.user), [c.id for c in rows]
+            project_ids_for(request.user, request.auth), [c.id for c in rows]
         )
         serializer = self.get_serializer(rows, many=True)
         if page is not None:
@@ -675,7 +673,7 @@ class SessionViewSet(
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         self._session_usage = conversation_usage_totals(
-            _user_project_ids(request.user), [instance.id]
+            project_ids_for(request.user, request.auth), [instance.id]
         )
         return Response(self.get_serializer(instance).data)
 
@@ -741,7 +739,9 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
             return FinetuningJob.objects.none()
         version_cells = Cell.objects.only("id", "dataset_id", "position", "used_at")
         return (
-            FinetuningJob.objects.filter(project_id__in=_user_project_ids(self.request.user))
+            FinetuningJob.objects.filter(
+                project_id__in=project_ids_for(self.request.user, self.request.auth)
+            )
             .select_related(
                 "project",
                 "capability",
@@ -1257,7 +1257,9 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         body.is_valid(raise_exception=True)
         data = body.validated_data
         dataset = get_object_or_404(
-            Dataset, pk=data["dataset_id"], project_id__in=_user_project_ids(request.user)
+            Dataset,
+            pk=data["dataset_id"],
+            project_id__in=project_ids_for(request.user, request.auth),
         )
         cell = (
             get_object_or_404(dataset.cells, pk=data["cell_id"])
@@ -1321,7 +1323,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         try:
             dataset = Dataset.objects.get(
                 pk=dataset_id,
-                project_id__in=_user_project_ids(request.user),
+                project_id__in=project_ids_for(request.user, request.auth),
             )
         except (Dataset.DoesNotExist, ValidationError, ValueError):
             return Response({"detail": "Dataset not found."}, status=404)
@@ -1374,7 +1376,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         try:
             selected_dataset = Dataset.objects.get(
                 pk=data["dataset_id"],
-                project_id__in=_user_project_ids(request.user),
+                project_id__in=project_ids_for(request.user, request.auth),
             )
         except (Dataset.DoesNotExist, ValidationError, ValueError):
             return Response({"detail": "Dataset not found."}, status=404)
@@ -1428,7 +1430,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         try:
             Dataset.objects.get(
                 pk=data["dataset_id"],
-                project_id__in=_user_project_ids(request.user),
+                project_id__in=project_ids_for(request.user, request.auth),
             )
         except (Dataset.DoesNotExist, ValidationError, ValueError):
             return Response({"detail": "Dataset not found."}, status=404)
@@ -1463,7 +1465,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         eval_id = request.query_params.get("eval_dataset")
         if not train_id or not eval_id:
             return Response({"detail": "dataset and eval_dataset are required."}, status=400)
-        project_ids = _user_project_ids(request.user)
+        project_ids = project_ids_for(request.user, request.auth)
         try:
             train = Dataset.objects.get(pk=train_id, project_id__in=project_ids)
             eval_ds = Dataset.objects.get(pk=eval_id, project_id__in=project_ids)
@@ -1530,7 +1532,7 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return ConnectorCredential.objects.none()
-        project_ids = _user_project_ids(self.request.user, self.request.auth)
+        project_ids = project_ids_for(self.request.user, self.request.auth)
         qs = ConnectorCredential.objects.filter(project_id__in=project_ids)
         project_id = self.request.query_params.get("project")
         if project_id:
@@ -1712,7 +1714,7 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
         target_project_id = data.get("target_project_id")
         if target_project_id:
             target_project = Project.objects.filter(
-                id=target_project_id, id__in=_user_project_ids(request.user)
+                id=target_project_id, id__in=project_ids_for(request.user, request.auth)
             ).first()
             if not target_project:
                 return Response(
@@ -1975,7 +1977,9 @@ class DeployedModelViewSet(
         from django.utils import timezone
 
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        queryset = DeployedModel.objects.filter(project_id__in=_user_project_ids(self.request.user))
+        queryset = DeployedModel.objects.filter(
+            project_id__in=project_ids_for(self.request.user, self.request.auth)
+        )
         if self.action == "list":
             queryset = queryset.alias(
                 has_dedicated=Exists(

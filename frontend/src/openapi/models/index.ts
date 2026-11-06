@@ -49,6 +49,7 @@ export * from './CheckoutSessionResponse';
 export * from './CheckpointFile';
 export * from './ColumnStat';
 export * from './CommandResultInputRequest';
+export * from './ComparisonCoverage';
 export * from './ConfidenceEnum';
 export * from './ConnectorActiveConfig';
 export * from './ConnectorCapabilities';

@@ -126,6 +126,7 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
     }
     new_spans = []
     updated_spans = []
+    repaired_spans = []
     for s in span_dicts:
         capability = s.get("capability")
         fields = {k: v for k, v in s.items() if k not in ("span_id", "capability")}
@@ -139,8 +140,24 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
             )
             continue
         incoming_version = _row_version(s)
-        if incoming_version is None or incoming_version <= (_row_version(current) or -1):
+        current_version = _row_version(current)
+        repaired = bool(
+            (current.attributes or {}).get("connector.incomplete_ancestry")
+            and not (s.get("attributes") or {}).get("connector.incomplete_ancestry")
+            and (
+                incoming_version is None
+                or incoming_version >= (current_version if current_version is not None else -1)
+            )
+        )
+        if not repaired and (
+            incoming_version is None
+            or incoming_version <= (current_version if current_version is not None else -1)
+        ):
             continue
+        if repaired:
+            current.eval_attributes = {}
+            current.eval_claimed_at = None
+            repaired_spans.append(current)
         for key in _UPDATE_FIELDS:
             if key == "capability":
                 current.capability = capability
@@ -152,6 +169,10 @@ def _upsert_spans(project, span_dicts: list[dict[str, Any]], credential=None, jo
         _match_capabilities_by_name(project, updated_spans)
         _stamp_conversations(project, updated_spans)
         Span.objects.bulk_update(updated_spans, [*_UPDATE_FIELDS, "conversation"])
+
+    if repaired_spans:
+        Span.objects.bulk_update(repaired_spans, ["eval_attributes", "eval_claimed_at"])
+        enqueue_scoring(repaired_spans)
 
     if new_spans:
         _match_capabilities_by_name(project, new_spans)

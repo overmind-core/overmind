@@ -38,7 +38,6 @@ from overbae.api.filters import (
 )
 from overbae.api.scoping import project_ids_for
 from overbae.api.serializers import ModelCatalogResponseSerializer
-from overbae.api.views import _user_project_ids
 from overbae.core.model_registry import model_defaults
 from overbae.innermind import comparison, generation, runs
 from overbae.models import (
@@ -101,7 +100,7 @@ class EvalMatrixViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return EvalMatrix.objects.none()
         return EvalMatrix.objects.filter(
-            project_id__in=_user_project_ids(self.request.user, self.request.auth)
+            project_id__in=project_ids_for(self.request.user, self.request.auth)
         ).select_related("capability")
 
     def perform_create(self, serializer):
@@ -131,7 +130,7 @@ class EvalSetViewSet(viewsets.ModelViewSet):
         qs = (
             EvalSet.objects.filter(
                 Q(capability__status="current") | Q(capability__isnull=True),
-                project_id__in=_user_project_ids(self.request.user, self.request.auth),
+                project_id__in=project_ids_for(self.request.user, self.request.auth),
             )
             .select_related("capability")
             .prefetch_related("rows")
@@ -209,7 +208,7 @@ class EvalRunViewSet(
         )
         return (
             EvalRun.objects.filter(
-                project_id__in=_user_project_ids(self.request.user, self.request.auth)
+                project_id__in=project_ids_for(self.request.user, self.request.auth)
             )
             .select_related("dataset__capability", "cell", "model_ref")
             .annotate(
@@ -309,7 +308,7 @@ class EvalRunViewSet(
         # Read off the runs so the options and the ``?dataset=`` filter always agree.
         pairs = (
             self.filter_queryset(
-                EvalRun.objects.filter(project_id__in=_user_project_ids(request.user, request.auth))
+                EvalRun.objects.filter(project_id__in=project_ids_for(request.user, request.auth))
             )
             .exclude(dataset=None)
             .values_list("dataset_id", "dataset__name")
@@ -373,7 +372,7 @@ class EvalRunRowViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         if getattr(self, "swagger_fake_view", False):
             return EvalRunRow.objects.none()
         return EvalRunRow.objects.filter(
-            run__project_id__in=_user_project_ids(self.request.user, self.request.auth)
+            run__project_id__in=project_ids_for(self.request.user, self.request.auth)
         ).select_related("run__cell")
 
     def list(self, request, *args, **kwargs):
@@ -402,7 +401,7 @@ class EvalRunRowViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         if run_id:
             run = get_object_or_404(
                 EvalRun.objects.filter(
-                    project_id__in=_user_project_ids(self.request.user, self.request.auth)
+                    project_id__in=project_ids_for(self.request.user, self.request.auth)
                 ),
                 pk=run_id,
             )
@@ -424,5 +423,5 @@ class EvalScoreViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
         if getattr(self, "swagger_fake_view", False):
             return EvalScore.objects.none()
         return EvalScore.objects.filter(
-            project_id__in=_user_project_ids(self.request.user, self.request.auth)
+            project_id__in=project_ids_for(self.request.user, self.request.auth)
         )
