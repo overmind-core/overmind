@@ -86,7 +86,7 @@ def render_task_definition(document, *, service, image, cluster):
         }
         app["stopTimeout"] = 120
     if service != "sandbox":
-        _environment(app, RUN_DB_BOOTSTRAP="0", WORKSHOP_EXECUTION_BACKEND="sandbox-package-v1")
+        _environment(app, RUN_DB_BOOTSTRAP="0")
     if service in {"celery-interactive-worker", "celery-landing-worker"}:
         volumes = result.setdefault("volumes", [])
         if any(
@@ -153,26 +153,7 @@ def preflight(cluster):
         ]
         if not any(c["name"] == name for c in definition["containerDefinitions"]):
             raise ValueError(f"Missing {name} container in its task definition")
-    api = describe_service(cluster, "api")
-    definition = aws("ecs", "describe-task-definition", "--task-definition", api["taskDefinition"])[
-        "taskDefinition"
-    ]
-    app = next(c for c in definition["containerDefinitions"] if c["name"] == "api")
-    environment = {item["name"]: item["value"] for item in app.get("environment", [])}
-    if environment.get("WORKSHOP_EXECUTION_BACKEND") != "sandbox-package-v1":
-        require_drained_consumers(cluster)
     print("Required consumer infrastructure is configured; no services or schema were changed.")
-
-
-def require_drained_consumers(cluster):
-    names = ["api", *json.loads((ROOT / "docker/worker-topology.json").read_text())]
-    for name in names:
-        service = describe_service(cluster, name)
-        if any(service.get(key, 0) for key in ("desiredCount", "runningCount", "pendingCount")):
-            raise RuntimeError(
-                f"The schema cutover requires drained, stopped consumers; {name} is active. "
-                "Follow scripts/workshop-rollout.md before migrating."
-            )
 
 
 def migration_request(definition, service, *, task_definition, cluster):
@@ -324,9 +305,7 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
         raise ValueError("Deployment requires a positive desired count.")
     current = describe_service(cluster, service_name)
     if not current.get("desiredCount") and desired_count is None:
-        raise ValueError(
-            "Restore the recorded service capacity with --desired-count after cutover."
-        )
+        raise ValueError(f"{service_name} is scaled to zero; pass --desired-count to restore it.")
     _, definition = register(cluster, service_name, image)
     arn = definition["taskDefinitionArn"]
     if service_name == "celery-io-worker":
@@ -402,9 +381,7 @@ def main():
         default=os.environ.get("IMAGE_URI"),
     )
     parser.add_argument("--service", default=os.environ.get("SERVICE", "api"))
-    parser.add_argument(
-        "--desired-count", type=int, help="Explicitly restore recorded cutover capacity"
-    )
+    parser.add_argument("--desired-count", type=int, help="Task count for a service scaled to zero")
     args = parser.parse_args()
     if args.action == "preflight":
         preflight(args.cluster)

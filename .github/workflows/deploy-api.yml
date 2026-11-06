@@ -94,8 +94,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # The first cutover is a drained maintenance release (scripts/workshop-rollout.md).
-  # Later releases verify consumer infrastructure before migration and deployment.
+  # Releases verify consumer infrastructure before migration and deployment.
   preflight:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_only }}
     runs-on: ubuntu-latest

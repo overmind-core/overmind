@@ -15,7 +15,7 @@ Single Django app `overbae`, project-scoped tenancy.
 - `services/` — business logic. Largest subtrees: `datasets/` (Data Workshop; data-workshop skill), `mcp/` (mcp skill), `connectors/`, `sft_assets/` (training code baked into the Modal image), `codebase/`.
 - `tasks/` — Celery tasks, roughly one module per feature; `utils/task_lock.py` for locking.
 - `modal/` — Modal app entrypoints (vLLM serving, SFT, native decision evaluation and serving) and `models.json`. Code shared by those workers and the API lives in the root `modal_shared/` package.
-- `management/commands/` — `seed_demo` (seed-demo-data skill), `grant_credits`, `check_workshop_transition`, `sync_baseten_finetuning_costs`.
+- `management/commands/` — `seed_demo` (seed-demo-data skill), `grant_credits`, `sync_baseten_finetuning_costs`.
 
 ## Patterns every subsystem follows
 

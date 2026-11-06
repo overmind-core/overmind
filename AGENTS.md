@@ -8,6 +8,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 
 - `main` is protected: feature branch → PR, using `.github/PULL_REQUEST_TEMPLATE.md`. Never force-push `main`.
 - The repo is public (`overmind-core/overmind`). Root ruff excludes `overmind/`. Every merge to `main` that touches `overmind/` publishes to PyPI, so SDK CI requires a version bump on those PRs (pr-etiquette skill).
+- Commit only files that the product, its tests, CI, its docs or the repo tooling read. Keep load results, reports, evidence, run logs, one-off scripts and editor settings in the git-ignored `scratch/`. Account IDs, ARNs and internal hostnames go only in deploy configuration, and teammates' names never go in notes or reports.
 
 ## Commands
 
