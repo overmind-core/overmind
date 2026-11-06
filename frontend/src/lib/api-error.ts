@@ -1,3 +1,7 @@
+import { PaymentRequiredError } from "@/lib/credits";
+import { GuestUpgradeError } from "@/lib/guest";
+import { PlanLimitError } from "@/lib/plan-limits";
+
 /**
  * Thrown by the `client.ts` middleware for non-2xx responses, in place of the
  * generated client's `ResponseError` whose message is always the literal
@@ -15,6 +19,22 @@ export class ApiError extends Error {
     this.hasDetail = hasDetail;
     this.code = code;
   }
+}
+
+export function isPermanentApiRefusal(error: unknown): boolean {
+  // The client raises these for 402 and 403 bodies before the generic ApiError.
+  if (
+    error instanceof PaymentRequiredError ||
+    error instanceof GuestUpgradeError ||
+    error instanceof PlanLimitError
+  )
+    return true;
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    ![408, 429].includes(error.status)
+  );
 }
 
 export const NETWORK_ERROR_MESSAGE =

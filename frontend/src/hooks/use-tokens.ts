@@ -6,11 +6,17 @@ import { notify } from "@/lib/notify";
 export function useTokensList(projectId?: string) {
   return useQuery({
     enabled: !!projectId,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const pid = projectId ?? "";
-      const res = await apiClient.auth.authApiKeysList({ page: undefined, search: undefined });
+      // A key created mid-walk shifts later pages, so one key can arrive twice.
+      const byId = new Map();
+      for (let page = 1; ; page++) {
+        const res = await apiClient.auth.authApiKeysList({ page }, { signal });
+        for (const key of res.results) byId.set(key.id, key);
+        if (!res.next) break;
+      }
       return {
-        tokens: res.results
+        tokens: [...byId.values()]
           .filter(
             (k) =>
               k.project === pid ||

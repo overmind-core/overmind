@@ -9,7 +9,7 @@ vi.mock("@/client", () => ({
   default: { evalRunRows: { evalRunRowsList: listRows } },
 }));
 
-import { useEvalRunRowsQuery } from "./use-evaluations";
+import { evalRowsPollingInterval, useEvalRunRowsQuery } from "./use-evaluations";
 
 afterEach(() => {
   cleanup();
@@ -31,12 +31,31 @@ it("loads every server page so local filtering and pagination retain later rows"
     { id: 1, score: 1 },
     { id: 2, score: 0 },
   ]);
-  expect(listRows).toHaveBeenNthCalledWith(2, {
-    ordering: "row_index",
-    page: 2,
-    pageSize: 1000,
-    run: "run",
-  });
+  expect(listRows).toHaveBeenNthCalledWith(
+    2,
+    {
+      ordering: "row_index",
+      page: 2,
+      pageSize: 1000,
+      run: "run",
+    },
+    { signal: expect.any(AbortSignal) }
+  );
   expect(listRows).toHaveBeenCalledTimes(2);
   client.clear();
+});
+
+it("reduces refresh frequency as full result sets grow and stops on errors", () => {
+  const small = evalRowsPollingInterval(
+    { state: { data: { count: 10 }, status: "success" } },
+    true
+  );
+  const large = evalRowsPollingInterval(
+    { state: { data: { count: 10_000 }, status: "success" } },
+    true
+  );
+  expect(large).toBeGreaterThan(small as number);
+  expect(
+    evalRowsPollingInterval({ state: { data: { count: 10_000 }, status: "error" } }, true)
+  ).toBe(false);
 });

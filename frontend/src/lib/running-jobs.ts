@@ -11,6 +11,7 @@ export interface RunningJobItem {
   id: string;
   /** FT monitor group; equals `id` for lone jobs. */
   groupId?: string;
+  memberIds?: string[];
   title: string;
   status: string;
   error?: string;
@@ -188,6 +189,7 @@ export function buildRunningJobs(
           id: rep.id,
           key: `ft:${gid}`,
           kind: "finetuning",
+          memberIds: members.map((m) => m.id),
           startedAt: startedAt || toIso(rep.startedAt ?? rep.createdAt),
           status: activeOnly ? rep.status : foldFtGroupStatus(members),
           title: ftGroupTitle(members),
@@ -271,33 +273,38 @@ export function detectCompletedJobs(
       const members = (latest.finetuning ?? []).filter(
         (j) => ftGroupId(j) === gid || j.id === prev.id
       );
-      if (members.some((j) => !isTerminalFinetuningStatus(j.status))) continue;
-      const status = members.length > 0 ? foldFtGroupStatus(members) : "succeeded";
+      if (
+        !members.length ||
+        (prev.memberIds ?? [prev.id]).some((id) => !members.some((j) => j.id === id)) ||
+        members.some((j) => !isTerminalFinetuningStatus(j.status))
+      )
+        continue;
+      const status = foldFtGroupStatus(members);
       completed.push({
         ...prev,
         status,
-        title: members.length > 0 ? ftGroupTitle(members) : prev.title,
+        title: ftGroupTitle(members),
       });
       continue;
     }
 
     if (prev.kind === "optimizer") {
       const row = latest.optimizerExperiments?.find((e) => e.id === prev.id);
-      if (row && !isTerminalOptimizerStatus(row.status)) continue;
+      if (!row || !isTerminalOptimizerStatus(row.status)) continue;
       completed.push({
         ...prev,
-        status: row ? foldOptimizerStatus(row.status) : "completed",
-        title: row ? optimizerTitle(row) : prev.title,
+        status: foldOptimizerStatus(row.status),
+        title: optimizerTitle(row),
       });
       continue;
     }
 
     if (prev.kind === "eval") {
       const row = latest.evalRuns?.find((j) => j.id === prev.id);
-      if (row && !isTerminalEvalStatus(row.status)) continue;
+      if (!row || !isTerminalEvalStatus(row.status)) continue;
       completed.push({
         ...prev,
-        status: row?.status ?? "completed",
+        status: row.status,
         title: row?.name?.trim() || prev.title,
       });
     }
@@ -319,4 +326,19 @@ export function completionToastCopy(job: RunningJobItem): { message: string; des
     description: job.title,
     message: `${kind} ${ok}`,
   };
+}
+
+/** Tracks active jobs between polls. A group keeps every member it has shown,
+ *  so a member that leaves the first page still gates its completion. */
+export function rememberActive(
+  previous: Map<string, RunningJobItem>,
+  current: RunningJobItem[],
+  completed: RunningJobItem[]
+) {
+  for (const job of current) {
+    const seen = previous.get(job.key)?.memberIds ?? [];
+    const memberIds = job.memberIds && [...new Set([...seen, ...job.memberIds])];
+    previous.set(job.key, { ...job, memberIds });
+  }
+  for (const job of completed) previous.delete(job.key);
 }

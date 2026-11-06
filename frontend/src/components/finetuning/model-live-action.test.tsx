@@ -16,12 +16,13 @@ const mocks = vi.hoisted(() => ({
   capabilitiesPartialUpdate: vi.fn(),
   swapPromptProps: vi.fn(),
   useCapabilityDetailQuery: vi.fn(),
+  useDeployedModelQuery: vi.fn(),
   useDeployedModelsQuery: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-query", () => ({ useCapabilityDetailQuery: mocks.useCapabilityDetailQuery }));
 vi.mock("@/hooks/use-inference", () => ({
-  useDeployedModelQuery: () => ({ data: undefined }),
+  useDeployedModelQuery: mocks.useDeployedModelQuery,
   useDeployedModelsQuery: mocks.useDeployedModelsQuery,
 }));
 vi.mock("@/client", () => ({
@@ -95,6 +96,12 @@ const renderAction = ({
   mocks.useDeployedModelsQuery.mockReturnValue({
     data: deployedPending ? undefined : { count: models.length, results: models },
     isPending: deployedPending,
+  });
+  mocks.useDeployedModelQuery.mockReturnValue({
+    data: capability?.activeModel
+      ? deployment(capability.activeModel, capability.activeModel === "dm-wide" ? 8192 : 4096)
+      : undefined,
+    isPending: false,
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -173,10 +180,9 @@ describe("ModelLiveAction — the retarget state", () => {
 
   // Inherited from the Models tab through the shared mutation.
   it("asks before narrowing the context window", async () => {
-    const incumbent = { ...deployment("dm-wide", 8192), finetuningJobId: "job-w" };
     renderAction({
       capability: capabilityState({ activeModel: "dm-wide" }),
-      models: [incumbent as DeployedModel, deployment("dm-1", 4096)],
+      models: [deployment("dm-1", 4096)],
     });
 
     fireEvent.click(screen.getByLabelText("Make live — ft:dm-1"));
