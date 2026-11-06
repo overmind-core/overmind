@@ -152,9 +152,6 @@ from overbae.tasks.training_preparation import inspect_preparation
 logger = logging.getLogger(__name__)
 
 
-# Other api modules import the private name from here.
-
-
 @extend_schema_view(
     list=extend_schema(summary="List projects"),
     retrieve=extend_schema(summary="Get project"),

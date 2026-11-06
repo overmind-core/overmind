@@ -305,7 +305,9 @@ def relabel_connector_capabilities(credential, old_mapping: dict | None = None) 
         resource_attrs__contains={CONNECTOR_CREDENTIAL_ID_ATTR: cred_id},
     )
 
-    distinct_keys = set(qs.values_list(f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}", flat=True))
+    distinct_keys = set(
+        qs.values_list(f"attributes__{CONNECTOR_CAPABILITY_KEY_ATTR}", flat=True).distinct()
+    )
     updated = 0
     for agent_key in distinct_keys:
         capability = resolve_capability(agent_key, mapping, project)

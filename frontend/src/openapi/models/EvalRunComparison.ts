@@ -82,7 +82,7 @@ export interface EvalRunComparison {
      * @type {ComparisonCoverage}
      * @memberof EvalRunComparison
      */
-    coverage?: ComparisonCoverage;
+    coverage: ComparisonCoverage;
     /**
      *
      * @type {number}
@@ -125,6 +125,7 @@ export function instanceOfEvalRunComparison(value: object): value is EvalRunComp
     if (!('candidateLabel' in value) || value['candidateLabel'] === undefined) return false;
     if (!('overall' in value) || value['overall'] === undefined) return false;
     if (!('paired' in value) || value['paired'] === undefined) return false;
+    if (!('coverage' in value) || value['coverage'] === undefined) return false;
     if (!('wins' in value) || value['wins'] === undefined) return false;
     if (!('losses' in value) || value['losses'] === undefined) return false;
     if (!('ties' in value) || value['ties'] === undefined) return false;
@@ -149,7 +150,7 @@ export function EvalRunComparisonFromJSONTyped(json: any, ignoreDiscriminator: b
         'candidateLabel': json['candidate_label'],
         'overall': OverallComparisonFromJSON(json['overall']),
         'paired': json['paired'],
-        'coverage': json['coverage'] == null ? undefined : ComparisonCoverageFromJSON(json['coverage']),
+        'coverage': ComparisonCoverageFromJSON(json['coverage']),
         'wins': json['wins'],
         'losses': json['losses'],
         'ties': json['ties'],

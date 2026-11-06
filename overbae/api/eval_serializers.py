@@ -582,7 +582,7 @@ class EvalRunComparisonSerializer(serializers.Serializer):
     candidate_label = serializers.CharField()
     overall = OverallComparisonSerializer()
     paired = serializers.IntegerField()
-    coverage = ComparisonCoverageSerializer(required=False)
+    coverage = ComparisonCoverageSerializer()
     wins = serializers.IntegerField()
     losses = serializers.IntegerField()
     ties = serializers.IntegerField()

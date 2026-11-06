@@ -264,15 +264,8 @@ def hash_split(
     train: list[dict[str, Any]] = []
     evaluation: list[dict[str, Any]] = []
     for record in records:
-        bucket = (
-            int(
-                hashlib.sha256(
-                    str(record.get("origin_trace_id") or record["span_id"]).encode()
-                ).hexdigest()[:8],
-                16,
-            )
-            % 100
-        )
+        key = str(record.get("origin_trace_id") or record["span_id"])
+        bucket = int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % 100
         (evaluation if bucket < eval_percent else train).append(record)
     if not train or not evaluation:
         raise LandError("The split left one side empty. Widen the window or change the eval share.")

@@ -111,13 +111,10 @@ function ComparisonTable({ comparison }: { comparison: EvalRunComparison }) {
           baseline <span className="font-medium text-foreground">{comparison.baselineLabel}</span>
         </span>
         <span className="font-mono tabular-nums">{comparison.paired} paired rows</span>
-        {comparison.coverage && (
-          <span className="font-mono tabular-nums">
-            {comparison.coverage.candidateScored}/{comparison.coverage.observedRows} candidate
-            scored · {comparison.coverage.baselineScored}/{comparison.coverage.observedRows}{" "}
-            baseline scored
-          </span>
-        )}
+        <span className="font-mono tabular-nums">
+          {comparison.coverage.candidateScored}/{comparison.coverage.observedRows} candidate scored
+          · {comparison.coverage.baselineScored}/{comparison.coverage.observedRows} baseline scored
+        </span>
         <span className="font-mono tabular-nums text-success">{comparison.wins} wins</span>
         <span className="font-mono tabular-nums text-destructive">{comparison.losses} losses</span>
         <span className="font-mono tabular-nums">{comparison.ties} ties</span>
