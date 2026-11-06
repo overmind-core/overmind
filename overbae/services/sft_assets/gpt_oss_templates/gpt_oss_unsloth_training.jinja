@@ -261,8 +261,11 @@
     {#- At this point only assistant/user/tool messages should remain #}
     {%- if message.role == 'assistant' -%}
         {%- generation %}
-        {%- if "tool_calls" in message %}
-            {#- We assume max 1 tool call per message, and so we infer the tool call name #}
+        {%- if message.tool_calls %}
+            {%- if message.tool_calls|length > 1 %}
+                {{- raise_exception("GPT-OSS training requires one tool call per assistant message; parallel tool calls cannot be represented.") }}
+            {%- endif %}
+            {#- Tool replies carry the most recent assistant tool call name. #}
             {#- in "tool" messages from the most recent assistant tool call name #}
             {%- set tool_call = message.tool_calls[0] %}
             {%- if tool_call.function %}

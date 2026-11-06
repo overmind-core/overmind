@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from asgiref.sync import sync_to_async
+
 from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 from overbae.services.mcp.contracts.model_catalog import (
     GetModelCatalogInput,
@@ -9,6 +11,7 @@ from overbae.services.mcp.contracts.model_catalog import (
 )
 
 
+@sync_to_async(thread_sensitive=True)
 def _get_model_catalog(payload, _context):
     catalog = fetch_finetuning_model_catalog(
         has_tool_calling=payload.has_tool_calling,

@@ -152,7 +152,10 @@ export function useTrainWizard({
   }, [capability?.model, benchmarksQuery.data, evaluationCatalogQuery.data]);
   const benchmarkModels =
     benchmarkSelection ?? (capability?.model?.trim() ? [capability.model.trim()] : []);
-  const benchmarkModel = benchmarkModels[0] ?? "";
+  const eligibleBenchmarkModels = benchmarkModels.filter((id) =>
+    benchmarkOptions.some((option) => option.value === id)
+  );
+  const benchmarkModel = eligibleBenchmarkModels[0] ?? "";
   const selectedBenchmark = benchmarkOptions.find((option) => option.value === benchmarkModel);
   const nativeDecision = validation?.format === "decision";
   const hasIncumbent =
@@ -623,7 +626,7 @@ export function useTrainWizard({
           ...(evaluationPlan.evalIncumbentBefore && benchmarkModel
             ? { baselineModel: benchmarkModel }
             : {}),
-          benchmarkModels: evaluationPlan.evalIncumbentBefore ? benchmarkModels : [],
+          benchmarkModels: evaluationPlan.evalIncumbentBefore ? eligibleBenchmarkModels : [],
           capability: capabilityId || null,
           cell: dataset?.active ?? undefined,
           dataset: datasetId,
@@ -678,7 +681,7 @@ export function useTrainWizard({
     evalDataset?.active,
     nativeDecision,
     benchmarkModel,
-    benchmarkModels,
+    eligibleBenchmarkModels,
     capabilityId,
     catalogModelById,
     computedName,

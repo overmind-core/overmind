@@ -36,6 +36,7 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.chat_checkpoint import read_checkpoint, seal_checkpoint
 from modal_shared.compute_usage import ComputeMeter
 from modal_shared.decision_artifact import read_artifact, seal_artifact
 from modal_shared.decisions import DECISION_OBJECTIVES
@@ -115,7 +116,7 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
     run_dir.mkdir(parents=True, exist_ok=True)
     final_dir = run_dir / "final"
     native = env.get("TRAINING_OBJECTIVE") in DECISION_OBJECTIVES
-    candidate_dir = run_dir / "candidate" if native else final_dir
+    candidate_dir = run_dir / "candidate"
     result = {
         "run_id": run_id,
         "status": "succeeded",
@@ -126,11 +127,15 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
 
     usage_path = run_dir / "compute-usage.json"
     previous_usage = json.loads(usage_path.read_text()) if usage_path.exists() else []
-    if native and final_dir.exists():
-        result["artifact_identity"] = read_artifact(final_dir)["identity"]
+    if final_dir.exists():
+        checkpoint = read_artifact(final_dir) if native else read_checkpoint(final_dir)
+        result["artifact_identity"] = checkpoint["identity"]
         _write_meta(run_dir, status="succeeded", finished_at=time.time())
         sft_vol.commit()
         return result
+    # A failed process may leave shards behind. A new attempt publishes only its own files.
+    if candidate_dir.exists():
+        shutil.rmtree(candidate_dir)
     weights_vol.reload()
     record_heartbeat(run_dir, new_attempt=True)
     record_stage(run_dir, "staging_training_files")
@@ -210,7 +215,9 @@ def _run_training(run_id: str, env: dict[str, str], *, gpu_type="H100", gpu_coun
         if native:
             report = json.loads((run_dir / "decision-reload-verification.json").read_text())
             result["artifact_identity"] = seal_artifact(candidate_dir, report)["identity"]
-            candidate_dir.rename(final_dir)
+        else:
+            result["artifact_identity"] = seal_checkpoint(candidate_dir)["identity"]
+        candidate_dir.rename(final_dir)
         status = "succeeded"
     except Exception:
         if local_log.exists():
@@ -332,9 +339,16 @@ def get_progress(run_id: str) -> dict:
     else:
         out["metrics"] = []
     final_dir = run_dir / "final"
-    out["has_final_checkpoint"] = final_dir.is_dir() and any(final_dir.iterdir())
+    out["has_final_checkpoint"] = False
+    if (final_dir / "checkpoint.json").is_file():
+        try:
+            read_checkpoint(final_dir)
+            out["has_final_checkpoint"] = True
+        except (OSError, ValueError, KeyError):
+            logging.getLogger(__name__).warning("Invalid final checkpoint for %s", run_id)
     if (final_dir / "artifact.json").is_file():
         artifact = read_artifact(final_dir)
+        out["has_final_checkpoint"] = True
         out["native_artifact"] = {
             "artifact_identity": artifact["identity"],
             "reload_verification": artifact["verification"],

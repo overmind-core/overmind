@@ -81,7 +81,11 @@ def decision_base_vllm_command(
 def systemone_question(request: dict) -> dict:
     kind = request["kind"]
     if kind == "noul":
-        return {"type": "noul", "instructions": request["question"]}
+        return {
+            "type": "noul",
+            "instructions": request["question"],
+            "criteria": {"false": request["options"][0], "true": request["options"][1]},
+        }
     if kind == "score":
         return {
             "type": "score",

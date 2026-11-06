@@ -19,9 +19,9 @@ from celery.contrib.testing.worker import start_worker
 from celery.signals import before_task_publish, task_postrun
 from django.db import close_old_connections, connection
 from factories import make_capability, make_project, make_user
+from journeys.otlp import Trace
 from journeys.stack import TaskLedger
 from journeys.surfaces import McpSurface
-from journeys.test_live_scoring import Trace
 
 from overbae.celery import app
 from overbae.models import (
@@ -42,7 +42,7 @@ from overbae.tasks.training_preparation import reconcile as reconcile_preparatio
 from tests.load.processes import ProcessWorker, drain_process_results
 from tests.workshop_script_fixtures import identity_script, retained_package
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def percentiles(values):

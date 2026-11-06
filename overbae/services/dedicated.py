@@ -225,7 +225,7 @@ def update(
 
 
 def stop(row: DedicatedDeployment):
-    if row.status in (DedicatedDeployment.Status.OFFLINE, DedicatedDeployment.Status.FAILED):
+    if row.status == DedicatedDeployment.Status.OFFLINE:
         return row
     DedicatedDeployment.objects.filter(pk=row.pk).update(
         status=DedicatedDeployment.Status.SHUTTING_DOWN,
@@ -274,10 +274,8 @@ def _broke(row: DedicatedDeployment) -> bool:
 
 def _fail(row: DedicatedDeployment, message: str, now) -> None:
     _meter(row, now)
-    row.status = DedicatedDeployment.Status.FAILED
+    row.status = DedicatedDeployment.Status.SHUTTING_DOWN
     row.error_message = message
-    row.stopped_at = now
-    row.running_replicas = 0
 
 
 def advance(deployment_id: str) -> None:
@@ -331,7 +329,11 @@ def advance(deployment_id: str) -> None:
                     row.running_replicas = count
                 _meter(row, now)
                 if stopping and count == 0:
-                    row.status = DedicatedDeployment.Status.OFFLINE
+                    row.status = (
+                        DedicatedDeployment.Status.FAILED
+                        if row.error_message
+                        else DedicatedDeployment.Status.OFFLINE
+                    )
                     row.stopped_at = now
                 elif not stopping and _broke(row):
                     row.status = DedicatedDeployment.Status.SHUTTING_DOWN

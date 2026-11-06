@@ -306,3 +306,14 @@ def test_systemone_probabilities_follow_the_option_order() -> None:
     assert probabilities_for(request, {"probabilities": {"low": 0.2, "high": 0.8}}) == [0.2, 0.8]
     noul = {**request, "kind": "noul"}
     assert probabilities_for(noul, {"noul": 0.75}) == [0.25, 0.75]
+
+
+def test_binary_serving_keeps_custom_false_and_true_criteria():
+    request = {"state": "state", "question": "Choose", "kind": "noul", "options": ["deny", "allow"]}
+    question = systemone_body(request, "decision")["questions"]["0"]
+    assert question["criteria"] == {"false": "deny", "true": "allow"}
+    request["options"] = ["allow", "deny"]
+    assert systemone_body(request, "decision")["questions"]["0"]["criteria"] == {
+        "false": "allow",
+        "true": "deny",
+    }

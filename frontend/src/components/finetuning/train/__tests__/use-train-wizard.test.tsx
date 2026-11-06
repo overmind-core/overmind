@@ -423,3 +423,22 @@ it("uses the same standard validation split for checks, estimates and launch", a
     }),
   ]);
 });
+
+it("keeps an external benchmark selected after the training base model", async () => {
+  const { result } = renderHook(() => useTrainWizard(args));
+  await waitFor(() => expect(result.current.canLaunch).toBe(true));
+  act(() => {
+    result.current.setEvaluationEnabled(true);
+    result.current.setBenchmarkingEnabled(true);
+    result.current.toggleBenchmarkModel("model");
+    result.current.toggleBenchmarkModel("anthropic/claude-sonnet-5");
+  });
+  await act(() => result.current.launch());
+  expect(mocks.create).toHaveBeenCalledWith([
+    expect.objectContaining({
+      baselineModel: "anthropic/claude-sonnet-5",
+      benchmarkModels: ["anthropic/claude-sonnet-5"],
+      evalIncumbentBefore: true,
+    }),
+  ]);
+});

@@ -7,7 +7,7 @@ from factories import make_project, make_user
 from overbae.models import APIToken
 from overbae.services.datasets import files
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_interrupted_chunk_sequence_resumes_without_duplicating_bytes(live_api):

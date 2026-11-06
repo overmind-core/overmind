@@ -13,7 +13,7 @@ from factories import make_project, make_user
 from overbae.models import APIToken, Dataset, DatasetLandingWork
 from tests.load.processes import landing_workers
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_thousand_queued_imports_do_not_flood_the_broker_or_delay_another_project(
