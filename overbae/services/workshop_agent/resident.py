@@ -77,6 +77,22 @@ def call(task, operation, payload, *, sandbox=None):
     return json.loads(reply.result)
 
 
+def fail_setup(task, message):
+    with transaction.atomic():
+        WorkshopTask.objects.filter(pk=task.pk).update(
+            state="failed", result={"reason": message}, updated_at=timezone.now()
+        )
+        preparation_workflow.update(task.dataset, task.preparation_id, "cancelled", [])
+        WorkshopWorkspace.objects.filter(project_id=task.project_id, task_owner=task.pk).update(
+            task_owner=None
+        )
+        conversation.emit(
+            task,
+            "workspace-setup-failed",
+            {"id": "workspace-setup", "role": "activity", "text": message, "status": "failed"},
+        )
+
+
 def bootstrap(task):
     lifecycle.authorise(task, require_workspace=False)
     if not WorkshopWorkspace.objects.filter(
@@ -97,24 +113,7 @@ def bootstrap(task):
         try:
             ready = provisioning.ensure(task.project)
         except provisioning.WorkspaceSetupError as exc:
-            message = str(exc)
-            with transaction.atomic():
-                WorkshopTask.objects.filter(pk=task.pk).update(
-                    state="failed",
-                    result={"reason": message},
-                    updated_at=timezone.now(),
-                )
-                preparation_workflow.update(task.dataset, task.preparation_id, "cancelled", [])
-                conversation.emit(
-                    task,
-                    "workspace-setup-failed",
-                    {
-                        "id": "workspace-setup",
-                        "role": "activity",
-                        "text": message,
-                        "status": "failed",
-                    },
-                )
+            fail_setup(task, str(exc))
             return None
         if not ready:
             return None
@@ -138,7 +137,13 @@ def bootstrap(task):
         slot.save(update_fields=["task_owner"])
     action, _ = lifecycle.claim(task.pk, 0, "prepare_workshop_environment", {})
     if action.state != "completed":
-        result = workspace.prepare(task, action)
+        try:
+            result = workspace.prepare(task, action)
+        except workspace.RuntimeUnavailableError as exc:
+            with transaction.atomic():
+                lifecycle.record_action(action.pk, "failed", {"error": str(exc)})
+                fail_setup(task, str(exc))
+            return None
         lifecycle.record_action(action.pk, "completed", result)
     elif task.retention:
         cache.restore(task)
@@ -554,7 +559,8 @@ async def supervise_task(task_id, model):
         else await db(bootstrap, task)
     )
     if snapshot is None:
-        return {"state": "queued"}
+        current = await db(lifecycle.get, task_id)
+        return {"state": current.state if current.state in lifecycle.TERMINAL else "queued"}
     # Hold one transport for the leased workspace; call checks the live binding on every exchange.
     sandbox = await db(partial(workspace.attach, reconcile=True), task)
     remote_call = partial(call, sandbox=sandbox)

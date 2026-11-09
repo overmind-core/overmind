@@ -35,6 +35,10 @@ print(json.dumps({'path': path, 'sha256': checksum}))
 """
 
 
+class RuntimeUnavailableError(ValueError):
+    pass
+
+
 @contextmanager
 def download_replay_files(sandbox, names, *, timings=None):
     timings = timings if timings is not None else {}
@@ -220,11 +224,15 @@ def prepare(task, action):
         "/opt/overmind-runtime/venv/bin/python -m workshop_runtime.environment", timeout=60
     )
     if probe.exit_code != 0:
-        raise ValueError("The workspace needs the qualified Data Workshop runtime image.")
+        raise RuntimeUnavailableError(
+            "The workspace needs the qualified Data Workshop runtime image."
+        )
     report = json.loads(probe.result)
     expected = identity()
     if not report.get("ready") or report.get("identity") != expected:
-        raise ValueError("Workspace runtime does not match the configured release.")
+        raise RuntimeUnavailableError(
+            "The workspace runtime is out of date. Deploy the matching runtime before retrying."
+        )
     guide = sandbox.fs.download_file("/opt/overmind-runtime/lib/workshop_runtime/GUIDE.md").decode()
     transfers = []
     staged = transfer.copy_verified(

@@ -115,7 +115,11 @@ class Command(BaseCommand):
                 if result.exit_code:
                     raise CommandError("Checkpoint failed; previous workspace remains retained.")
                 partial = checkpoint.with_suffix(".partial")
-                previous.fs.download_file("/tmp/overmind-workshop-checkpoint.tar.gz", str(partial))
+                with partial.open("wb") as destination:
+                    for chunk in previous.fs.download_file_stream(
+                        "/tmp/overmind-workshop-checkpoint.tar.gz"
+                    ):
+                        destination.write(chunk)
                 validate_checkpoint(partial)
                 partial.replace(checkpoint)
             # Release the old allocation before creating another full-size workspace.

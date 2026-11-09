@@ -40,6 +40,34 @@ def test_request_retry_preserves_task_and_changed_objective_conflicts():
         lifecycle.start(context, payload.model_copy(update={"objective": "Different objective"}))
 
 
+@pytest.mark.parametrize("ready", [True, False])
+def test_existing_workspace_runtime_failure_is_visible_and_releases_slot(
+    monkeypatch, scripted, ready
+):
+    context, payload = setup_task()
+    dataset = Dataset.objects.get(pk=payload.dataset)
+    land.land_rows(dataset, [{"value": 1}])
+    task = lifecycle.start(context, payload)
+    binding = WorkshopWorkspace.objects.get(project=context.project)
+    remote = DaytonaAPI(binding.sandbox_id, {"ready": ready, "identity": "old-release"})
+    remote.connect(monkeypatch, scripted)
+    monkeypatch.setenv("DAYTONA_API_KEY", "test-daytona-key")
+
+    assert resident.bootstrap(task) is None
+
+    task.refresh_from_db()
+    task.preparation.refresh_from_db()
+    binding.refresh_from_db()
+    assert task.state == "failed"
+    assert task.preparation.state == "cancelled"
+    assert task.result["reason"]
+    assert binding.task_owner is None
+    assert task.actions.get(sequence=0).state == "failed"
+    failure = task.chat_events.get(key="workspace-setup-failed").message
+    assert failure["status"] == "failed" and failure["text"] == task.result["reason"]
+    assert not remote.uploads and not remote.agent_requests
+
+
 def test_source_briefing_reuses_only_verified_source_and_runtime_facts():
     context, payload = setup_task()
     dataset = Dataset.objects.get(pk=payload.dataset)
