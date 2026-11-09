@@ -236,3 +236,26 @@ def split_rows(
         },
     }
     return train, evaluation, report
+
+
+def inherit_provenance(row, originals, parents, *, group_by=(), inherited=()):
+    keys = set().union(*(contamination_keys(original, group_by) for original in originals))
+    provenance = (
+        preserve_lineage(originals[0], group_by=group_by, keys=keys)
+        if len(originals) == 1
+        else {"kind": "transform"}
+    )
+    row = {
+        **row,
+        "_overmind_provenance": {
+            **provenance,
+            "parents": parents,
+            "source_content_keys": sorted(v for k, v in keys if k == "content"),
+            "source_group_keys": sorted([k, v] for k, v in keys if k != "content"),
+        },
+    }
+    for column in inherited:
+        values = [original.get(column) for original in originals]
+        if values[0] is not None and all(value == values[0] for value in values):
+            row[column] = values[0]
+    return row

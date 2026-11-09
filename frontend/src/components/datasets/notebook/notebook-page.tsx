@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
-import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { CellFlow } from "@/components/datasets/notebook/cell-flow";
 import { useCellMotion } from "@/components/datasets/notebook/cell-motion";
+import { outputNodes, partitionLabels } from "@/components/datasets/notebook/output";
 import { ContaminationReport } from "@/components/datasets/notebook/preparation";
 import { PreparationActions } from "@/components/datasets/notebook/preparation-actions";
 import {
@@ -15,6 +15,7 @@ import {
   SourceDetails,
   SourceLanding,
 } from "@/components/datasets/notebook/source";
+import { WorkshopAgent } from "@/components/datasets/workshop-agent";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -27,14 +28,12 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
-  openPreparation,
   rankOf,
   useCancelDatasetMutation,
   useDatasetEvents,
   useDatasetPreparationQuery,
   useDatasetQuery,
   useDatasetWorkbenchQuery,
-  useEndPreparationMutation,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
 } from "@/hooks/use-datasets";
@@ -69,12 +68,11 @@ export function DatasetNotebook({
 
   const patch = usePatchDatasetMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
-  const endPreparation = useEndPreparationMutation(datasetId);
   const resumeImport = useResumeDatasetImportMutation(datasetId);
 
   const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
   const [selectedId, setSelectedId] = useState<string | null>(cellParam ?? null);
-  const [focus, setFocus] = useState<{ id: string; request: number } | null>(
+  const [focus, setFocus] = useState<{ id: string; request: number; offset?: number } | null>(
     cellParam ? { id: cellParam, request: 0 } : null
   );
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -103,6 +101,7 @@ export function DatasetNotebook({
   const nodes = preparationQuery.data?.nodes;
   const cells = useMemo(() => nodes?.map((node) => node.cell) ?? [], [nodes]);
   const active = activeCellOf(dataset);
+  const outputs = outputNodes(nodes ?? [], active?.id);
   const edges = useMemo(
     () =>
       (preparationQuery.data?.edges ?? []).map((edge) => ({
@@ -116,13 +115,12 @@ export function DatasetNotebook({
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
   const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
-  const preparing = openPreparation(dataset);
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
 
-  const scrollTo = useCallback((id: string) => {
+  const scrollTo = useCallback((id: string, offset = 0) => {
     setSelectedId(id);
-    setFocus((previous) => ({ id, request: (previous?.request ?? 0) + 1 }));
+    setFocus((previous) => ({ id, offset, request: (previous?.request ?? 0) + 1 }));
   }, []);
   useEffect(() => {
     const id = cellParam;
@@ -130,26 +128,26 @@ export function DatasetNotebook({
   }, [cellParam, scrollTo]);
 
   const handOff = useCallback(
-    (purpose: UsePurpose) => {
+    (purpose: UsePurpose, owner: string) => {
       const capabilityId = dataset?.capability ?? undefined;
       if (purpose === "train") {
         void navigate({
-          search: { capabilityId, datasetId, projectId, train: true },
+          search: { capabilityId, datasetId: owner, projectId, train: true },
           to: "/training",
         });
       } else if (purpose === "train_eval") {
         void navigate({
-          search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
+          search: { capabilityId, evalDatasetId: owner, projectId, train: true },
           to: "/training",
         });
       } else {
         void navigate({
-          search: { capabilityId, datasetId, optimize: true, projectId },
+          search: { capabilityId, datasetId: owner, optimize: true, projectId },
           to: "/optimiser",
         });
       }
     },
-    [dataset?.capability, datasetId, navigate, projectId]
+    [dataset?.capability, navigate, projectId]
   );
 
   if (datasetQuery.isPending) {
@@ -213,7 +211,7 @@ export function DatasetNotebook({
         {node && (node.role || !local) && (
           <div className="mb-2 text-sm text-muted-foreground">
             <Link params={{ datasetId: owner }} search={{ projectId }} to="/datasets/$datasetId">
-              {node.role || node.datasetName}
+              {partitionLabels[node.role] || node.role || node.datasetName}
             </Link>
           </div>
         )}
@@ -228,9 +226,9 @@ export function DatasetNotebook({
                 `${datasetDisplayName(dataset)}-${cell.version || "source"}`
               ).catch((e) => notify.error(e, "Export failed")),
             onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
-            onUse: guard(handOff),
+            onUse: guard((purpose) => handOff(purpose, owner)),
           }}
-          active={cell.id === active?.id}
+          active={outputs.some((output) => output.cell.id === cell.id)}
           capabilities={capabilityChoices}
           capabilityName={dataset.capabilityName ?? ""}
           cell={cell}
@@ -240,6 +238,7 @@ export function DatasetNotebook({
           key={cell.id}
           onSelect={() => setSelectedId(cell.id)}
           preparationActions={cell.id === actionCellId ? preparationControls(cell) : undefined}
+          roleLabel={partitionLabels[node?.role ?? ""] || node?.role}
           selected={cell.id === selectedId}
           sourceDetails={
             local ? (
@@ -256,8 +255,18 @@ export function DatasetNotebook({
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
-      <div className="pointer-events-none absolute right-12 bottom-3 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
+    <div className="relative flex h-full min-h-0 flex-col pb-16">
+      <WorkshopAgent
+        cells={cells}
+        datasetId={datasetId}
+        key={datasetId}
+        onSelectCell={(id) =>
+          scrollTo(id, window.matchMedia("(min-width: 768px)").matches ? 440 : 0)
+        }
+        projectId={projectId}
+        selectedCell={selectedId}
+      />
+      <div className="pointer-events-none absolute right-12 bottom-18 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
         <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
           {busy && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
@@ -269,22 +278,6 @@ export function DatasetNotebook({
                 variant="secondary"
               >
                 Stop operation
-              </Button>
-            </div>
-          )}
-          {!busy && preparing && (
-            <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
-              <span className="inline-flex items-center gap-1.5">
-                {preparing.actorKind ? <CodingAgentIcon kind={preparing.actorKind} /> : null}
-                {preparing.label}
-              </span>
-              <Button
-                disabled={endPreparation.isPending}
-                onClick={() => endPreparation.mutate()}
-                size="sm"
-                variant="secondary"
-              >
-                End preparation
               </Button>
             </div>
           )}

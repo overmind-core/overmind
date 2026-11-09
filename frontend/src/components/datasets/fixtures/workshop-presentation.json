@@ -1,0 +1,117 @@
+{
+  "data": {
+    "counts": {
+      "rows": [
+        {
+          "class": "First",
+          "count": 216
+        },
+        {
+          "class": "Second",
+          "count": 184
+        },
+        {
+          "class": "Third",
+          "count": 491
+        }
+      ],
+      "sha256": "17c68838a4cba82b968ec36593f70e423314e0bc588e60a522413ef6d41c05d5"
+    }
+  },
+  "document": {
+    "data": {
+      "counts": {
+        "cells": ["158f6e56-b105-40f2-8811-a1950f30aff5"],
+        "path": "counts.json",
+        "scope": "Full dataset, 891 passengers"
+      }
+    },
+    "images": {},
+    "root": {
+      "component": "Stack",
+      "props": {
+        "children": [
+          {
+            "component": "Chart",
+            "props": {
+              "data": "counts",
+              "kind": "horizontal-bar",
+              "title": "Passenger class",
+              "x": "class",
+              "y": ["count"]
+            }
+          },
+          {
+            "component": "Question",
+            "props": {
+              "fields": [
+                {
+                  "label": "Context",
+                  "name": "notes",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Include audit",
+                  "name": "audit",
+                  "type": "boolean"
+                }
+              ],
+              "id": "intent",
+              "prompt": "Choose training context"
+            }
+          },
+          {
+            "component": "Choices",
+            "props": {
+              "id": "next",
+              "options": [
+                {
+                  "label": "Review leakage",
+                  "value": "leakage"
+                },
+                {
+                  "label": "Inspect missing values",
+                  "value": "missing"
+                }
+              ],
+              "prompt": "Next step"
+            }
+          },
+          {
+            "component": "Tabs",
+            "props": {
+              "tabs": [
+                {
+                  "children": [
+                    {
+                      "component": "Table",
+                      "props": {
+                        "data": "counts",
+                        "title": "Class counts"
+                      }
+                    }
+                  ],
+                  "title": "Counts"
+                },
+                {
+                  "children": [
+                    {
+                      "component": "Text",
+                      "props": {
+                        "text": "Computed from **all passengers**."
+                      }
+                    }
+                  ],
+                  "title": "Method"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "images": {},
+  "program": "root = Stack([Chart(\"counts\", \"horizontal-bar\", null, \"Passenger class\", \"class\", null, [\"count\"]), Question([{\"name\": \"notes\", \"label\": \"Context\", \"type\": \"text\", \"required\": true}, {\"name\": \"audit\", \"label\": \"Include audit\", \"type\": \"boolean\"}], \"intent\", \"Choose training context\"), Choices(\"next\", [{\"label\": \"Review leakage\", \"value\": \"leakage\"}, {\"label\": \"Inspect missing values\", \"value\": \"missing\"}], \"Next step\"), Tabs([{\"title\": \"Counts\", \"children\": [Table(null, \"counts\", \"Class counts\")]}, {\"title\": \"Method\", \"children\": [Text(\"Computed from **all passengers**.\")]}])])"
+}

@@ -114,7 +114,7 @@ class ToolDefinition(BaseModel):
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "An identical retry after completion returns the stored result.",
+                "description": "Identical retries reuse the completed result.",
             }
         if self.project_scoped:
             schema.setdefault("properties", {})["project_id"] = {
@@ -371,3 +371,7 @@ register_inventory_tools(CATALOG)
 from overbae.services.mcp.tools_monitoring import register_monitoring_tools  # noqa: E402
 
 register_monitoring_tools(CATALOG)
+
+from overbae.services.mcp.tools_workshop_agent import register_workshop_agent_tools  # noqa: E402
+
+register_workshop_agent_tools(CATALOG)

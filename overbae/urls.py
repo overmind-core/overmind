@@ -81,12 +81,14 @@ from overbae.api.workbench import (
     DatasetPipelinePackageViewSet,
     DatasetPipelineViewSet,
 )
+from overbae.api.workshop_agent import WorkshopTaskViewSet
 
 router = DefaultRouter()
 router.register("dataset-transfers", DatasetTransferViewSet, basename="dataset-transfer")
 router.register(
     "dataset-pipeline-packages", DatasetPipelinePackageViewSet, basename="dataset-pipeline-package"
 )
+router.register("workshop-tasks", WorkshopTaskViewSet, basename="workshop-task")
 router.register("dataset-pipelines", DatasetPipelineViewSet, basename="dataset-pipeline")
 router.register(
     "dataset-pipeline-bindings", DatasetPipelineBindingViewSet, basename="dataset-pipeline-binding"

@@ -163,6 +163,7 @@ def submit(
     parameters=None,
     binding=None,
     binding_checkpoint="",
+    execution=None,
 ):
     if (
         mode not in {"publish", "preview"}
@@ -186,6 +187,7 @@ def submit(
         "preview_rows": preview_rows,
         "parameters": parameters,
         "binding_checkpoint": binding_checkpoint,
+        **({"execution": execution} if execution else {}),
     }
     if not pipeline and not provenance.strip():
         raise DatasetError("Describe how the external output was produced.", code="provenance")
@@ -304,7 +306,8 @@ def submit(
         # Importing the worker here breaks the service/task dependency cycle.
         from overbae.tasks.datasets import execute_pipeline
 
-        transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
+        if execution is None:
+            transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
     run.refresh_from_db()
     return run
 
@@ -753,7 +756,9 @@ def execute(run_id, *, script_executor=None):
                         "run": str(run.pk),
                         "step": index,
                         "pipeline": str(run.pipeline_id) if run.pipeline_id else None,
-                        "execution": "isolated_container"
+                        "execution": run.specification.get("execution", {}).get(
+                            "kind", "isolated_container"
+                        )
                         if package_files
                         else "external_attributed",
                         **receipt,

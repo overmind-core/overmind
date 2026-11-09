@@ -72,7 +72,7 @@ export function DatasetFileUpload({
           </p>
         </div>
         <input
-          accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
+          accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.xlsx,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
           aria-label="Choose dataset files"
           className="hidden"
           disabled={busy}

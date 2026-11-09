@@ -17,7 +17,7 @@ function Table({
     // height through containerClassName (e.g. `min-h-0 flex-1`) rather than wrap it in a
     // second scrolling div. min-w-max keeps the table as wide as its nowrap cells.
     <div
-      className={cn("relative w-full overflow-auto", containerClassName)}
+      className={cn("relative isolate w-full overflow-auto", containerClassName)}
       data-slot="table-container"
       ref={containerRef}
     >

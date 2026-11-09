@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
+import { FileTypeIcon } from "@/components/file-type-icon";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,22 +22,41 @@ export function Attachment({
   onRemove,
   onRetry,
   detailed = false,
+  compact = false,
 }: {
   entry: DatasetUpload;
   disabled: boolean;
   onRemove: () => void;
   onRetry: () => void;
   detailed?: boolean;
+  compact?: boolean;
 }) {
   const statusId = useId();
   const isImage = /\.(png|jpe?g|webp)$/i.test(entry.file.name);
+  const isPdf = /\.pdf$/i.test(entry.file.name);
   const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => {
-    if (!isImage) return;
-    const url = URL.createObjectURL(entry.file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [entry.file, isImage]);
+    setPreview(null);
+    if (!isImage && !isPdf) return;
+    const controller = new AbortController();
+    let url: string | undefined;
+    void (async () => {
+      try {
+        const blob = isPdf
+          ? await (await import("@/lib/pdf-thumbnail")).pdfThumbnail(entry.file, controller.signal)
+          : entry.file;
+        if (controller.signal.aborted) return;
+        url = URL.createObjectURL(blob);
+        setPreview(url);
+      } catch {
+        // Unreadable or encrypted documents still retain their upload and file details.
+      }
+    })();
+    return () => {
+      controller.abort();
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [entry.file, isImage, isPdf]);
   const working = entry.status === "uploading" || entry.status === "counting";
   const status = {
     counting: "Checking file…",
@@ -50,6 +70,8 @@ export function Attachment({
     <li
       className={cn(
         "flex h-8 min-w-0 max-w-full items-center rounded-sm bg-control pr-1 sm:max-w-72",
+        compact &&
+          "workshop-attachment h-7 max-w-44 shrink-0 border border-border/70 bg-card pr-0.5 sm:max-w-44",
         detailed && "h-auto w-full gap-2 border border-border bg-muted py-1.5 sm:max-w-none",
         entry.status === "error" && "text-destructive"
       )}
@@ -60,29 +82,38 @@ export function Attachment({
           aria-label={`View ${entry.file.name}`}
           className={cn(
             "flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-sm px-2 text-left text-sm outline-none transition-colors hover:bg-control-hover focus-visible:ring-2 focus-visible:ring-ring/60",
-            detailed && "h-auto gap-2.5"
+            detailed && "h-auto gap-2.5",
+            compact && "h-6 gap-2 pl-1 pr-0 text-xs text-muted-foreground hover:text-foreground"
           )}
           title={`${entry.file.name} · ${fileSize(entry.file.size)} · ${status}`}
           type="button"
         >
-          {preview && (
-            <img
-              alt=""
-              className="size-6 shrink-0 rounded-sm bg-background object-cover"
-              onError={() => setPreview(null)}
-              src={preview}
-            />
-          )}
-          <span className="shrink-0">
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center",
+              compact && "size-5 overflow-hidden rounded-xs"
+            )}
+          >
             {working ? (
               <Spinner className="size-3.5" />
             ) : entry.status === "error" ? (
               <Icon.warning className="size-3.5 text-destructive" />
             ) : entry.status === "queued" ? (
               <Icon.job className="size-3.5" />
-            ) : !preview ? (
-              <Icon.file className="size-3.5" />
-            ) : null}
+            ) : preview ? (
+              <img
+                alt=""
+                className={cn(
+                  "size-6 shrink-0 rounded-sm bg-background object-cover",
+                  isPdf && "object-contain",
+                  compact && "size-5"
+                )}
+                onError={() => setPreview(null)}
+                src={preview}
+              />
+            ) : (
+              <FileTypeIcon className="size-3.5" filename={entry.file.name} />
+            )}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate">{entry.file.name}</span>
@@ -160,7 +191,10 @@ export function Attachment({
       )}
       <Button
         aria-label={`Remove ${entry.file.name}`}
-        className="text-muted-foreground"
+        className={cn(
+          "text-muted-foreground",
+          compact && "workshop-attachment-remove transition-opacity"
+        )}
         disabled={disabled}
         onClick={onRemove}
         size="icon-xs"

@@ -22,6 +22,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
 WORKSHOP_PROJECT_CONCURRENCY = int(os.environ.get("WORKSHOP_PROJECT_CONCURRENCY", "2"))
+WORKSHOP_CACHE_BYTES = max(0, int(os.environ.get("WORKSHOP_CACHE_BYTES", str(2 * 1024**3))))
 DATASET_LANDING_MAX_IN_FLIGHT = int(os.environ.get("DATASET_LANDING_MAX_IN_FLIGHT", "8"))
 DATASET_QUERY_TIMEOUT_SECONDS = float(os.environ.get("DATASET_QUERY_TIMEOUT_SECONDS", "10"))
 DATASET_QUERY_MAX_IN_FLIGHT = int(os.environ.get("DATASET_QUERY_MAX_IN_FLIGHT", "8"))
@@ -745,7 +746,7 @@ SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
 _REQUIRED_KEYS = {
     "SANDBOX_URL": "the isolated Workshop sandbox",
     "SANDBOX_TOKEN": "the isolated Workshop sandbox",
-    "OPENROUTER_API_KEY": "judges, evals, trace scoring and the Data Workshop",
+    "OPENROUTER_API_KEY": "judges, evals, trace scoring and Data Workshop",
     "MODAL_TOKEN_ID": "Modal training and serving workers",
     "MODAL_TOKEN_SECRET": "Modal training and serving workers",
     "INFERENCE_API_URL": "the Modal serving endpoint",

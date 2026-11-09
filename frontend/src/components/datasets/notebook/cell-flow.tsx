@@ -81,7 +81,7 @@ type Props = {
   edges: Edge[];
   storageKey: string;
   showMinimap: boolean;
-  focus: { id: string; request: number } | null;
+  focus: { id: string; request: number; offset?: number } | null;
   renderCell: (cell: Cell) => ReactNode;
   motions: Map<string, CellMotion>;
   onMotionComplete: CompleteCellMotion;
@@ -256,7 +256,11 @@ function Canvas({
           const point = placedPosition(frame);
           viewportAnchor.current = { id: frame, inset, point, width };
           void setViewport(
-            { x: inset - point.x, y: 12 - point.y, zoom: 1 },
+            {
+              x: inset + (requested ? (focus?.offset ?? 0) : 0) - point.x,
+              y: 12 - point.y,
+              zoom: 1,
+            },
             {
               duration:
                 !requested || window.matchMedia("(prefers-reduced-motion: reduce)").matches

@@ -1,0 +1,53 @@
+.workshop-presentation {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.workshop-presentation table {
+  font-size: 12px;
+}
+
+.workshop-presentation :is(th, td) {
+  padding: 6px 10px;
+}
+
+.workshop-presentation th {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.workshop-presentation svg text {
+  font-family: var(--font-sans);
+}
+
+.workshop-presentation figure {
+  margin: 0;
+}
+
+.workshop-source-footer {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.workshop-chart > [data-slot="chart"] {
+  border-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.workshop-chart-views [data-slot="chart"] {
+  border: 0;
+  border-radius: 0;
+}
+
+.workshop-chart-views:has(+ .workshop-source-footer),
+.workshop-data-table:has(> .workshop-source-footer) > div:first-child {
+  border-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.workshop-data-table [data-slot="data-table"] > div > div > div {
+  border: 0;
+  border-radius: 0;
+}

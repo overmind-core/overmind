@@ -8,17 +8,9 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from overbae.core.errors import DatasetError
 from overbae.models import Capability, Cell, Dataset
 from overbae.services.datasets import measure, paths
-
-
-class DatasetError(ValueError):
-    """A rule the caller broke, phrased for the user. ``code`` names it for the API."""
-
-    def __init__(self, detail: str, *, code: str = "dataset_rule") -> None:
-        super().__init__(detail)
-        self.detail = detail
-        self.code = code
 
 
 def _refuse_while_busy(dataset: Dataset) -> None:

@@ -397,6 +397,7 @@ class Child:
     wall_seconds: int
     env: dict[str, str] | None = None
     scratch_bytes: int | None = None
+    python: str = sys.executable
 
 
 def spawn(
@@ -427,7 +428,7 @@ def spawn(
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
             proc = subprocess.Popen(
-                [sys.executable, "-I", *child.argv[:1], json.dumps(rlimits), *child.argv[1:]],
+                [child.python, "-I", *child.argv[:1], json.dumps(rlimits), *child.argv[1:]],
                 cwd=scratch,
                 env=env,
                 stdout=out,
@@ -541,6 +542,13 @@ def run(
         child = Child(
             argv=[str(Path(__file__).with_name("package_child.py"))],
             noun="package",
+            python=os.environ.get("SANDBOX_PACKAGE_PYTHON", sys.executable),
+            env={
+                "TIKTOKEN_CACHE_DIR": "/opt/overmind-runtime/tokenizers",
+                "MPLBACKEND": "Agg",
+                "HF_HUB_OFFLINE": "1",
+                "PIP_NO_INDEX": "1",
+            },
             cpu_seconds=limits.get("seconds", 300) * limits.get("cpus", 2),
             wall_seconds=limits.get("seconds", 300),
             scratch_bytes=limits.get("scratch_mb", 2048) * 1024**2,

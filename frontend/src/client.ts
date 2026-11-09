@@ -60,6 +60,7 @@ import {
   TrainingPlansApi,
   TrainingPreparationsApi,
   UploadsApi,
+  WorkshopTasksApi,
 } from "./openapi";
 import type { Middleware } from "./openapi/runtime";
 
@@ -442,6 +443,7 @@ export class API {
   billing: BillingApi;
   connectorCredentials: ConnectorCredentialsApi;
   datasets: DatasetsApi;
+  workshopTasks: WorkshopTasksApi;
   datasetPipelines: DatasetPipelinesApi;
   datasetPipelinePackages: DatasetPipelinePackagesApi;
   datasetPipelineBindings: DatasetPipelineBindingsApi;
@@ -486,6 +488,7 @@ export class API {
     this.billing = new BillingApi(this.cfg);
     this.connectorCredentials = new ConnectorCredentialsApi(this.cfg);
     this.datasets = new DatasetsApi(this.cfg);
+    this.workshopTasks = new WorkshopTasksApi(this.cfg);
     this.datasetPipelines = new DatasetPipelinesApi(this.cfg);
     this.datasetPipelinePackages = new DatasetPipelinePackagesApi(this.cfg);
     this.datasetPipelineBindings = new DatasetPipelineBindingsApi(this.cfg);

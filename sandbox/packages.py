@@ -5,6 +5,8 @@ import json
 from functools import cache
 from pathlib import Path, PurePosixPath
 
+from workshop_runtime.environment import ROOT, identity
+
 MAX_PACKAGE_BYTES = 20 * 1024**2
 MAX_OUTPUT_BYTES = 2 * 1024**3
 
@@ -13,6 +15,9 @@ MAX_OUTPUT_BYTES = 2 * 1024**3
 def runtime_id():
     root = Path(__file__).resolve().parent
     digest = hashlib.sha256(b"overmind-sandbox-package-v1\0")
+    manifest = ROOT / "runtime.json"
+    release = json.loads(manifest.read_text())["identity"] if manifest.exists() else identity()
+    digest.update(release.encode())
     for path in [root.parent / "uv.lock", *sorted(root.rglob("*.py"))]:
         digest.update(path.relative_to(root.parent).as_posix().encode() + b"\0")
         digest.update(path.read_bytes())

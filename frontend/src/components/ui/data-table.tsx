@@ -138,6 +138,7 @@ type DataTableColumnMeta = {
   /** DRF OrderingFilter field name (e.g. `"created_at"`). Enables sort UI. */
   orderingField?: string;
   noTruncate?: boolean;
+  stickyLeft?: number;
   label?: string;
 };
 
@@ -496,10 +497,13 @@ export function DataTable<T>({
                               : "none"
                             : undefined
                         }
-                        className="relative overflow-hidden whitespace-nowrap text-left"
+                        className={cn(
+                          "relative overflow-hidden whitespace-nowrap text-left",
+                          meta?.stickyLeft != null && "sticky z-20"
+                        )}
                         key={header.id}
                         scope="col"
-                        style={columnWidthStyle(size)}
+                        style={{ ...columnWidthStyle(size), left: meta?.stickyLeft }}
                       >
                         {header.isPlaceholder ? null : canSort ? (
                           <button
@@ -606,6 +610,7 @@ export function DataTable<T>({
                     aria-current={active ? "true" : undefined}
                     aria-selected={enableRowSelection ? row.getIsSelected() : undefined}
                     className={cn(
+                      "group/data-row",
                       onRowClick &&
                         "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
                       active && "bg-primary/20 hover:bg-primary/20",
@@ -674,10 +679,12 @@ export function DataTable<T>({
                         <TableCell
                           className={cn(
                             "overflow-hidden text-left",
+                            meta?.stickyLeft != null &&
+                              "sticky z-1 bg-card group-hover/data-row:bg-wash-raised",
                             !meta?.noTruncate && "truncate whitespace-nowrap"
                           )}
                           key={cell.id}
-                          style={columnWidthStyle(size)}
+                          style={{ ...columnWidthStyle(size), left: meta?.stickyLeft }}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>

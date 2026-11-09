@@ -19,7 +19,9 @@ from overbae.services.datasets.examples import (
     messages,
     native_decision,
 )
-from overbae.services.datasets.partition import contamination_keys, preserve_lineage
+from overbae.services.datasets.partition import (
+    inherit_provenance,
+)
 
 PROVENANCE_COLUMN = "_overmind_provenance"
 _COVERAGE_COLUMNS = (
@@ -340,24 +342,9 @@ def preserve_file_provenance(
                 ):
                     yield row
                     continue
-                keys = set().union(
-                    *(contamination_keys(original, group_by) for original in originals)
+                row = inherit_provenance(
+                    row, originals, parents, group_by=group_by, inherited=inherited
                 )
-                provenance = (
-                    preserve_lineage(originals[0], group_by=group_by, keys=keys)
-                    if len(originals) == 1
-                    else {"kind": "transform"}
-                )
-                row[PROVENANCE_COLUMN] = {
-                    **provenance,
-                    "parents": parents,
-                    "source_content_keys": sorted(v for k, v in keys if k == "content"),
-                    "source_group_keys": sorted([k, v] for k, v in keys if k != "content"),
-                }
-                for column in inherited:
-                    values = [original.get(column) for original in originals]
-                    if values[0] is not None and all(value == values[0] for value in values):
-                        row[column] = values[0]
                 yield row
 
         checked = progress_rows(records(), progress, "preserving_rows", store.row_count(after))

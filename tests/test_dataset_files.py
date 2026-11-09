@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as dt
+from zipfile import ZipFile
+
 import pytest
+from openpyxl import Workbook
 
 from overbae.services.datasets import files
 
@@ -89,6 +93,69 @@ def test_upload_names_are_checked_before_any_byte_is_stored(settings, tmp_path):
     with pytest.raises(files.FileError, match="already compressed"):
         files.begin_upload("rows.parquet.gz")
     with pytest.raises(files.FileError, match="Use a CSV"):
-        files.begin_upload("rows.xlsx")
+        files.begin_upload("rows.exe")
     upload_id, name = files.begin_upload("rows.jsonl.gz")
     assert name == "rows.jsonl.gz" and files.upload_received(upload_id) == 0
+
+
+def test_workbook_landing_preserves_sheets_values_and_formula_identity(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "media"
+    path = tmp_path / "source.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "observations"
+    sheet.append(["id", "value", "flag", "date", "calculation"])
+    sheet.append(["007", 1.5, False, dt.datetime(2024, 2, 3), "=B2*2"])
+    sheet.append(["008", None, True, None, "#N/A"])
+    second = workbook.create_sheet("other observations")
+    second.append(["id", "value"])
+    second.append(["009", 2])
+    workbook.save(path)
+    upload, _ = files.begin_upload(path.name)
+    payload = path.read_bytes()
+    files.append_chunk(upload, 0, payload)
+    assert files.inspect_upload(upload, size=len(payload))["rows"] == 3
+    landed = files.read_file_rows(files.upload_data_path(upload), filename=path.name)
+    assert landed[0] == {
+        "id": "007",
+        "value": 1.5,
+        "flag": False,
+        "date": "2024-02-03T00:00:00",
+        "calculation": "=B2*2",
+        "_overmind_spreadsheet": {
+            "sheet": "observations",
+            "row": 2,
+            "cell_types": {"date": "datetime", "calculation": "formula"},
+        },
+    }
+    assert landed[1]["value"] is None and landed[1]["flag"] is True
+    assert landed[1]["_overmind_spreadsheet"]["cell_types"] == {"calculation": "error"}
+    assert landed[2] == {
+        "id": "009",
+        "value": 2,
+        "_overmind_spreadsheet": {"sheet": "other observations", "row": 2, "cell_types": {}},
+    }
+
+
+@pytest.mark.parametrize("headers", [["a", "A"], ["_overmind_spreadsheet", "b"]])
+def test_workbook_ambiguous_headers_are_refused(tmp_path, headers):
+    workbook = Workbook()
+    workbook.active.append(headers)
+    workbook.active.append([1, 2])
+    path = tmp_path / "ambiguous.xlsx"
+    workbook.save(path)
+    with pytest.raises(files.FileError, match="ambiguous column"):
+        files.read_file_rows(path, filename=path.name)
+
+
+def test_malformed_workbook_xml_is_a_readable_upload_error(tmp_path):
+    source, broken = tmp_path / "source.xlsx", tmp_path / "broken.xlsx"
+    Workbook().save(source)
+    with ZipFile(source) as original, ZipFile(broken, "w") as rewritten:
+        for member in original.infolist():
+            rewritten.writestr(
+                member,
+                b"<broken>" if member.filename == "xl/workbook.xml" else original.read(member),
+            )
+    with pytest.raises(files.FileError, match="not a readable XLSX"):
+        files.read_file_rows(broken, filename=broken.name)

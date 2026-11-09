@@ -30,7 +30,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Tenancy is project-scoped with no org layer. A view that accepts guest writes opts in with `guest_allowed = True`, never with a permission class or middleware.
 - OTLP ingest never creates a capability, a scan never deletes one, and `DELETE` is a soft delete. On OTLP spans, wire identity is `overmind.capability.id` alone.
 - Celery routing must agree across `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json`. Only prefork pools enforce `time_limit`. `tests/test_celery_topology.py` checks compose and `make worker` against the routes.
-- Native coding agents own interpretation, code and semantic work. The platform runs deterministic, lineage-bound operations and never invokes a platform planning or generation agent.
+- Data Workshop runs its Pydantic AI loop, kernel, data and clean replay together in a persistent Daytona workspace. Temporal supervises whole runs; the backend relays model I/O and publishes retained artifacts through shared lineage-bound services. Other product surfaces do not invoke this agent.
 - Work-starting operations take a project-scoped request key: an identical retry returns the same record, and a changed payload conflicts. An unknown provider acknowledgement is reconciled from its saved call ID, never resubmitted.
 - Measured facts only. Missing usage, progress, scores and telemetry stay unknown; never fill them with a percentage, a zero, an ETA or elapsed time.
 - Code under `overbae/modal/`, `modal_shared/` and `overbae/services/sft_assets/` reaches Modal only after `modal deploy`; training and serving pin immutable releases.

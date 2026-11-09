@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 
-from sandbox import execute, packages
+from sandbox import execute
 from sandbox.protocol import HeaderReader, header_bytes
 
 pytestmark = pytest.mark.covers("sandbox")
@@ -18,7 +18,7 @@ def run_package(sandbox_server, code, *, limits=None, runtime=None, files=None):
     source = b'{"source_row": 0, "value": 9007199254740993}\n'
     header = {
         "mode": "package",
-        "runtime": runtime or packages.runtime_id(),
+        "runtime": runtime or httpx.get(url + "/health", timeout=10).json()["runtime"],
         "entrypoint": "step.py",
         "parameters": {},
         "package_bytes": len(package),

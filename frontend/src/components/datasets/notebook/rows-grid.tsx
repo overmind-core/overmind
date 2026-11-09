@@ -516,7 +516,7 @@ export function RowsGrid({
           Loading rows
         </span>
       )}
-      <div className="nowheel min-h-0 flex-1 overflow-auto border-t border-border/70">
+      <div className="nowheel isolate min-h-0 flex-1 overflow-auto border-t border-border/70">
         {!rowsQuery.isPending && !rowsQuery.isError && rows.length === 0 ? (
           <p className="p-2 text-xs text-muted-foreground">
             {narrowing ? "No rows match." : "No rows."}

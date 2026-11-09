@@ -9,20 +9,11 @@ const isVitest = Boolean(process.env.VITEST);
 
 const config = defineConfig({
   optimizeDeps: {
-    // Each icon is a separate subpath entry, so Vite would otherwise discover
-    // them one-by-one as components mount and re-optimize mid-session. That
-    // invalidates the ?v=<hash> URLs the browser already holds: "504 Outdated
-    // Optimize Dep" → "Failed to fetch dynamically imported module".
-    include: [
-      "@lobehub/icons/es/Anthropic/components/Mono",
-      "@lobehub/icons/es/Cohere/components/Mono",
-      "@lobehub/icons/es/Gemini/components/Mono",
-      "@lobehub/icons/es/Meta/components/Mono",
-      "@lobehub/icons/es/Mistral/components/Mono",
-      "@lobehub/icons/es/OpenAI/components/Mono",
-      "@lobehub/icons/es/Qwen/components/Mono",
-      "@lobehub/icons/es/XAI/components/Mono",
-    ],
+    // Icon and syntax catalogues ship ESM; prebundling every language exceeds
+    // the local dev container memory budget.
+    exclude: ["@lobehub/icons", "@streamdown/code", "shiki"],
+    // Recharts uses CommonJS compatibility subpaths that need conversion.
+    include: ["es-toolkit", "recharts"],
   },
   plugins: [
     // Tailwind + route codegen are build/dev-only; under vitest they inflate

@@ -1,7 +1,7 @@
 import json
 import re
 
-from overbae.services.datasets.lifecycle import DatasetError
+from overbae.core.errors import DatasetError
 
 
 def describe(steps, *, files=None):

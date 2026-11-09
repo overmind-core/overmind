@@ -1,3 +1,4 @@
+import { whilePageVisible } from "@/lib/visible-stream";
 /** Every dataset query and mutation. Nested JSON blobs (reports, rows, chat)
  *  come back verbatim from the server, so their keys stay snake_case here. */
 
@@ -144,9 +145,6 @@ export const isBusy = (ds: Dataset | null | undefined): boolean =>
   (["queued", "running"].includes(ds.work?.status ?? "") ||
     ds.state === "running" ||
     ds.state === "landing");
-
-export const openPreparation = (ds: Dataset | null | undefined) =>
-  ds?.work && ["preparing", "paused"].includes(ds.work.status) ? ds.work : null;
 
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
@@ -462,54 +460,56 @@ export function useDatasetEvents(
 
   useEffect(() => {
     if (!datasetId) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let controller: AbortController | null = null;
-    let live = false;
+    return whilePageVisible(() => {
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let controller: AbortController | null = null;
+      let live = false;
 
-    const consume = (line: string) => {
-      if (!line.startsWith("data: ")) return;
-      try {
-        const event = JSON.parse(line.slice(6)) as DatasetEvent;
-        if (event.type === "replay.done") live = true;
-        onEventRef.current(event, { live });
-      } catch {
-        // A malformed frame carries nothing worth surfacing.
-      }
-    };
-
-    const connect = async () => {
-      if (cancelled) return;
-      live = false;
-      controller = new AbortController();
-      let buffer = "";
-      try {
-        const res = await fetchWithAuth(`/api/datasets/${datasetId}/events/`, {
-          signal: controller.signal,
-        });
-        if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) consume(line.trimEnd());
+      const consume = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        try {
+          const event = JSON.parse(line.slice(6)) as DatasetEvent;
+          if (event.type === "replay.done") live = true;
+          onEventRef.current(event, { live });
+        } catch {
+          // A malformed frame carries nothing worth surfacing.
         }
-      } catch {
-        // Aborted or dropped — reconnect below.
-      }
-      if (!cancelled) timer = setTimeout(connect, 3_000);
-    };
+      };
 
-    void connect();
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      if (timer) clearTimeout(timer);
-    };
+      const connect = async () => {
+        if (cancelled) return;
+        live = false;
+        controller = new AbortController();
+        let buffer = "";
+        try {
+          const res = await fetchWithAuth(`/api/datasets/${datasetId}/events/`, {
+            signal: controller.signal,
+          });
+          if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) consume(line.trimEnd());
+          }
+        } catch {
+          // Aborted or dropped — reconnect below.
+        }
+        if (!cancelled) timer = setTimeout(connect, 3_000);
+      };
+
+      void connect();
+      return () => {
+        cancelled = true;
+        controller?.abort();
+        if (timer) clearTimeout(timer);
+      };
+    });
   }, [datasetId]);
 }
 
@@ -518,15 +518,6 @@ export const useCancelDatasetMutation = (id: string) => {
   return useMutation({
     mutationFn: () => apiClient.datasets.datasetsCancelCreate({ id }),
     onError: (error) => notify.error(error, "Cancellation request failed"),
-    onSuccess: () => invalidateDataset(qc, id),
-  });
-};
-
-export const useEndPreparationMutation = (id: string) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiClient.datasets.datasetsEndPreparationCreate({ id }),
-    onError: (error) => notify.error(error, "Couldn't end the preparation"),
     onSuccess: () => invalidateDataset(qc, id),
   });
 };

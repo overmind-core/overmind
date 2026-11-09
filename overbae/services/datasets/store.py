@@ -26,6 +26,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from django.conf import settings
 
+from overbae.services.datasets.row_values import ManifestBuilder
 from overbae.services.datasets.statistics import StatisticsUnavailableError, profile
 
 SOURCE_ROW = "source_row"
@@ -123,48 +124,6 @@ def _infer_kind(values: list[Any]) -> str:
     for value in values:
         builder.add({"value": value})
     return builder.manifest()[0]["type"] if values else "string"
-
-
-class ManifestBuilder:
-    def __init__(self):
-        self.kinds = {}
-        self.inexact_floats = set()
-
-    def add(self, row):
-        for name, value in row.items():
-            name = str(name)
-            kinds = self.kinds.setdefault(name, set())
-            if _is_missing(value):
-                continue
-            if isinstance(value, (dict, list, tuple)):
-                kinds.add("json")
-            elif isinstance(value, bool):
-                kinds.add("boolean")
-            elif isinstance(value, int):
-                if not -(2**63) <= value < 2**63:
-                    kinds.add("json")
-                else:
-                    kinds.add("integer")
-                    if int(float(value)) != value:
-                        self.inexact_floats.add(name)
-            elif isinstance(value, float):
-                kinds.add("number")
-            elif isinstance(value, (dt.datetime, pd.Timestamp)):
-                kinds.add("datetime")
-            else:
-                kinds.add("string")
-
-    def manifest(self):
-        result = []
-        for name, kinds in self.kinds.items():
-            if "json" in kinds or ("number" in kinds and name in self.inexact_floats):
-                kind = "json"
-            elif kinds and kinds <= {"integer", "number"}:
-                kind = "number" if "number" in kinds else "integer"
-            else:
-                kind = next(iter(kinds)) if len(kinds) == 1 else "json" if kinds else "string"
-            result.append({"name": name, "type": kind})
-        return result
 
 
 def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:

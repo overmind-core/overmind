@@ -74,8 +74,13 @@ from .optimizer import (
 from .traces import Conversation, Span
 from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
+from .workshop_agent import WorkshopAction, WorkshopChatEvent, WorkshopTask, WorkshopWorkspace
 
 __all__ = [
+    "WorkshopAction",
+    "WorkshopChatEvent",
+    "WorkshopTask",
+    "WorkshopWorkspace",
     "MCPMutation",
     "EvalMatrixRevision",
     "Activity",

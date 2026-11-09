@@ -26,17 +26,26 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from overbae.core.errors import InputValidationError
-from overbae.services.datasets import documents
+from overbae.services.datasets import documents, spreadsheets
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet", *documents.SUFFIXES)
+ALLOWED_SUFFIXES = (
+    ".csv",
+    ".tsv",
+    ".json",
+    ".jsonl",
+    ".ndjson",
+    ".parquet",
+    ".xlsx",
+    *documents.SUFFIXES,
+)
 CHUNK_BYTES = 8 * 1024 * 1024
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 JSON_ARRAY_MAX_BYTES = 256 * 1024 * 1024
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 UNSUPPORTED = (
-    "Use a CSV, TSV, JSON, JSONL, Parquet, PDF, DOCX, Markdown, text, PNG, JPEG or WebP file."
+    "Use a CSV, TSV, JSON, JSONL, Parquet, XLSX, PDF, DOCX, Markdown, text, PNG, JPEG or WebP file."
 )
 
 # A transcript cell is far longer than the csv module's 128 KB default.
@@ -202,6 +211,12 @@ def iter_file_rows(
     path: Path, *, filename: str, json_rows_field: str | None = None
 ) -> Iterator[dict[str, Any]]:
     name = (filename or "").lower()
+    if name.endswith(".xlsx"):
+        try:
+            yield from spreadsheets.rows(path)
+            return
+        except spreadsheets.SpreadsheetError as exc:
+            raise FileError(exc.detail) from exc
     if name.endswith(documents.SUFFIXES):
         try:
             return documents.extract(path, filename=filename)[0]
@@ -282,7 +297,9 @@ def inspect_upload(
         _inspection_path(upload_id).write_text(json.dumps(record), encoding="utf-8")
         return {"filename": filename, "bytes": size, "rows": None}
     try:
-        if bare.endswith(".parquet"):
+        if bare.endswith(".xlsx"):
+            rows = sum(1 for _ in iter_file_rows(path, filename=filename))
+        elif bare.endswith(".parquet"):
             rows = pq.ParquetFile(path).metadata.num_rows
         else:
             if bare.endswith(".json") and size > JSON_ARRAY_MAX_BYTES:
@@ -363,8 +380,8 @@ def safe_filename(name: str) -> str:
 def begin_upload(filename: str, *, upload_id=None, managed=False) -> tuple[str, str]:
     safe = safe_filename(filename)
     lowered = safe.lower()
-    if lowered.endswith(".parquet.gz"):
-        raise FileError("Parquet is already compressed. Upload the .parquet file.")
+    if lowered.endswith((".parquet.gz", ".xlsx.gz")):
+        raise FileError("Parquet and XLSX are already compressed. Upload without gzip.")
     if lowered.endswith(".gz") and lowered.removesuffix(".gz").endswith(documents.SUFFIXES):
         raise FileError("Upload documents without gzip compression.")
     if not lowered.removesuffix(".gz").endswith(ALLOWED_SUFFIXES):
@@ -413,6 +430,8 @@ def upload_received(upload_id: Any) -> int:
 
 
 def upload_byte_limit(filename: str) -> int:
+    if filename.lower().endswith(".xlsx"):
+        return spreadsheets.MAX_BYTES
     return (
         documents.MAX_BYTES if filename.lower().endswith(documents.SUFFIXES) else MAX_UPLOAD_BYTES
     )

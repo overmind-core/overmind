@@ -18,6 +18,11 @@ MAX_MANIFEST_BYTES = 110 * 1024
 asgi_db = pytest.mark.django_db(transaction=True)
 
 EXPECTED_TOOL_NAMES = {
+    "start_workshop_task",
+    "send_workshop_message",
+    "control_workshop_message",
+    "inspect_workshop_task",
+    "control_workshop_task",
     "search_objects",
     "inspect_dependencies",
     "revise_eval_matrix_row",

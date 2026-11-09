@@ -7,6 +7,16 @@ ARG GIT_VERSION=2.54.0
 
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
+FROM ${PYTHON_IMAGE} AS workshop
+COPY docker/workshop/requirements.txt docker/workshop/build.sh /opt/overmind-runtime/
+RUN sh /opt/overmind-runtime/build.sh
+COPY workshop_runtime /opt/overmind-runtime/lib/workshop_runtime/
+COPY modal_shared/__init__.py modal_shared/decisions.py /opt/overmind-runtime/lib/modal_shared/
+COPY overbae/core/errors.py /opt/overmind-runtime/lib/overbae/core/
+COPY overbae/services/datasets/examples.py overbae/services/datasets/partition.py overbae/services/datasets/partition_assignment.py overbae/services/datasets/row_values.py overbae/services/datasets/pipeline_graph.py overbae/services/datasets/package_contract.py /opt/overmind-runtime/lib/overbae/services/datasets/
+RUN /opt/overmind-runtime/venv/bin/python -m workshop_runtime.environment > /opt/overmind-runtime/runtime.json
+ENV TIKTOKEN_CACHE_DIR=/opt/overmind-runtime/tokenizers MPLBACKEND=Agg HF_HUB_OFFLINE=1
+
 # --- deps: compile wheels, build git (not shipped) ---
 FROM ${PYTHON_IMAGE} AS deps
 
@@ -33,8 +43,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_SYSTEM_PYTHON=1
 
 COPY pyproject.toml uv.lock README.md ./
-RUN mkdir -p overbae modal_shared sandbox \
-    && touch overbae/__init__.py modal_shared/__init__.py sandbox/__init__.py
+RUN mkdir -p overbae modal_shared sandbox workshop_runtime \
+    && touch overbae/__init__.py modal_shared/__init__.py sandbox/__init__.py workshop_runtime/__init__.py
 
 RUN uv sync --frozen --no-dev --no-editable
 
@@ -68,8 +78,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DJANGO_SETTINGS_MODULE=overbae.settings \
     PATH="/opt/git/bin:/code/.venv/bin:$PATH" \
     VIRTUAL_ENV="/code/.venv" \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    SANDBOX_PACKAGE_PYTHON=/opt/overmind-runtime/venv/bin/python
 
+COPY --from=workshop /opt/overmind-runtime /opt/overmind-runtime
 COPY --from=deps /opt/git /opt/git
 COPY --from=deps /code/.venv /code/.venv
 COPY --from=uv /uv /usr/local/bin/uv
@@ -78,6 +90,8 @@ COPY pyproject.toml uv.lock README.md ./
 COPY overbae ./overbae/
 COPY modal_shared ./modal_shared/
 COPY sandbox ./sandbox/
+COPY workshop_runtime ./workshop_runtime/
+COPY docker/workshop ./docker/workshop/
 COPY manage.py ./
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/worker_entrypoint.sh /usr/local/bin/worker-entrypoint.sh

@@ -498,8 +498,10 @@ export function NotebookCell({
   actions,
   sourceDetails,
   preparationActions,
+  roleLabel,
 }: {
   datasetId: string;
+  roleLabel?: string;
   cell: Cell;
   intent: string;
   capabilityName: string;
@@ -578,7 +580,7 @@ export function NotebookCell({
               >
                 {version}
               </button>
-              {source ? <span>Source</span> : <span>{cell.title}</span>}
+              <span>{roleLabel || (source ? "Source" : cell.title)}</span>
             </span>
             <span
               aria-label={`${cell.title} cell`}
@@ -711,7 +713,7 @@ export function NotebookCell({
               <footer className="flex min-h-8 flex-wrap items-center gap-1 border-t border-border/70 px-2.5 py-1 [&>*]:shrink-0">
                 <span className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-success/40 bg-success/10 px-1.5 text-xs text-success">
                   <Icon.success className="size-3" />
-                  Active
+                  {intent === "train" ? "Training output" : "Active"}
                 </span>
                 <FitChip
                   actions={editable && !frozen ? actions : undefined}

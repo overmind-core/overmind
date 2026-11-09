@@ -122,7 +122,7 @@ def test_a_failing_judge_is_tried_three_times_then_scored_with_errors(
     assert judge_calls() == 3 * per_pass + 3
 
 
-def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, workshop):
+def test_open_preparations_can_be_cancelled_and_idle_preparations_expire(console, workshop):
     project = workshop.project()["id"]
     datasets = [
         workshop.call(
@@ -135,9 +135,15 @@ def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, 
             "start_dataset_preparation", {"dataset": dataset, "request_key": f"open-{dataset}"}
         )
     console.goto(f"/datasets/{datasets[0]}?projectId={project}")
-    console.sees("Preparing")
-    console.press("End preparation")
-    console.wait_until("() => !document.body.textContent.includes('End preparation')")
+    opened = workshop.call("inspect_dataset_workbench", {"dataset": datasets[0]})
+    workshop.call(
+        "update_dataset_preparation",
+        {
+            "dataset": datasets[0],
+            "preparation_id": opened["preparation_workflow"]["id"],
+            "state": "cancelled",
+        },
+    )
     ended = workshop.call("inspect_dataset_workbench", {"dataset": datasets[0]})
     assert ended["preparation_workflow"]["state"] == "cancelled"
 

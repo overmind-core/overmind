@@ -42,3 +42,4 @@ export * from './TrainingPlansApi';
 export * from './TrainingPreparationsApi';
 export * from './UploadsApi';
 export * from './V1Api';
+export * from './WorkshopTasksApi';

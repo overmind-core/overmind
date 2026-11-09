@@ -1,0 +1,552 @@
+{
+  "Callout": {
+    "description": "An assumption, limitation, finding or warning.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 16000
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "neutral",
+            "info",
+            "success",
+            "warning",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "text",
+        "tone"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Cell": {
+    "description": "Open an exact published Workshop cell. Use its UUID.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "cell": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "cell"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Chart": {
+    "description": "Plot a retained data table by key. Values come from its rows; never inline model estimates. Use bar for computed histogram bins.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "bar",
+            "horizontal-bar",
+            "line",
+            "area",
+            "pie",
+            "scatter"
+          ]
+        },
+        "stacked": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "x": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "xLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "y": {
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "yLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "data",
+        "kind",
+        "title",
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Choices": {
+    "description": "Offer meaningful next steps or resolve an ambiguity. Selection becomes a native Workshop follow-up.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "options": {
+          "minItems": 1,
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "label",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "prompt": {
+          "type": "string",
+          "maxLength": 16000
+        }
+      },
+      "required": [
+        "id",
+        "options",
+        "prompt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Code": {
+    "description": "Retained code or a proposed recipe, displayed without execution.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 16000
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Details": {
+    "description": "Optional explanation or evidence behind a disclosure.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "children": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {}
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "children",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Heading": {
+    "description": "A short section heading.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Image": {
+    "description": "Display a retained PNG, JPEG or WebP plot by image key.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "image",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Metric": {
+    "description": "A scalar from the first row of a retained data table. Format percent expects a fraction.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "number",
+            "percent",
+            "text"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "data",
+        "key",
+        "label"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Question": {
+    "description": "Collect training intent, mappings, constraints or transformation choices. Submission becomes a native Workshop follow-up, not a direct platform mutation.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "fields": {
+          "minItems": 1,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "options": {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "placeholder": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "textarea",
+                  "number",
+                  "select",
+                  "multiselect",
+                  "boolean"
+                ]
+              }
+            },
+            "required": [
+              "label",
+              "name",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "prompt": {
+          "type": "string",
+          "maxLength": 16000
+        },
+        "submitLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "fields",
+        "id",
+        "prompt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Stack": {
+    "description": "Group content vertically, or in a wrapping row. Use as the root.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "children": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {}
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "column",
+            "row"
+          ]
+        }
+      },
+      "required": [
+        "children"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Steps": {
+    "description": "Public plan or recorded progress. Only mark steps done when executed.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "items": {
+          "minItems": 1,
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "running",
+                  "completed",
+                  "failed"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 16000
+              }
+            },
+            "required": [
+              "status",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Table": {
+    "description": "Searchable, sortable, paginated rows from a retained data table. Omit columns to show all.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "columns": {
+          "minItems": 1,
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "data": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "data",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Tabs": {
+    "description": "Related views, such as distribution and data quality.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "tabs": {
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "children": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {}
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "children",
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "tabs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "Text": {
+    "description": "Explanation in Markdown; measured data belongs in data components.",
+    "props": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 16000
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

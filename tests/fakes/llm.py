@@ -102,6 +102,7 @@ class FakeLLM:
     requests: list[LLMRequest] = field(default_factory=list)
     unscripted: list[LLMRequest] = field(default_factory=list)
     tokens_served: int = 0
+    repeat_stream_role: bool = False
     _scripts: list[tuple[Callable[[LLMRequest], bool], Reply]] = field(default_factory=list)
     _failures: list[tuple[Callable[[LLMRequest], bool], int]] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -269,7 +270,29 @@ class FakeLLM:
             call["index"] = index
         if tokens is not None:
             delta.pop("content", None)
-        pieces = [delta, *({"content": token} for token in tokens or [])]
+        calls = delta.pop("tool_calls", [])
+        pieces = [delta]
+        for call in calls:
+            function = call["function"]
+            arguments = function.get("arguments", "")
+            middle = max(1, len(arguments) // 2)
+            pieces.extend(
+                [
+                    {
+                        "tool_calls": [
+                            {**call, "function": {**function, "arguments": arguments[:middle]}}
+                        ]
+                    },
+                    {
+                        "tool_calls": [
+                            {"index": call["index"], "function": {"arguments": arguments[middle:]}}
+                        ]
+                    },
+                ]
+            )
+        pieces.extend({"content": token} for token in tokens or [])
+        if self.repeat_stream_role:
+            pieces = [{**piece, "role": "assistant"} for piece in pieces]
         chunks = [
             *(
                 {**body, "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": d}]}

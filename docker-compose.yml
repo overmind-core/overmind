@@ -46,11 +46,42 @@ x-build-common: &build-common
     - ./overbae:/code/overbae
     - ./modal_shared:/code/modal_shared
     - ./sandbox:/code/sandbox:ro
+    - ./workshop_runtime:/code/workshop_runtime:ro
+    - ./docker/workshop:/code/docker/workshop:ro
     - ./manage.py:/code/manage.py
     - app_data:/data
     - ${HOME}/.aws:/data/tmp/.aws:ro
 
 services:
+  temporal:
+    user: "0:0"
+    image: temporalio/temporal@sha256:003508da05989e7cf0d583cfce521c4bb2732e733574e3040db8f1284783baa2
+    profiles: [workshop-agent]
+    command: server start-dev --ip 0.0.0.0 --db-filename /var/lib/temporal/development.db
+    ports:
+      - "127.0.0.1:7233:7233"
+      - "127.0.0.1:8233:8233"
+    volumes:
+      - temporal_data:/var/lib/temporal
+
+  workshop-agent:
+    <<: *build-common
+    profiles: [workshop-agent]
+    command: python manage.py workshop_agent_worker
+    env_file:
+      - ./.env
+      - path: ${WORKSHOP_AGENT_ENV_FILE:-${HOME}/.config/overmind/workshop.env}
+        required: false
+    environment:
+      <<: *env-common
+      TEMPORAL_ADDRESS: temporal:7233
+    depends_on:
+      - temporal
+      - postgres
+      - redis
+      - sandbox
+    restart: unless-stopped
+
   postgres:
     # pgvector-enabled Postgres 16: migration 0001 still creates the `vector`
     # extension for a column 0142 drops, so replay from zero needs it. Prod (RDS)
@@ -109,14 +140,16 @@ services:
         condition: service_healthy
 
   frontend:
-    image: oven/bun:1.3.5
+    image: oven/bun:1.3.13
     working_dir: /app
-    command: sh -c "bun install --frozen-lockfile && bun run dev --host 0.0.0.0"
+    command: sh -c "bun install --frozen-lockfile && bun --smol ./node_modules/vite/bin/vite.js --port 5173 --host 0.0.0.0"
     restart: unless-stopped
     environment:
       # Docker bind mounts can miss files recreated during API client generation.
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "300"
+      # Bound dev compilation memory on the shared Docker VM.
+      RAYON_NUM_THREADS: "2"
       VITE_SELF_HOSTED: "true"
       VITE_CLERK_PUBLISHABLE_KEY: ""
     ports:
@@ -303,6 +336,7 @@ volumes:
     name: overclaw_app_data
   pg_data:
     name: overclaw_pg_data
+  temporal_data:
   grafana_data:
   frontend_node_modules:
 

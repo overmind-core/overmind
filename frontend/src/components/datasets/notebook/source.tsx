@@ -3,6 +3,7 @@ import { type ReactNode, useRef, useState } from "react";
 import apiClient from "@/client";
 import { Attachment } from "@/components/datasets/attachment";
 import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
+import { FileTypeIcon } from "@/components/file-type-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icons";
@@ -89,7 +90,7 @@ export function SourceDetails({
               title={source.filename}
               variant="outline"
             >
-              <Icon.file className="size-3 text-muted-foreground" />
+              <FileTypeIcon className="size-3" filename={source.filename} />
               <span className="min-w-0 max-w-sm truncate">{source.filename}</span>
               <span className="shrink-0 text-muted-foreground">
                 {source.rows.toLocaleString()} rows
@@ -108,7 +109,7 @@ export function SourceDetails({
         ) : (
           <Badge className="max-w-full gap-2 bg-card" size="chip" title={label} variant="outline">
             {kind === "file" && !sourceSpec?.derived_from ? (
-              <Icon.file className="size-3" />
+              <FileTypeIcon className="size-3" filename={String(label)} />
             ) : (
               <Icon.dataset className="size-3" />
             )}
@@ -196,7 +197,7 @@ export function SourceLanding({
               </ul>
             )}
             <input
-              accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
+              accept=".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.xlsx,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp"
               aria-label="Attach source files"
               className="hidden"
               multiple

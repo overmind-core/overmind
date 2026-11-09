@@ -181,6 +181,7 @@ def test_dataset_upload_resource_describes_cli_flow_and_server_limits():
         ".jsonl",
         ".ndjson",
         ".parquet",
+        ".xlsx",
         ".pdf",
         ".docx",
         ".md",
