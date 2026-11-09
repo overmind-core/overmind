@@ -506,6 +506,7 @@ code {
 .workshop-chat-inner .workshop-chat-input {
   padding-inline-start: 1.75rem;
   caret-color: var(--foreground);
+  caret-shape: block;
 }
 
 .workshop-composer .workshop-prompt-mark {

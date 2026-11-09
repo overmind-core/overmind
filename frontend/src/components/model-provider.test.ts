@@ -24,6 +24,7 @@ describe("getModelProviderInfo", () => {
   });
 
   it("resolves OpenRouter-style prefixes for major orgs", () => {
+    expect(getModelProviderInfo("Cloudflare/clef-flash").id).toBe("cloudflare");
     expect(getModelProviderInfo("Qwen/Qwen3.5-0.8B").id).toBe("qwen");
     expect(getModelProviderInfo("anthropic/claude-sonnet-4-5").id).toBe("anthropic");
     expect(getModelProviderInfo("google/gemini-2.5-pro").id).toBe("google");

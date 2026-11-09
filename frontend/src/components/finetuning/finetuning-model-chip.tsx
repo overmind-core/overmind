@@ -37,7 +37,7 @@ export function FinetuningModelChip({
 
   const body = (
     <>
-      <Icon.overmind className="size-3.5 shrink-0" />
+      <Icon.overmind className="size-3.5 shrink-0 text-cat-4" />
       <span className="min-w-0 truncate">{label}</span>
     </>
   );

@@ -18,16 +18,16 @@ export type EntityKind =
 // entity lives before you read its name.
 export const ENTITY_META: Record<
   EntityKind,
-  { icon: (typeof Icon)[keyof typeof Icon]; label: string }
+  { icon: (typeof Icon)[keyof typeof Icon]; label: string; iconClassName: string }
 > = {
-  capability: { icon: Icon.agent, label: "Capability" },
-  dataset: { icon: Icon.dataset, label: "Dataset" },
-  evalRun: { icon: Icon.eval, label: "Eval run" },
-  experiment: { icon: Icon.optimiser, label: "Optimisation" },
-  job: { icon: Icon.training, label: "Training run" },
-  model: { icon: Icon.inference, label: "Model" },
-  project: { icon: Icon.project, label: "Project" },
-  trace: { icon: Icon.observability, label: "Trace" },
+  capability: { icon: Icon.agent, iconClassName: "text-cat-3", label: "Capability" },
+  dataset: { icon: Icon.dataset, iconClassName: "text-cat-2", label: "Dataset" },
+  evalRun: { icon: Icon.eval, iconClassName: "text-cat-3", label: "Eval run" },
+  experiment: { icon: Icon.optimiser, iconClassName: "text-cat-5", label: "Optimisation" },
+  job: { icon: Icon.training, iconClassName: "text-cat-5", label: "Training run" },
+  model: { icon: Icon.inference, iconClassName: "text-cat-4", label: "Model" },
+  project: { icon: Icon.project, iconClassName: "text-cat-6", label: "Project" },
+  trace: { icon: Icon.observability, iconClassName: "text-cat-1", label: "Trace" },
 };
 
 export function Row({ children, label }: { children: ReactNode; label: string }) {
@@ -57,7 +57,7 @@ export function EntityCardShell({
   return (
     <div className="divide-y divide-border/70">
       <div className="flex items-start gap-2 px-3 py-2.5">
-        <meta.icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <meta.icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", meta.iconClassName)} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
           <p className="chip-label mt-0.5 text-xs text-muted-foreground">

@@ -202,7 +202,7 @@ export function EntityRef({
           projectId={projectId}
         >
           {showIcon ? (
-            <meta.icon aria-hidden className="size-3.5 shrink-0 text-foreground" />
+            <meta.icon aria-hidden className={cn("size-3.5 shrink-0", meta.iconClassName)} />
           ) : null}
           <span className="truncate">{label}</span>
         </EntityLink>

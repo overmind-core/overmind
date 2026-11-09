@@ -268,6 +268,10 @@ violet, plum, warm grey) for charts that distinguish categories. They are a
 fixed set, never hash-derived per render, so a given slot is always the same
 colour across every chart.
 
+### Entity and provider accents
+
+Entity reference chips and hover cards keep neutral surfaces and readable neutral labels. Their icons use stable categorical accents: datasets `cat-2`, models `cat-4`, capabilities and evaluations `cat-3`, training and optimisation `cat-5`, traces `cat-1`, projects `cat-6`. Dataset green identifies the entity type; the separate status badge communicates readiness. Provider logos use the bundled full-colour mark when available, including model selectors and inference identities. Providers with monochrome marks remain monochrome; Overmind model marks use the model accent.
+
 ### Named rules
 
 **The Copper Eye rule.** The brand copper exists in exactly one place:
