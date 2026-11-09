@@ -397,11 +397,13 @@ def _cached_tokens(usage: Any) -> int:
 def _extract_llm_response(response) -> tuple[str, dict]:
     message = response.choices[0].message
     content = message.content
-    if content is None:
-        tool_calls = getattr(message, "tool_calls", None)
-        if tool_calls:
-            content = json.dumps({"tool_calls": [tc.model_dump() for tc in tool_calls]})
-        elif getattr(response.choices[0], "finish_reason", None) in INCOMPLETE_FINISH_REASONS:
+    tool_calls = getattr(message, "tool_calls", None)
+    if tool_calls:
+        content = json.dumps(
+            {"content": content, "tool_calls": [tc.model_dump() for tc in tool_calls]}
+        )
+    elif content is None:
+        if getattr(response.choices[0], "finish_reason", None) in INCOMPLETE_FINISH_REASONS:
             content = ""
         else:
             raise ValueError("No content or tool calls received from LLM")

@@ -1,3 +1,4 @@
+import shutil
 from itertools import product
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -21,6 +22,8 @@ from overbae.models import (
     User,
 )
 from overbae.services import deployment, finetuning_eval, training_preparation, training_release
+from overbae.services.datasets import paths as dataset_paths
+from overbae.services.datasets import rows as dataset_rows
 from overbae.services.finetuning_eval import (
     baseline_needs_base_deploy,
     reset_before_evals_for_retry,
@@ -819,3 +822,53 @@ def test_disabled_evaluations_do_not_require_evaluation_inputs(job, field):
     serializer = serializer_for(job, **dict.fromkeys(FIELDS, False))
     serializer.initial_data.pop(field)
     assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.parametrize("changed", [None, "cell", "matrix", "prompt"])
+def test_shared_baseline_requires_identical_pinned_inputs(job, changed):
+    job.group_id = job.id
+    job.eval_judge_model = "gpt-5.6-luna"
+    job.save(update_fields=["group_id", "eval_judge_model"])
+    tick_job_evals(job)
+    baseline = job.job_evals.get(kind="baseline").eval_run_id
+    sibling = FinetuningJob.objects.create(
+        project=job.project,
+        capability=job.capability,
+        dataset=job.dataset,
+        cell=job.cell,
+        eval_dataset=job.eval_dataset,
+        eval_cell=job.eval_cell,
+        eval_set=job.eval_set,
+        group_id=job.group_id,
+        base_model=job.base_model,
+        provider=job.provider,
+        baseline_model=job.baseline_model,
+        eval_incumbent_before=True,
+        eval_model_before=False,
+        status=job.status,
+        eval_judge_model=job.eval_judge_model,
+    )
+    if changed == "cell":
+        cell = job.eval_cell
+        source = dataset_rows.frame_path(cell)
+        cell.pk = None
+        cell.position += 1
+        cell.save()
+        destination = dataset_paths.cell_path(cell.dataset_id, cell.id)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        sibling.eval_cell = cell
+        sibling.save(update_fields=["eval_cell"])
+    elif changed == "matrix":
+        matrix = job.eval_set.rows.first()
+        matrix.name = "Changed rubric"
+        matrix.save(update_fields=["name"])
+    elif changed == "prompt":
+        baseline_run = job.job_evals.get(kind="baseline").eval_run
+        baseline_run.params = {
+            **baseline_run.params,
+            "system_prompt": "Different pinned instructions",
+        }
+        baseline_run.save(update_fields=["params"])
+    tick_job_evals(sibling)
+    assert (sibling.job_evals.get(kind="baseline").eval_run_id == baseline) is (changed is None)

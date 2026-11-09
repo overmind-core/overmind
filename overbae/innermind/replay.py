@@ -492,7 +492,9 @@ def _parse_assistant(raw: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     parsed = chatml.maybe_parse_json(raw)
     if isinstance(parsed, dict) and "tool_calls" in parsed:
         calls = chatml.normalize_tool_calls(parsed["tool_calls"])
-        return _assistant_with_calls(calls), calls
+        assistant = _assistant_with_calls(calls)
+        assistant["content"] = parsed.get("content") or ""
+        return assistant, calls
     calls = normalizer.parse_text_tool_calls(raw)
     if calls:
         return _assistant_with_calls(calls), calls

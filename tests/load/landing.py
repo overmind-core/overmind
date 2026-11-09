@@ -13,7 +13,7 @@ from factories import make_project, make_user
 from overbae.models import APIToken, Dataset
 from tests.load.processes import landing_workers
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_noisy_import_burst_leaves_a_landing_worker_for_another_project(

@@ -40,8 +40,7 @@ def recover_request(record):
     elif (
         record.state == "submission_unknown"
         and record.attempts
-        and record.attempts[-1].get("error")
-        in {"submission_unknown", "capacity_timeout", "capacity_unavailable"}
+        and record.attempts[-1].get("error") in {"capacity_timeout", "capacity_unavailable"}
     ):
         # Only a completed transport attempt can be repeated. A bare submission
         # intent may still have a live owner and is not evidence of a timeout.
@@ -399,11 +398,10 @@ def external_step(plan, role, participant):
                 complete_response(record, request, participant)
             except decisions.DecisionError as exc:
                 code = exc.stats.get("status_code")
-                retryable = (
+                retryable = exc.reason != "submission_unknown" and (
                     code == 429
                     or (isinstance(code, int) and 500 <= code < 600)
-                    or exc.reason
-                    in {"submission_unknown", "capacity_timeout", "capacity_unavailable"}
+                    or exc.reason in {"capacity_timeout", "capacity_unavailable"}
                 )
                 record.attempts[-1].update(
                     error=exc.reason,
@@ -414,7 +412,9 @@ def external_step(plan, role, participant):
                     finished_at=timezone.now().isoformat(),
                 )
                 record.state = (
-                    "retryable"
+                    "submission_unknown"
+                    if exc.reason == "submission_unknown"
+                    else "retryable"
                     if retryable and len(record.attempts) < 3
                     else "failed"
                     if retryable

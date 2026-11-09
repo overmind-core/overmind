@@ -12,7 +12,7 @@ from overbae.models import APIToken, Dataset, DatasetPipelineRun
 from overbae.services.datasets import pipeline_runner
 from tests.workshop_script_fixtures import identity_script, retained_package, script_step
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_slow_project_cannot_occupy_all_interactive_workers(live_api, profile_workers):

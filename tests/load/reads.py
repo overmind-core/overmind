@@ -10,7 +10,7 @@ from factories import make_project, make_user
 
 from overbae.models import APIToken
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("capacity")]
 
 
 def test_concurrent_read_sessions_preserve_quiet_project_response(process_api, tmp_path):

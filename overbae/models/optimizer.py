@@ -935,22 +935,21 @@ def on_candidate_eval_finished(run) -> None:
     )
     if candidate is None:
         return
-    experiment = candidate.experiment
-    if experiment.status in experiment.TERMINAL:
-        return
-    experiment._fold_candidate_eval_scores(candidate)
-    iteration_order = candidate.iteration.order
-
     with transaction.atomic():
-        experiment.refresh_from_db()
+        experiment = OptimizerExperiment.objects.select_for_update().get(pk=candidate.experiment_id)
+        if experiment.status in experiment.TERMINAL:
+            return
         pending = dict(experiment.state.get("eval_pending", {}))
-        pending.pop(str(candidate.id), None)
+        if str(candidate.id) not in pending:
+            return
+        experiment._fold_candidate_eval_scores(candidate)
+        iteration_order = candidate.iteration.order
+        pending.pop(str(candidate.id))
         experiment.state["eval_pending"] = pending
         experiment.save(update_fields=["state", "updated_at"])
-
-    if not experiment._iteration_eval_pending(iteration_order):
-        experiment.on_iteration_eval_complete(iteration_order)
-        run_experiment_advance.delay(str(experiment.id))
+        if not experiment._iteration_eval_pending(iteration_order):
+            experiment.on_iteration_eval_complete(iteration_order)
+            transaction.on_commit(lambda: run_experiment_advance.delay(str(experiment.id)))
 
 
 @shared_task(name="overbae.models.optimizer.run_experiment_advance")
