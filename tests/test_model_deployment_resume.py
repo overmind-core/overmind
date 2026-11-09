@@ -10,8 +10,9 @@ from django.utils import timezone
 from factories import make_user
 from fakes.modal import FakeCall
 
+from modal_shared.modelfam import serve_image_key
 from overbae.models import APIToken, DeployedModel, FinetuningJob, Project
-from overbae.services import deployment
+from overbae.services import deployment, inference_requests
 from overbae.services.mcp.context import MCPContext, bind_context
 from overbae.services.mcp.resources import read_resource
 from overbae.tasks.inference_controller import reconcile_deployments
@@ -572,6 +573,31 @@ def test_failed_parent_waits_for_child_gpu_work_before_retry(fake_modal):
     assert deployment.poll_operation("fc-parent") == ("pending", None)
     child.state = "cancelled"
     assert deployment.poll_operation("fc-parent") == ("failed", "Remote operation timed out.")
+
+
+def test_lfm3_warm_and_inference_carry_the_base_id(deployed, fake_modal):
+    DeployedModel.objects.filter(pk=deployed.pk).update(
+        model_id="ft-292bb9da-lfm3-1-7b",
+        base_model_id="LiquidAI/LFM3-1.7B",
+        status="ready",
+        weights_path="/weights/.base_models/LiquidAI--LFM3-1.7B",
+        gpu_type="L4",
+        max_model_len=8192,
+    )
+    deployed.refresh_from_db()
+    _, kwargs = deployment.verification_operation(deployed)
+    assert serve_image_key(kwargs["model_id"]) == "sglang_lfm3"
+    assert serve_image_key(kwargs["base_model_id"], kwargs["model_id"]) == "sglang_lfm3"
+    request = inference_requests.submit(
+        deployed,
+        None,
+        "lfm3-warm",
+        {"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1},
+    )
+    assert (
+        serve_image_key(request.payload["base_model_id"], request.payload["model_id"])
+        == "sglang_lfm3"
+    )
 
 
 def test_cancellation_covers_child_calls_without_terminating_shared_containers(fake_modal):

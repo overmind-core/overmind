@@ -1517,7 +1517,11 @@ def inference_request(request_id: str, payload: dict) -> dict:
         model_path=rel_path,
         model_name=base_pool_name(rel_path) if adapter_path else payload["model_id"],
         max_model_len=payload["max_model_len"],
-        serve_image=_serve_image_for(hinted=serve_image_key(payload["model_id"])),
+        serve_image=_serve_image_for(
+            hinted=serve_image_key(
+                payload.get("base_model_id") or "", payload["model_id"], rel_path
+            )
+        ),
         enable_lora=bool(adapter_path),
         max_lora_rank=payload.get("lora_rank") or 16,
     )
@@ -1573,6 +1577,7 @@ def pre_warm(
     max_model_len: int = 8192,
     adapter: tuple[str, str] | None = None,
     lora_rank: int = 0,
+    base_model_id: str = "",
 ) -> None:
     """Boots the deployment once and leaves the container running. CPU-only, driving the GPU
     worker over Modal RPC.
@@ -1589,7 +1594,7 @@ def pre_warm(
     journal = Journal("call:" + modal.current_function_call_id())
     journal.emit("resolving_worker")
     rel_path = rel_weights_path(weights_path)
-    serve_image = _serve_image_for(hinted=serve_image_key(model_id))
+    serve_image = _serve_image_for(hinted=serve_image_key(base_model_id, model_id, rel_path))
     worker, _cls_name = _make_worker(
         gpu_type=gpu_type,
         model_path=rel_path,

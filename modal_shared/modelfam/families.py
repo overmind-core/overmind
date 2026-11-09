@@ -123,6 +123,8 @@ MUSE_GLIMMER = FamilySpec(
 LFM3 = FamilySpec(
     key="lfm3",
     patterns=("lfm3",),
+    # vLLM 0.33 and SGLang v0.5.22 both refuse this architecture.
+    serve_image="sglang_lfm3",
     train_image=TRAIN_U2026_10_7,
     trust_remote_code=True,
     # Attention out-proj is o_proj; conv out-proj stays out_proj. gate_proj is optional.

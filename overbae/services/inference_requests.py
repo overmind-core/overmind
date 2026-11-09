@@ -18,6 +18,7 @@ from modal_shared.context_budget import (
 )
 from modal_shared.operational_events import STORE
 from overbae.core.errors import InputValidationError
+from overbae.modal.model_registry import get_hf_base
 from overbae.models import InferenceCall, InferenceRequest, Project
 from overbae.services import operational_progress
 from overbae.services.decision_serving import validate_requests
@@ -81,6 +82,7 @@ def submit(deployment, user, request_key, payload, *, source="mcp", dedicated=No
         "deployment": str(deployment.pk),
         "environment": modal_environment(),
         "model_id": deployment.model_id,
+        "base_model_id": get_hf_base(deployment.base_model_id),
         "weights_path": deployment.weights_path,
         "gpu_type": deployment.gpu_type,
         "max_model_len": deployment.max_model_len,

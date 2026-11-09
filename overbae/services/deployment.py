@@ -500,6 +500,7 @@ def verification_operation(deployed: DeployedModel):
         "overmind-inference", "pre_warm", environment_name=modal_environment()
     ), {
         "model_id": deployed.model_id,
+        "base_model_id": get_hf_base(deployed.base_model_id),
         "weights_path": deployed.weights_path,
         "gpu_type": serving_gpu(deployed),
         "max_model_len": deployed.max_model_len,
