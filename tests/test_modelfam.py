@@ -89,6 +89,8 @@ def test_serve_image_key_from_base_model() -> None:
     assert serve_image_key("unsloth/Qwen3-14B") == "sglang"
     assert serve_image_key("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
     assert serve_image_key("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
+    assert serve_image_key("ft-292bb9da-lfm3-1-7b") == "sglang_lfm3"
+    assert serve_image_key(".base_models/LiquidAI--LFM3-1.7B") == "sglang_lfm3"
 
 
 def test_serve_image_from_checkpoint_finetune_ids() -> None:

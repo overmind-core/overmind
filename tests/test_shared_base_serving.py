@@ -43,6 +43,47 @@ def test_shared_worker_resolves_family_from_sealed_base(monkeypatch, tmp_path):
     assert obj._serve_command[obj._serve_command.index("--tool-call-parser") + 1] == "qwen3_coder"
 
 
+def test_lfm3_warm_and_inference_boot_from_the_base_id(monkeypatch):
+    seen = []
+
+    def make_worker(**kwargs):
+        seen.append(kwargs["serve_image"])
+        worker = Mock()
+        worker.infer.remote.return_value = {
+            "status": 200,
+            "body": json.dumps(
+                {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+            ).encode(),
+        }
+        return worker, "L4_sglang_lfm3_lora"
+
+    monkeypatch.setattr(serving, "_make_worker", make_worker)
+    monkeypatch.setattr(serving, "Journal", Mock())
+    monkeypatch.setattr(serving.modal, "current_function_call_id", lambda: "fc-warm")
+    monkeypatch.setattr(serving.modal.Dict, "from_name", Mock(return_value=Mock()))
+    serving.pre_warm.local(
+        model_id="ft-292bb9da-lfm3-1-7b",
+        weights_path="/weights/.base_models/LiquidAI--LFM3-1.7B",
+        adapter=("ft-292bb9da-lfm3-1-7b", ".adapters/ft-292bb9da-lfm3-1-7b"),
+        lora_rank=16,
+    )
+    serving.inference_request.local(
+        "req",
+        {
+            "model_id": "ft-292bb9da-lfm3-1-7b",
+            "weights_path": "/weights/.base_models/LiquidAI--LFM3-1.7B",
+            "gpu_type": "L4",
+            "max_model_len": 8192,
+            "messages": [{"role": "user", "content": "ping"}],
+            "temperature": 0,
+            "max_tokens": 1,
+            "adapter_path": "/weights/.adapters/ft-292bb9da-lfm3-1-7b",
+            "lora_rank": 16,
+        },
+    )
+    assert seen == ["sglang_lfm3", "sglang_lfm3"]
+
+
 def test_lfm3_starts_on_its_image_with_conv_targets(monkeypatch, tmp_path):
     obj = serving._BaseVLLMWorker()
     obj.engine = "sglang_lfm3"
