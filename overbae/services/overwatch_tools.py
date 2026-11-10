@@ -6,7 +6,7 @@ import json
 from decimal import Decimal
 from typing import Any
 
-from overbae.services import overwatch_insights, user_insights
+from overbae.services import overwatch_insights, overwatch_usage, user_insights
 
 
 def _activation_funnel(args: dict[str, Any]) -> dict[str, Any]:
@@ -50,32 +50,6 @@ def _billing_summary(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _customer_activity(args: dict[str, Any]) -> dict[str, Any]:
-    email = str(args.get("email", "")).strip()[:254]
-    days = args["days"]
-    user = user_insights.users(user_insights.window_start(days)).filter(email__iexact=email).first()
-    if user is None:
-        return {"found": False}
-    activity = user_insights.user_activity(user, user_insights.window_start(days))
-    return {
-        "found": True,
-        "email": user.email,
-        "signed_up_at": user.date_joined.isoformat(),
-        "activation_stage": user_insights.stage(user),
-        "subscription_status": activity["billing"]["subscription_status"],
-        "lifetime_spend_usd": activity["billing"]["spend_usd"],
-        "lifetime_topups_usd": activity["billing"]["topups_usd"],
-        "current_credit_balance_usd": activity["billing"]["balance_usd"],
-        "projects": user.projects,
-        "trace_count_in_window": user.spans,
-        "last_trace_at": user.last_span_at.isoformat() if user.last_span_at else None,
-        "training": activity["training"]["totals"],
-        "traces_total": activity["traces"]["total"],
-        "inference_calls": activity["inference"]["calls"],
-        "evaluations": activity["evaluations"]["total"],
-    }
-
-
 def _customers_at_step(args: dict[str, Any]) -> dict[str, Any]:
     step = args["step"]
     if step in user_insights.RESETTABLE_MILESTONE_STEPS:
@@ -100,22 +74,6 @@ def _customers_at_step(args: dict[str, Any]) -> dict[str, Any]:
 
 def _private_result(name: str, result: dict[str, Any]) -> str:
     """Format customer records in-process, without another model request."""
-    if name == "customer_activity":
-        if not result.get("found"):
-            return "No matching customer was found."
-        return (
-            f"Customer: {result['email']}\n"
-            f"Signed up: {result['signed_up_at']}\n"
-            f"Milestone: {result['activation_stage']}\n"
-            f"Subscription: {result['subscription_status'] or 'None'}\n"
-            f"Lifetime spend: ${result['lifetime_spend_usd']}\n"
-            f"Lifetime top-ups: ${result['lifetime_topups_usd']}\n"
-            f"Credit balance: ${result['current_credit_balance_usd']}\n"
-            f"Spans in the selected UTC window: {result['trace_count_in_window']}\n"
-            f"Project lifetime totals: {result['traces_total']} traces, "
-            f"{result['inference_calls']} model calls, {result['evaluations']} evaluations.\n"
-            "Project activity belongs to the customer's projects; it does not identify the actor."
-        )
     if not result["available"]:
         return result["reason"]
     rows = []
@@ -136,12 +94,19 @@ def _private_result(name: str, result: dict[str, Any]) -> str:
 
 def query(tool: str, arguments: dict[str, Any]) -> tuple[str, bool]:
     """Arguments are validated by the internal API before any query executes."""
+    if tool in {"customer_activity", "model_usage"}:
+        with user_insights.analytics_read_budget(seconds=10):
+            report = (
+                overwatch_usage.customer_activity(arguments)
+                if tool == "customer_activity"
+                else overwatch_usage.model_usage(arguments)
+            )
+        return report, True
     handlers = {
         "activation_funnel": _activation_funnel,
         "product_usage": _product_usage,
         "billing_summary": _billing_summary,
         "customers_at_step": _customers_at_step,
-        "customer_activity": _customer_activity,
     }
     if tool == "product_usage":
         result = handlers[tool](arguments)
