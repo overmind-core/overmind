@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
@@ -27,7 +28,13 @@ logger = logging.getLogger(__name__)
 TOOL_CACHE_SECONDS = 3600
 # product_usage keeps its own PostHog cache and still reads product rows live.
 CACHED_TOOLS = frozenset(
-    {"activation_funnel", "billing_summary", "customer_activity", "customers_at_step"}
+    {
+        "activation_funnel",
+        "billing_summary",
+        "customer_activity",
+        "customers_at_step",
+        "model_usage",
+    }
 )
 DAYS = {"type": "integer", "minimum": 1, "maximum": 365}
 SCHEMAS = {
@@ -37,12 +44,17 @@ SCHEMAS = {
         "required": ["days"],
         "additionalProperties": False,
     }
-    for name in ("activation_funnel", "product_usage", "billing_summary")
+    for name in ("activation_funnel", "product_usage", "billing_summary", "model_usage")
 }
 SCHEMAS["customer_activity"] = {
     "type": "object",
-    "properties": {"days": DAYS, "email": {"type": "string", "minLength": 3, "maxLength": 254}},
-    "required": ["days", "email"],
+    "properties": {
+        "days": DAYS,
+        "email": {"type": "string", "minLength": 3, "maxLength": 254},
+        "query": {"type": "string", "minLength": 2, "maxLength": 120, "pattern": r"^\S(?:.*\S)?$"},
+    },
+    "required": ["days"],
+    "oneOf": [{"required": ["email"]}, {"required": ["query"]}],
     "additionalProperties": False,
 }
 SCHEMAS["customers_at_step"] = {
@@ -78,7 +90,7 @@ class QuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid query fields.")
         try:
             validate(attrs["arguments"], SCHEMAS[attrs["tool"]])
-            if attrs["tool"] == "customer_activity":
+            if attrs["tool"] == "customer_activity" and "email" in attrs["arguments"]:
                 serializers.EmailField().run_validation(attrs["arguments"]["email"])
         except (ValidationError, serializers.ValidationError):
             raise serializers.ValidationError("Invalid query arguments.") from None
@@ -90,12 +102,20 @@ def _tool_cache_key(tool: str, arguments: dict) -> str:
     # not a Redis key, and never include the bearer token.
     normalized = dict(arguments)
     if tool == "customer_activity":
-        normalized["email"] = normalized["email"].casefold()
+        field = "email" if "email" in normalized else "query"
+        normalized[field] = " ".join(normalized[field].split())
     elif tool == "customers_at_step":
         # The handler treats a missing limit as 25; the snapshot must too.
         normalized["limit"] = normalized.get("limit", 25)
     fingerprint = hashlib.sha256(
-        json.dumps({"tool": tool, "arguments": normalized}, sort_keys=True).encode()
+        json.dumps(
+            {
+                "tool": tool,
+                "arguments": normalized,
+                "window_start": user_insights.window_start(arguments["days"]).isoformat(),
+            },
+            sort_keys=True,
+        ).encode()
     ).hexdigest()
     return f"overwatch:agent:query:{fingerprint}"
 
@@ -107,6 +127,7 @@ class QueryResultSerializer(serializers.Serializer):
     as_of = serializers.DateTimeField()
     window_days = serializers.IntegerField()
     window_start = serializers.DateTimeField()
+    refreshes_at = serializers.DateTimeField()
 
 
 class OverwatchQueryView(APIView):
@@ -148,20 +169,23 @@ class OverwatchQueryView(APIView):
                 with connection.cursor() as cursor:
                     cursor.execute("SET TRANSACTION READ ONLY")
                 content, private = overwatch_tools.query(tool, args)
+            computed_at = timezone.now()
+            ttl = 300 if tool in {"customer_activity", "model_usage"} else TOOL_CACHE_SECONDS
             result = QueryResultSerializer(
                 {
                     "content": content,
                     "private": private,
                     "source": "Overmind product/billing records"
                     + (" and PostHog aggregates" if tool == "product_usage" else ""),
-                    "as_of": timezone.now(),
+                    "as_of": computed_at,
+                    "refreshes_at": computed_at + timedelta(seconds=ttl if result_key else 0),
                     "window_days": args["days"],
                     "window_start": user_insights.window_start(args["days"]),
                 }
             )
             payload = dict(result.data)
             if result_key is not None:
-                cache.set(result_key, payload, TOOL_CACHE_SECONDS)
+                cache.set(result_key, payload, ttl)
             return Response(payload)
         except Exception:
             logger.warning("overwatch_service_query_failed")
