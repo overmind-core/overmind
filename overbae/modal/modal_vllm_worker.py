@@ -439,7 +439,12 @@ class _BaseVLLMWorker:
             multimodal_text_only_args,
         )
         from modal_shared.serving.capacity import GPU_VRAM_GB, sequence_cap_for_checkpoint
-        from modal_shared.serving.speculative import draft_for, draft_volume_path, mtp_for
+        from modal_shared.serving.speculative import (
+            VLLM_MTP_TOKENS,
+            draft_for,
+            draft_volume_path,
+            mtp_for,
+        )
 
         spec = resolve(base_model or self.model_name)
         draft_model = ""
@@ -488,6 +493,8 @@ class _BaseVLLMWorker:
                 enable_lora=self.enable_lora,
                 max_lora_rank=self.max_lora_rank,
                 lora_target_modules=lora_targets,
+                max_model_len=self.max_model_len,
+                max_running_requests=max_num_seqs,
             )
         else:
             cmd = (
@@ -507,6 +514,7 @@ class _BaseVLLMWorker:
                         gpu_type=getattr(self, "gpu_type", ""),
                         draft_model=draft_model,
                         draft_tokens=draft_tokens,
+                        mtp_tokens=VLLM_MTP_TOKENS if mtp else 0,
                     ),
                     spec,
                 )
