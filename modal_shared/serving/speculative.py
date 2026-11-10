@@ -49,6 +49,10 @@ def mtp_for(repo: str) -> tuple[int, int, int] | None:
     return _MTP.get(repo)
 
 
+# vLLM's hybrid cache accepts one MTP token. The tuple above is the SGLang EAGLE recipe.
+VLLM_MTP_TOKENS = 1
+
+
 # 15-token DFlash on this hybrid leaves 2.9 GiB of KV on an 80GB GPU, and the
 # configured 16384 context needs 3.35. H200 (141) and larger still take the draft.
 _DRAFT_MIN_VRAM_GB = {

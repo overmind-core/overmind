@@ -64,7 +64,9 @@ dedicated_sglang_image = attach_serving_args(
     modal.Image.from_registry(
         f"lmsysorg/sglang:{_DEDICATED_SGLANG_TAG}",
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
-    ).entrypoint([])
+    )
+    .entrypoint([])
+    .pip_install("runai-model-streamer>=0.15.7")
 )
 # LFM3 conv layers are absent from v0.5.22 and from vLLM 0.33. Support is the
 # untagged image built from sgl-project/sglang#46858. Do not point other models here.
@@ -72,7 +74,9 @@ dedicated_sglang_lfm3_image = attach_serving_args(
     modal.Image.from_registry(
         "lmsysorg/sglang:dev-lfm3",
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
-    ).entrypoint([])
+    )
+    .entrypoint([])
+    .pip_install("runai-model-streamer>=0.15.7")
 )
 
 SERVE_IMAGES: dict[str, modal.Image] = {

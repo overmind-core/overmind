@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from modal_shared.serving.args import CUDAGRAPH_CAPTURE_SIZES
+
 # vLLM's parser names that SGLang spells differently. Other names match.
 _TOOL_PARSER_NAMES = {
     "openai": "gpt-oss",
@@ -23,6 +28,25 @@ def sglang_tool_parser(name: str) -> str:
 
 def sglang_reasoning_parser(name: str) -> str:
     return _REASONING_PARSER_NAMES.get(name, name)
+
+
+def _position_limit(model_path: str) -> int | None:
+    path = Path(model_path) / "config.json"
+    if not path.is_file():
+        return None
+    try:
+        config = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    sources = [config]
+    text = config.get("text_config")
+    if isinstance(text, dict):
+        sources.append(text)
+    for source in sources:
+        limit = source.get("max_position_embeddings")
+        if type(limit) is int and limit > 0:
+            return limit
+    return None
 
 
 def attention_backend(gpu_type: str, *, model: str = "") -> str:
@@ -59,6 +83,8 @@ def build_sglang_args(
     max_lora_rank: int = 16,
     lora_target_modules: str = "",
     mem_fraction: str = "0.75",
+    max_model_len: int | None = None,
+    max_running_requests: int | None = None,
 ) -> list[str]:
     cmd = [
         "python3",
@@ -85,6 +111,27 @@ def build_sglang_args(
         "--port",
         str(port),
     ]
+    # Runtime LoRA load rejects this format (the LFM3 image has no RUNAI_STREAMER
+    # loader). A folded checkpoint has no adapter load, so it can stream.
+    if not enable_lora:
+        cmd += ["--load-format", "runai_streamer"]
+    if max_model_len:
+        limit = _position_limit(model_path)
+        cmd += ["--context-length", str(min(max_model_len, limit) if limit else max_model_len)]
+    # Triton dequantizes FP8 KV before attention. fa3 and flashinfer fuse it.
+    if backend in {"fa3", "flashinfer"}:
+        cmd += ["--kv-cache-dtype", "fp8_e4m3"]
+    # 0.88 filled an L4 and the EAGLE draft capture was killed. 0.75 leaves
+    # that headroom. Prefill graphs are the long boot; decode graphs stay.
+    cmd.append("--disable-prefill-cuda-graph")
+    # The short capture list drops speculative acceptance. Cap the width instead.
+    if mtp or draft_model:
+        cmd += ["--cuda-graph-max-bs-decode", "32"]
+    else:
+        sizes = [size for size in CUDAGRAPH_CAPTURE_SIZES if size <= (max_running_requests or size)]
+        cmd += ["--cuda-graph-bs-decode", *(str(size) for size in sizes)]
+        if max_running_requests:
+            cmd += ["--max-running-requests", str(max_running_requests)]
     if mtp:
         steps, topk, tokens = mtp
         cmd += [

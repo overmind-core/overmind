@@ -219,6 +219,7 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
         max_lora_rank=16,
     )
     assert lora_cmd[lora_cmd.index("--max-lora-rank") + 1] == "16"
+    assert "--load-format" not in lora_cmd
     assert lora_cmd[lora_cmd.index("--lora-target-modules") + 1] == "all"
     named = build_sglang_args(
         model_path="/tmp/base",
@@ -241,10 +242,63 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
         model="LiquidAI/LFM3-1.7B",
     )
     assert "--attention-backend" not in lfm3
+    assert ada[ada.index("--mem-fraction-static") + 1] == "0.75"
+    assert ada[ada.index("--load-format") + 1] == "runai_streamer"
+    assert "--disable-prefill-cuda-graph" in ada
+    assert "--model-loader-extra-config" not in ada
+    assert ada[ada.index("--kv-cache-dtype") + 1] == "fp8_e4m3"
+    assert cmd[cmd.index("--kv-cache-dtype") + 1] == "fp8_e4m3"
+    assert "--kv-cache-dtype" not in oss
+    assert "--kv-cache-dtype" not in gemma
+    assert "--kv-cache-dtype" not in lfm3
+    assert "--cuda-graph-bs-decode" not in cmd
+    assert "--cuda-graph-bs-decode" not in mtp_cmd
+    assert mtp_cmd[mtp_cmd.index("--cuda-graph-max-bs-decode") + 1] == "32"
+    graph = ada.index("--cuda-graph-bs-decode") + 1
+    assert ada[graph : graph + len(CUDAGRAPH_CAPTURE_SIZES)] == [
+        str(size) for size in CUDAGRAPH_CAPTURE_SIZES
+    ]
+
+
+def test_sglang_context_clamps_to_the_checkpoint(tmp_path: Path) -> None:
+    from modal_shared.serving.sglang import build_sglang_args
+
+    checkpoint = tmp_path / "weights"
+    checkpoint.mkdir()
+    (checkpoint / "config.json").write_text(json.dumps({"max_position_embeddings": 4096}))
+    cmd = build_sglang_args(
+        model_path=str(checkpoint),
+        served_name="deploy-1",
+        port=8000,
+        gpu_type="L4",
+        max_model_len=8192,
+        max_running_requests=4,
+    )
+    assert cmd[cmd.index("--context-length") + 1] == "4096"
+    assert cmd[cmd.index("--max-running-requests") + 1] == "4"
+    graph = cmd.index("--cuda-graph-bs-decode") + 1
+    assert cmd[graph : graph + 3] == ["1", "2", "4"]
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "config.json").write_text(
+        json.dumps({"text_config": {"max_position_embeddings": 2048}})
+    )
+    nested_cmd = build_sglang_args(
+        model_path=str(nested),
+        served_name="deploy-1",
+        port=8000,
+        max_model_len=8192,
+    )
+    assert nested_cmd[nested_cmd.index("--context-length") + 1] == "2048"
 
 
 def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
-    from modal_shared.serving.speculative import draft_for, draft_volume_path, mtp_for
+    from modal_shared.serving.speculative import (
+        VLLM_MTP_TOKENS,
+        draft_for,
+        draft_volume_path,
+        mtp_for,
+    )
 
     cmd = _args(
         _checkpoint(tmp_path),
@@ -259,10 +313,11 @@ def test_dflash_argv_for_the_three_bases(tmp_path: Path) -> None:
         "num_speculative_tokens": 15,
     }
     assert "--cudagraph-capture-sizes" not in cmd
-    mtp = _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3.5-4B", mtp_tokens=1)
+    mtp = _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3.6-27B", mtp_tokens=VLLM_MTP_TOKENS)
     mtp_payload = json.loads(mtp[mtp.index("--speculative-config") + 1])
     assert mtp_payload == {"method": "mtp", "num_speculative_tokens": 1}
     assert "--cudagraph-capture-sizes" not in mtp
+    assert "--speculative-config" not in _args(_checkpoint(tmp_path), base_model="Qwen/Qwen3.6-27B")
     for repo in (
         "Qwen/Qwen3.5-4B",
         "unsloth/Qwen3.5-4B",
