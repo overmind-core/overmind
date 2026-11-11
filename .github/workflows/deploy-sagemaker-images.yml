@@ -1,0 +1,84 @@
+name: Build and Push SageMaker Images to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "Target AWS Region"
+        required: false
+        default: "eu-west-1"
+      ecr_prefix:
+        description: "ECR Repository Prefix"
+        required: false
+        default: "overmind"
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build & Push SageMaker ECR Images
+    runs-on: ubuntu-latest
+    if: ${{ vars.AWS_ROLE_TO_ASSUME != '' || secrets.AWS_ROLE_TO_ASSUME != '' }}
+    env:
+      AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'eu-west-1' }}
+      ECR_PREFIX: ${{ inputs.ecr_prefix || vars.SAGEMAKER_ECR_REPOSITORY_PREFIX || 'overmind' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push SFT Training image (u2026_10_7)
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/Dockerfile.train --target u2026_10_7 \
+            -t "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:latest" .
+          docker push "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:latest"
+
+      - name: Build and push Decision Training image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/Dockerfile.train --target decision \
+            -t "$REGISTRY/$ECR_PREFIX-train-decision:$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_PREFIX-train-decision:latest" .
+          docker push "$REGISTRY/$ECR_PREFIX-train-decision:$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_PREFIX-train-decision:latest"
+
+      - name: Build and push vLLM Serving image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/Dockerfile.serve --target vllm \
+            -t "$REGISTRY/$ECR_PREFIX-serve-vllm:$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_PREFIX-serve-vllm:latest" .
+          docker push "$REGISTRY/$ECR_PREFIX-serve-vllm:$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_PREFIX-serve-vllm:latest"
+
+      - name: Build and push SGLang Serving image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/Dockerfile.serve --target sglang \
+            -t "$REGISTRY/$ECR_PREFIX-serve-sglang:$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_PREFIX-serve-sglang:latest" .
+          docker push "$REGISTRY/$ECR_PREFIX-serve-sglang:$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_PREFIX-serve-sglang:latest"

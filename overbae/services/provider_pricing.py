@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import modal
 from asgiref.sync import async_to_sync
+from django.conf import settings
 from django.core.cache import cache
 
 CACHE_KEY = "modal-workspace-rates"
@@ -18,6 +19,11 @@ GPU_KEYS = {
 
 
 def fetch_rates():
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker.pricing import fetch_sagemaker_rates
+
+        return fetch_sagemaker_rates()
+
     async def fetch():
         return await asyncio.wait_for(modal.Workspace.from_context().billing.rates.aio(), timeout=8)
 
@@ -25,6 +31,11 @@ def fetch_rates():
 
 
 def refresh_rates():
+    source = (
+        "aws.pricing.AmazonSageMaker"
+        if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker"
+        else "modal.Workspace.billing.rates"
+    )
     try:
         rates = {
             key: float(value)
@@ -35,7 +46,7 @@ def refresh_rates():
     except Exception as exc:
         value = {"status": "unavailable", "rates": {}, "error_code": type(exc).__name__}
     value.update(
-        source="modal.Workspace.billing.rates",
+        source=source,
         fetched_at=datetime.now(UTC).isoformat(),
         cache_seconds=300,
     )

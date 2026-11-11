@@ -307,7 +307,7 @@ def configuration_identity(experiment):
 
 
 def create_profile(project, *, user, name, request_key, variant, max_steps, max_seconds):
-    if settings.FINETUNING_BACKEND != "modal":
+    if settings.FINETUNING_BACKEND not in {"modal", "sagemaker"}:
         raise InputValidationError("Bounded runtime profiles require the Modal training backend")
     bounds = RuntimeProfile(max_steps=max_steps, max_seconds=max_seconds).model_dump()
     hp = {**variant["hyperparameters"], "max_steps": max_steps, "runtime_profile": bounds}

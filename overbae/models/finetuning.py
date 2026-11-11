@@ -76,11 +76,12 @@ class FinetuningJob(models.Model):
     class Provider(models.TextChoices):
         TOGETHER_AI = "together_ai"
         # Legacy providers — retired backends kept so existing job rows render;
-        # new submissions only go to TOGETHER_AI, BASETEN, or MODAL.
+        # new submissions only go to TOGETHER_AI, BASETEN, MODAL, or SAGEMAKER.
         NEBIUS = "nebius"
         TINKER = "tinker"
         BASETEN = "baseten"
         MODAL = "modal"
+        SAGEMAKER = "sagemaker"
 
     class SplitMethod(models.TextChoices):
         ORDERED = "ordered"  # last N% by row index

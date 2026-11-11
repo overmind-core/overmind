@@ -17,9 +17,9 @@ def active_backend() -> str:
 
 
 def catalog_backend() -> str:
-    """models.json backend key for FINETUNING_BACKEND — Modal reuses Baseten's rows."""
+    """models.json backend key for FINETUNING_BACKEND — Modal and SageMaker reuse Baseten's rows."""
     backend = active_backend()
-    return "baseten" if backend == "modal" else backend
+    return "baseten" if backend in ("modal", "sagemaker") else backend
 
 
 def tier_models(*, backend: str | None = None) -> dict[str, list[dict[str, Any]]]:

@@ -392,7 +392,7 @@ def lifecycle_stage(status: str | None, progress: dict | None) -> str:
 # matters: longer/more-specific phrases first so "Together AI" doesn't leave a
 # dangling "AI".
 _BACKEND_NAME_RE = re.compile(
-    r"(?<![A-Za-z])(together\s*ai|baseten|nebius|modal(?!_))(?![A-Za-z])",
+    r"(?<![A-Za-z])(together\s*ai|baseten|nebius|sagemaker|modal(?!_))(?![A-Za-z])",
     re.IGNORECASE,
 )
 # GPU SKUs in activity copy ("Pre-warming GPU (L4)") — infra detail, not product.
@@ -2277,10 +2277,468 @@ class ModalRunner(BaseFinetuningRunner):
         return result
 
 
+class SageMakerRunner(ModalRunner):
+    """Runner backed by AWS SageMaker Training Jobs executing overmind sft_assets/train.py."""
+
+    def _await_base_model(self, hf_base: str) -> dict:
+        from overbae.sagemaker.deployment_ops import ensure_base_model
+
+        return ensure_base_model(hf_base)
+
+    def submit(
+        self,
+        job,
+        training_file_path: str,
+        num_examples: int | None,
+        validation_file_path: str | None = None,
+    ) -> SubmissionResult:
+        import uuid as _uuid
+
+        from overbae.core.aws import boto3_client
+        from overbae.modal.training_type import training_context_length
+        from overbae.models import FinetuningJob as _FTJob
+        from overbae.sagemaker.instance_map import sagemaker_instance_type
+        from overbae.sagemaker.preparation_ops import training_image_uri
+        from overbae.sagemaker.s3_store import put_json, sft_bucket
+        from overbae.services import training_submission
+
+        if num_examples == 0:
+            raise RuntimeError("Dataset produced 0 training examples.")
+
+        model_cfg = self.model_config(job.base_model)
+        ft_cfg = model_cfg.get("finetuning") or {}
+        stats = dict((job.cell.stats if job.cell_id else None) or {})
+        stats["max_token_length"] = 0
+        hp = dict(job.hyperparameters or {})
+        training_kind = "full" if str(hp.get("training_type", {}).get("type")) == "Full" else "lora"
+        model_max = training_context_length(model_cfg, training_kind)
+        requested_ctx = int(hp.get("context_length") or 0) or None
+        early_ctx = baseten_context_length(0, model_max=model_max, requested=requested_ctx)
+        gpu_type, gpu_count = self._select_training_gpu(job, context_length=early_ctx)
+        plan = derive_baseten_training_plan(
+            hyperparameters=job.hyperparameters,
+            num_train_examples=int(num_examples or 0),
+            dataset_stats=stats,
+            params_b=float(model_cfg.get("total_params_b") or 0),
+            model_max_context=model_max,
+            model_min_batch=int(ft_cfg.get("min_batch_size") or 1),
+            model_max_batch=int(ft_cfg["max_batch_size"]) if ft_cfg.get("max_batch_size") else None,
+            gpu_type=gpu_type,
+            gpu_count=gpu_count,
+            model_id=job.base_model,
+            hidden_size=int(model_cfg.get("hidden_size") or 0),
+        )
+
+        _FTJob.objects.filter(pk=job.pk).update(
+            hyperparameters={
+                **(dict(job.hyperparameters) or {}),
+                "context_length": plan.context_length,
+                "n_epochs": plan.n_epochs,
+                "batch_size": plan.batch_size,
+                "learning_rate": plan.learning_rate,
+                "warmup_ratio": plan.warmup_ratio,
+                "packing": plan.packing,
+            }
+        )
+
+        run_id = f"ft-{job.id}-{_uuid.uuid4().hex[:8]}"
+        max_steps = int((job.hyperparameters or {}).get("max_steps") or 0)
+        env = self._training_env(
+            plan,
+            job.base_model,
+            gpu_type=gpu_type,
+            gpu_count=gpu_count,
+            params_b=float(model_cfg.get("total_params_b") or 0),
+            max_steps=max_steps,
+        )
+        if (job.hyperparameters or {}).get("runtime_profile"):
+            env["RUNTIME_PROFILE"] = json.dumps(job.hyperparameters["runtime_profile"])
+        if (job.hyperparameters or {}).get("monitoring") is not None:
+            env["TRAINING_MONITORING"] = json.dumps(job.hyperparameters["monitoring"])
+        hidden = int(model_cfg.get("hidden_size") or 0)
+        if hidden > 0:
+            env["HIDDEN_SIZE"] = str(hidden)
+
+        release = self.release or {}
+        effective = {
+            "gpu_type": gpu_type,
+            "gpu_count": gpu_count,
+            "environment": release.get("environment")
+            or getattr(settings, "AWS_REGION", "eu-west-1"),
+            "release": release,
+            "parameters": {
+                key: env[key]
+                for key in (
+                    "SEED",
+                    "DECISION_PRE_TRAINING_BASELINE",
+                    "WEIGHT_DECAY",
+                    "LEARNING_RATE",
+                    "GRAD_ACCUM",
+                    "PER_DEVICE_BATCH",
+                    "MAX_LENGTH",
+                    "N_EPOCHS",
+                    "WARMUP_RATIO",
+                    "LORA_R",
+                    "LORA_ALPHA",
+                    "LORA_DROPOUT",
+                    "LORA_TARGET_MODULES",
+                    "TRAINING_TYPE",
+                    "PACK_ROWS",
+                    "LOAD_IN_4BIT",
+                    "MAX_STEPS",
+                    "PADDED_TOKEN_BUDGET",
+                )
+                if key in env
+            },
+        }
+        if "seed" in hp and int(env["SEED"]) != int(hp["seed"]):
+            raise ValueError("Effective seed differs from the requested seed.")
+        _FTJob.objects.filter(pk=job.pk).update(effective_configuration=effective)
+
+        preparation = ready_for_job(job, plan.context_length)
+        env["TRAINING_OBJECTIVE"] = preparation.config["objective"]
+        env["UNSLOTH_IMAGE"] = preparation.config["stack"]
+        if hp.get("checkpoint_policy"):
+            env["DECISION_CHECKPOINT_POLICY"] = json.dumps(hp["checkpoint_policy"])
+
+        paths = {"data": training_file_path}
+        if validation_file_path:
+            paths["val"] = validation_file_path
+        stage_data(job, paths, run_id, preparation, None, None, num_examples=num_examples)
+
+        training_submission.record_pre_dispatch_stage(
+            job,
+            "preparing_base_model",
+            "Checking base model weights and downloading missing files",
+        )
+        self._await_base_model(env["MODEL_ID"])
+        training_submission.record_pre_dispatch_stage(
+            job, "starting_training_worker", "Base model weights ready; starting training worker"
+        )
+
+        bucket = sft_bucket()
+        instance_type = sagemaker_instance_type(gpu_type, gpu_count)
+        role_arn = getattr(settings, "SAGEMAKER_EXECUTION_ROLE_ARN", "")
+        image_uri = training_image_uri(preparation.config["stack"], release)
+
+        training_submission.dispatching(job, run_id)
+        resp = boto3_client("sagemaker").create_training_job(
+            TrainingJobName=run_id,
+            RoleArn=role_arn,
+            AlgorithmSpecification={
+                "TrainingImage": image_uri,
+                "TrainingInputMode": "File",
+                "ContainerEntrypoint": ["python", "-m", "overbae.sagemaker.sft_entrypoint"],
+            },
+            ResourceConfig={
+                "InstanceType": instance_type,
+                "InstanceCount": 1,
+                "VolumeSizeInGB": 200,
+            },
+            OutputDataConfig={"S3OutputPath": f"s3://{bucket}/runs/{run_id}/output"},
+            StoppingCondition={
+                "MaxRuntimeInSeconds": int(hp.get("runtime_limit_seconds") or 86400)
+            },
+            Environment={
+                **env,
+                "OVERMIND_SAGEMAKER_MODE": "train",
+                "OVERMIND_RUN_ID": run_id,
+                "OVERMIND_TRAINING_JOB_NAME": run_id,
+                "OVERMIND_GPU_TYPE": gpu_type,
+                "OVERMIND_GPU_COUNT": str(gpu_count),
+                "AWS_SFT_BUCKET_NAME": bucket,
+                "AWS_WEIGHTS_BUCKET_NAME": getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", ""),
+            },
+        )
+        arn = (
+            resp.get("TrainingJobArn")
+            or f"arn:aws:sagemaker:{getattr(settings, 'AWS_REGION', 'eu-west-1')}:000000000000:training-job/{run_id}"
+        )
+        put_json(
+            bucket,
+            f"runs/{run_id}/meta.json",
+            {
+                "run_id": run_id,
+                "status": "starting",
+                "started_at": time.time(),
+                "call_id": arn,
+            },
+        )
+        remote_id = f"{run_id}:{arn}"
+        return SubmissionResult(
+            remote_id=remote_id,
+            run_url="",
+            training_file_id=run_id,
+            num_examples=num_examples,
+        )
+
+    def _s3_snapshot(self, run_id: str) -> dict[str, Any]:
+        from overbae.sagemaker.s3_store import get_json, get_jsonl, object_exists, sft_bucket
+
+        bucket = sft_bucket()
+        meta = get_json(bucket, f"runs/{run_id}/meta.json")
+        progress = get_json(bucket, f"runs/{run_id}/progress.json")
+        telemetry = get_json(bucket, f"runs/{run_id}/telemetry.json") or {}
+        usage = get_json(bucket, f"runs/{run_id}/compute-usage.json")
+        metrics = get_jsonl(bucket, f"runs/{run_id}/metrics.jsonl")
+        if isinstance(usage, list) and isinstance(meta, dict):
+            meta = {**meta, "compute_usage": usage}
+        has_final = (
+            object_exists(bucket, f"runs/{run_id}/final/checkpoint.json")
+            or object_exists(bucket, f"runs/{run_id}/final/adapter_config.json")
+            or object_exists(bucket, f"runs/{run_id}/final/config.json")
+        )
+        out: dict[str, Any] = {
+            "run_id": run_id,
+            "found": meta is not None or progress is not None or bool(metrics) or has_final,
+            "meta": meta,
+            "progress": progress,
+            "telemetry": telemetry,
+            "metrics": metrics,
+            "has_final_checkpoint": has_final,
+        }
+        artifact = get_json(bucket, f"runs/{run_id}/final/artifact.json")
+        if isinstance(artifact, dict) and artifact.get("identity"):
+            out["has_final_checkpoint"] = True
+            out["native_artifact"] = {
+                "artifact_identity": artifact["identity"],
+                "reload_verification": artifact.get("verification"),
+                "training": artifact.get("training"),
+            }
+        retained = get_json(bucket, f"runs/{run_id}/decision-checkpoints.json")
+        if retained is not None:
+            out["checkpoint_selection"] = retained
+        monitoring = get_json(bucket, f"runs/{run_id}/monitoring.json")
+        if isinstance(monitoring, dict):
+            out["monitoring"] = {k: v for k, v in monitoring.items() if k != "probes"}
+        return out
+
+    def poll(self, remote_id: str) -> PollSnapshot:
+        from overbae.core.aws import boto3_client
+
+        run_id, _arn = self._parse_remote_id(remote_id)
+        snap = self._s3_snapshot(run_id)
+        meta = snap.get("meta") or {}
+        meta_status = str(meta.get("status") or "")
+        has_final = bool(snap.get("has_final_checkpoint"))
+
+        sm_status = ""
+        sm_error = ""
+        try:
+            desc = boto3_client("sagemaker").describe_training_job(TrainingJobName=run_id)
+            sm_status = str(desc.get("TrainingJobStatus") or "")
+            sm_error = str(desc.get("FailureReason") or "")
+        except Exception as exc:  # noqa: BLE001
+            sm_error = str(exc)
+
+        if meta_status == "cancelled" or sm_status in ("Stopping", "Stopped"):
+            state = "cancelled"
+        else:
+            in_flight = sm_status in ("InProgress", "")
+            call_ok = sm_status == "Completed"
+            remote_failed = sm_status == "Failed"
+            state = resolve_modal_job_state(
+                meta_status,
+                in_flight=in_flight,
+                call_ok=call_ok,
+                has_final=has_final,
+                remote_failed=remote_failed,
+            )
+
+        phase = self._PHASE_MAP.get(meta_status or state, "training")
+
+        metrics_history: list[dict] = []
+        eval_history: list[dict] = []
+        checkpoint_history: list[dict] = []
+        trained_steps: int | None = None
+        total_steps: int | None = None
+        train_loss: float | None = None
+        eval_loss: float | None = None
+        learning_rate: float | None = None
+        token_accuracy: float | None = None
+        eval_token_accuracy: float | None = None
+        current_epoch: float | None = None
+        eta_s: float | None = None
+        tokens_processed: int | None = None
+
+        for rec in snap.get("metrics") or []:
+            event = rec.get("event")
+            if event == "BT_PROGRESS":
+                trained_steps = rec.get("step")
+                total_steps = rec.get("total_steps")
+                train_loss = rec.get("loss")
+                learning_rate = rec.get("lr")
+                token_accuracy = rec.get("token_accuracy")
+                current_epoch = rec.get("epoch")
+                eta_s = rec.get("eta_s")
+                if rec.get("num_tokens") is not None:
+                    tokens_processed = int(rec["num_tokens"])
+                point: dict = {"step": trained_steps, "epoch": current_epoch}
+                if train_loss is not None:
+                    point["train_loss"] = round(train_loss, 6)
+                if token_accuracy is not None:
+                    point["token_accuracy"] = round(token_accuracy, 6)
+                if learning_rate is not None:
+                    point["lr"] = learning_rate
+                if rec.get("grad_norm") is not None:
+                    point["grad_norm"] = float(rec["grad_norm"])
+                metrics_history.append(point)
+            elif event == "BT_CHECKPOINT":
+                checkpoint_history.append(
+                    {
+                        "step": rec.get("step"),
+                        "epoch": rec.get("epoch"),
+                        "path": str(rec.get("path") or ""),
+                        "timestamp": None,
+                    }
+                )
+            elif event == "BT_EVAL":
+                eval_loss = rec.get("eval_loss")
+                eval_token_accuracy = rec.get("eval_token_accuracy")
+                eval_point: dict = {"step": rec.get("step"), "epoch": rec.get("epoch")}
+                if eval_loss is not None:
+                    eval_point["eval_loss"] = round(eval_loss, 6)
+                if eval_token_accuracy is not None:
+                    eval_point["eval_token_accuracy"] = round(eval_token_accuracy, 6)
+                for key in (
+                    "argmax_target_agreement",
+                    "hard_label_accuracy",
+                    "hard_label_decisions",
+                    "brier",
+                    "decisions",
+                    "runtime_seconds",
+                ):
+                    if rec.get(key) is not None:
+                        eval_point[key] = rec[key]
+                eval_history.append(eval_point)
+
+        estimated_finish = int(time.time() + eta_s) if eta_s is not None and eta_s > 0 else None
+
+        loss_by_step: dict[int, dict[str, Any]] = {}
+        lr_series: list[dict[str, Any]] = []
+        grad_series: list[dict[str, Any]] = []
+        ta_by_step: dict[int, dict[str, Any]] = {}
+        for point in metrics_history:
+            p_step = point.get("step")
+            if p_step is None:
+                continue
+            if point.get("train_loss") is not None:
+                loss_by_step.setdefault(p_step, {"step": p_step})["train_loss"] = point[
+                    "train_loss"
+                ]
+            if point.get("lr") is not None:
+                lr_series.append({"step": p_step, "value": point["lr"]})
+            if point.get("grad_norm") is not None:
+                grad_series.append({"step": p_step, "value": point["grad_norm"]})
+            if point.get("token_accuracy") is not None:
+                ta_by_step.setdefault(p_step, {"step": p_step})["train"] = point["token_accuracy"]
+        eval_by_step: dict[int, dict[str, Any]] = {}
+        for ev in eval_history:
+            e_step = ev.get("step")
+            if e_step is None:
+                continue
+            if ev.get("eval_loss") is not None:
+                loss_by_step.setdefault(e_step, {"step": e_step})["eval_loss"] = ev["eval_loss"]
+                eval_by_step[int(e_step)] = ev
+            if ev.get("eval_token_accuracy") is not None:
+                ta_by_step.setdefault(e_step, {"step": e_step})["eval"] = ev["eval_token_accuracy"]
+        loss_series = [loss_by_step[s] for s in sorted(loss_by_step)]
+        token_accuracy_series = [ta_by_step[s] for s in sorted(ta_by_step)]
+
+        checkpoints: list[dict[str, Any]] = []
+        for ckpt in checkpoint_history:
+            c_step = ckpt.get("step")
+            if c_step is None:
+                continue
+            c_step = int(c_step)
+            ev = eval_by_step.get(c_step, {})
+            train_point = loss_by_step.get(c_step, {})
+            checkpoints.append(
+                {
+                    "id": ckpt["path"] or f"checkpoint-{c_step}",
+                    "step": c_step,
+                    "type": "checkpoint",
+                    "path": ckpt["path"],
+                    "train_loss": train_point.get("train_loss"),
+                    "valid_loss": ev.get("eval_loss"),
+                    "valid_mean_token_accuracy": ev.get("eval_token_accuracy"),
+                    "result_files": [],
+                    "file_count": 0,
+                    "created_at": ckpt.get("timestamp"),
+                    "resumable": False,
+                    "has_eval": ev.get("eval_loss") is not None,
+                    "upload_status": "uploaded" if has_final else "pending",
+                }
+            )
+        checkpoints.sort(key=lambda r: r["step"])
+
+        output_model_name = (
+            f"sagemaker/{run_id}/final" if state in self._TERMINAL_OK or has_final else ""
+        )
+        error = str(meta.get("error") or sm_error or "")
+
+        return PollSnapshot(
+            state=state,
+            epochs_completed=int(current_epoch) if current_epoch is not None else None,
+            tokens_per_second=next(
+                (
+                    float(rec["tokens_per_s"])
+                    for rec in reversed(snap.get("metrics") or [])
+                    if rec.get("tokens_per_s") is not None
+                ),
+                None,
+            ),
+            tokens_processed=tokens_processed,
+            trained_steps=trained_steps,
+            step=trained_steps,
+            total_steps=total_steps,
+            phase=phase,
+            train_loss=train_loss,
+            eval_loss=eval_loss,
+            learning_rate=learning_rate,
+            token_accuracy=token_accuracy,
+            eval_token_accuracy=eval_token_accuracy,
+            current_epoch=current_epoch,
+            eta_s=eta_s,
+            estimated_finish=estimated_finish,
+            loss_series=loss_series,
+            learning_rate_series=lr_series,
+            grad_norm_series=grad_series,
+            token_accuracy_series=token_accuracy_series,
+            checkpoints=checkpoints,
+            metrics_history=metrics_history,
+            eval_history=eval_history,
+            activity=[],
+            diagnostics={
+                **(snap.get("telemetry") or {}),
+                **({"failure": meta["failure"]} if meta.get("failure") else {}),
+            },
+            stage=(snap.get("telemetry") or {}).get("stage", ""),
+            download=None,
+            output_model_name=output_model_name,
+            error=error,
+            raw=snap,
+        )
+
+    def cancel(self, remote_id: str) -> None:
+        from overbae.core.aws import boto3_client
+        from overbae.sagemaker.s3_store import get_json, put_json, sft_bucket
+
+        run_id, _arn = self._parse_remote_id(remote_id)
+        try:
+            boto3_client("sagemaker").stop_training_job(TrainingJobName=run_id)
+        finally:
+            bucket = sft_bucket()
+            existing = get_json(bucket, f"runs/{run_id}/meta.json") or {}
+            existing.update({"run_id": run_id, "status": "cancelled", "cancelled_at": time.time()})
+            put_json(bucket, f"runs/{run_id}/meta.json", existing)
+
+
 _RUNNER_REGISTRY: dict[str, type[BaseFinetuningRunner]] = {
     "together": TogetherAIRunner,
     "baseten": BasetenRunner,
     "modal": ModalRunner,
+    "sagemaker": SageMakerRunner,
 }
 
 _DEFAULT_RUNNER = "baseten"
@@ -2288,8 +2746,9 @@ _DEFAULT_RUNNER = "baseten"
 
 def get_runner(backend: str | None = None, *, job=None) -> BaseFinetuningRunner:
     """The runner for ``backend``, else ``settings.FINETUNING_BACKEND``."""
+    runtime = (job.requested_configuration or {}).get("runtime") if job is not None else None
     pinned_backend = (
-        "modal" if job is not None and (job.requested_configuration or {}).get("runtime") else None
+        runtime.get("backend", "modal") if isinstance(runtime, dict) and runtime else None
     )
     key = backend or pinned_backend or getattr(settings, "FINETUNING_BACKEND", _DEFAULT_RUNNER)
     if key == "together_ai":
@@ -2299,8 +2758,8 @@ def get_runner(backend: str | None = None, *, job=None) -> BaseFinetuningRunner:
         raise ValueError(
             f"Unknown fine-tuning backend '{key}'. Available: {list(_RUNNER_REGISTRY)}"
         )
-    if key == "modal":
+    if key in ("modal", "sagemaker"):
         from overbae.services.training_release import for_job
 
-        return cls(release=for_job(job)) if job is not None else cls()
+        return cls(release=for_job(job)) if job is not None and runtime else cls()
     return cls()
