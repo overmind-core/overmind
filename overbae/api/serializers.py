@@ -1347,7 +1347,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     def validate_hyperparameters(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError("Use a JSON object for hyperparameters.")
-        if settings.FINETUNING_BACKEND in {"modal", "baseten"}:
+        if settings.FINETUNING_BACKEND in {"modal", "baseten", "sagemaker"}:
             try:
                 validate_effective_batch(value)
             except ValueError as exc:
@@ -1654,7 +1654,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
                             "hyperparameters": "Native decision training currently supports LoRA only."
                         }
                     )
-                if settings.FINETUNING_BACKEND != "modal":
+                if settings.FINETUNING_BACKEND not in {"modal", "sagemaker"}:
                     raise serializers.ValidationError(
                         {"hyperparameters": "Decision training requires Modal."}
                     )
@@ -1766,10 +1766,10 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         hp = attrs.get("hyperparameters", getattr(self.instance, "hyperparameters", {})) or {}
         try:
             profile_options(hp)
-            if (
-                hp.get("runtime_limit_seconds") is not None
-                and settings.FINETUNING_BACKEND != "modal"
-            ):
+            if hp.get("runtime_limit_seconds") is not None and settings.FINETUNING_BACKEND not in {
+                "modal",
+                "sagemaker",
+            }:
                 raise ValueError("runtime_limit_seconds requires Modal provider enforcement")
             baseline = baseline_evaluation_enabled(hp)
             if self.instance is None:

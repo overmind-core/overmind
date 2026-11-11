@@ -18,8 +18,8 @@ def fetch_finetuning_model_catalog(
     """Return the catalog payload shared by the frontend API and MCP."""
     backend = getattr(settings, "FINETUNING_BACKEND", "baseten")
 
-    if backend in ("baseten", "modal"):
-        # Modal reuses the Baseten catalog verbatim; models.json has no duplicate rows.
+    if backend in ("baseten", "modal", "sagemaker"):
+        # Modal and SageMaker reuse the Baseten catalog verbatim; models.json has no duplicate rows.
         catalog = baseten_finetuning_catalog(include_disabled=True)
         if has_tool_calling:
             catalog = {

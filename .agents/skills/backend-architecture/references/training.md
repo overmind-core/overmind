@@ -1,6 +1,6 @@
 # Training
 
-UI "Training" is backend `finetuning`. All training runs on Modal with Unsloth; onboarding a model or family is the finetuning-model-onboarding skill.
+UI "Training" is backend `finetuning`. Training runs on Modal (`FINETUNING_BACKEND="modal"`, default) or AWS SageMaker (`FINETUNING_BACKEND="sagemaker"`, customer VPC on-prem) with Unsloth; onboarding a model or family is the finetuning-model-onboarding skill.
 
 ## Preparation
 

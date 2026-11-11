@@ -1755,6 +1755,7 @@ export const FinetuningJobsEventsListProviderEnum = {
     baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
+    sagemaker: 'sagemaker',
     tinker: 'tinker',
     together_ai: 'together_ai'
 } as const;
@@ -1782,6 +1783,7 @@ export const FinetuningJobsListProviderEnum = {
     baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
+    sagemaker: 'sagemaker',
     tinker: 'tinker',
     together_ai: 'together_ai'
 } as const;
@@ -1847,6 +1849,7 @@ export const FinetuningJobsRunsListProviderEnum = {
     baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
+    sagemaker: 'sagemaker',
     tinker: 'tinker',
     together_ai: 'together_ai'
 } as const;

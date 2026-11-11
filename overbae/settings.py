@@ -343,7 +343,12 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
-        "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
+        "BackendEnum": [
+            ("together", "together"),
+            ("baseten", "baseten"),
+            ("modal", "modal"),
+            ("sagemaker", "sagemaker"),
+        ],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
         # Lane provenance shares the field name with finetuning evidence; pinned so
@@ -726,13 +731,18 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "")
 AWS_BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_SFT_BUCKET_NAME = os.environ.get("AWS_SFT_BUCKET_NAME", "")
+AWS_WEIGHTS_BUCKET_NAME = os.environ.get("AWS_WEIGHTS_BUCKET_NAME", "")
+AWS_BEDROCK_ENABLED = os.environ.get("AWS_BEDROCK_ENABLED", "False") == "True"
+SAGEMAKER_EXECUTION_ROLE_ARN = os.environ.get("SAGEMAKER_EXECUTION_ROLE_ARN", "")
+SAGEMAKER_SYSTEMONE_ENDPOINT_NAME = os.environ.get("SAGEMAKER_SYSTEMONE_ENDPOINT_NAME", "")
+SAGEMAKER_ECR_REPOSITORY_PREFIX = os.environ.get("SAGEMAKER_ECR_REPOSITORY_PREFIX", "overmind")
+SAGEMAKER_IMAGE_TAG = os.environ.get("SAGEMAKER_IMAGE_TAG", "latest")
 
 FINETUNING_BACKEND = os.environ.get("FINETUNING_BACKEND", "modal")
 
-# Must be `modal deploy`-ed before FINETUNING_BACKEND=modal can submit jobs.
-
-if FINETUNING_BACKEND != "modal":
-    raise ImproperlyConfigured("FINETUNING_BACKEND must be modal")
+if FINETUNING_BACKEND not in {"modal", "sagemaker"}:
+    raise ImproperlyConfigured("FINETUNING_BACKEND must be modal or sagemaker")
 
 # The InferenceAPIServer ASGI endpoint, printed by `modal deploy`.
 INFERENCE_API_URL: str = os.environ.get("INFERENCE_API_URL", "")
@@ -742,19 +752,35 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
 
-_REQUIRED_KEYS = {
+_REQUIRED_KEYS: dict[str, str] = {
     "SANDBOX_URL": "the isolated Workshop sandbox",
     "SANDBOX_TOKEN": "the isolated Workshop sandbox",
-    "OPENROUTER_API_KEY": "judges, evals, trace scoring and the Data Workshop",
-    "MODAL_TOKEN_ID": "Modal training and serving workers",
-    "MODAL_TOKEN_SECRET": "Modal training and serving workers",
-    "INFERENCE_API_URL": "the Modal serving endpoint",
-    "INFERENCE_API_KEY": "the Modal serving endpoint",
-    "AWS_ACCESS_KEY_ID": "the fine-tuning checkpoint archive",
-    "AWS_SECRET_ACCESS_KEY": "the fine-tuning checkpoint archive",
-    "AWS_BUCKET_NAME": "the fine-tuning checkpoint archive",
-    "HF_TOKEN": "gated Hugging Face base models",
 }
+if not AWS_BEDROCK_ENABLED:
+    _REQUIRED_KEYS["OPENROUTER_API_KEY"] = "judges, evals, trace scoring and the Data Workshop"
+if FINETUNING_BACKEND == "modal":
+    _REQUIRED_KEYS.update(
+        {
+            "MODAL_TOKEN_ID": "Modal training and serving workers",
+            "MODAL_TOKEN_SECRET": "Modal training and serving workers",
+            "INFERENCE_API_URL": "the Modal serving endpoint",
+            "INFERENCE_API_KEY": "the Modal serving endpoint",
+            "AWS_ACCESS_KEY_ID": "the fine-tuning checkpoint archive",
+            "AWS_SECRET_ACCESS_KEY": "the fine-tuning checkpoint archive",
+            "AWS_BUCKET_NAME": "the fine-tuning checkpoint archive",
+            "HF_TOKEN": "gated Hugging Face base models",
+        }
+    )
+elif FINETUNING_BACKEND == "sagemaker":
+    _REQUIRED_KEYS.update(
+        {
+            "AWS_BUCKET_NAME": "the fine-tuning checkpoint archive",
+            "AWS_SFT_BUCKET_NAME": "the SageMaker training data bucket",
+            "AWS_WEIGHTS_BUCKET_NAME": "the SageMaker model weights bucket",
+            "SAGEMAKER_EXECUTION_ROLE_ARN": "the SageMaker execution IAM role",
+            "HF_TOKEN": "gated Hugging Face base models",
+        }
+    )
 _missing_keys = [
     f"{name} ({purpose})"
     for name, purpose in _REQUIRED_KEYS.items()

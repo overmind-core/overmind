@@ -1,0 +1,39 @@
+# Multi-stage Dockerfile for SageMaker vLLM & SGLang Serving + FP8 Quantization
+# Mirrors modal_shared/images/serve.py and overbae/modal/register_model.py
+ARG VLLM_TAG=v0.33.0
+ARG SGLANG_TAG=v0.5.22
+
+FROM vllm/vllm-openai:${VLLM_TAG} AS vllm
+RUN ln -sf $(command -v python3) /usr/local/bin/python && \
+    pip install --no-cache-dir \
+    "httpx>=0.28.0" \
+    "runai-model-streamer>=0.15.7" \
+    "boto3>=1.35.0"
+
+ENV HF_HOME=/tmp/hf_cache \
+    HF_XET_HIGH_PERFORMANCE=1 \
+    VLLM_LOG_STATS_INTERVAL=30 \
+    VLLM_SERVER_DEV_MODE=0 \
+    PYTHONPATH=/root:/workspace
+
+WORKDIR /workspace
+COPY modal_shared /root/modal_shared
+COPY overbae/modal/weight_ops.py /root/weight_ops.py
+COPY overbae/sagemaker /workspace/overbae/sagemaker
+ENTRYPOINT []
+
+FROM lmsysorg/sglang:${SGLANG_TAG} AS sglang
+RUN ln -sf $(command -v python3) /usr/local/bin/python && \
+    pip install --no-cache-dir \
+    "httpx>=0.28.0" \
+    "boto3>=1.35.0"
+
+ENV HF_HOME=/tmp/hf_cache \
+    HF_XET_HIGH_PERFORMANCE=1 \
+    PYTHONPATH=/root:/workspace
+
+WORKDIR /workspace
+COPY modal_shared /root/modal_shared
+COPY overbae/modal/weight_ops.py /root/weight_ops.py
+COPY overbae/sagemaker /workspace/overbae/sagemaker
+ENTRYPOINT []

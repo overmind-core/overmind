@@ -28,16 +28,17 @@ DEFAULT_POLICY = {
 
 
 def capabilities(provider):
-    controlled = provider in {"modal", "baseten"}
+    controlled = provider in {"modal", "baseten", "sagemaker"}
+    native = provider in {"modal", "sagemaker"}
     return {
         "schedule_modes": ["adaptive", "steps", "epoch", "off"] if controlled else ["off"],
         "loss_metrics": controlled,
         "generation_checks": ["classification", "exact_match", "json_schema", "json_fields"]
-        if provider == "modal"
+        if native
         else [],
-        "native_decisions": provider == "modal",
+        "native_decisions": native,
         "checkpoint_reload_verification": controlled,
-        "optimizer_resume": "native_latest_state_only" if provider == "modal" else "not_qualified",
+        "optimizer_resume": "native_latest_state_only" if native else "not_qualified",
         "runtime_qualification": "release_specific; CPU fixtures do not qualify GPU execution",
         "limitations": [
             "Generation references come from the final supervised answer, not tool execution",
@@ -46,7 +47,7 @@ def capabilities(provider):
         ]
         + (
             ["Generation evidence collection is not qualified on this provider"]
-            if provider != "modal"
+            if not native
             else []
         ),
     }
@@ -84,7 +85,7 @@ def resolve_policy(value, *, has_development, provider):
     if value is not None and (not isinstance(value, dict) or set(value) - DEFAULT_POLICY.keys()):
         raise ValueError("Unknown monitoring configuration fields")
     policy = {**DEFAULT_POLICY, **(value or {})}
-    if value is None and (not has_development or provider not in {"modal", "baseten"}):
+    if value is None and (not has_development or provider not in {"modal", "baseten", "sagemaker"}):
         policy["mode"] = "off"
     if policy["version"] != 1 or type(policy["version"]) is not int:
         raise ValueError("Unsupported monitoring version")
@@ -192,7 +193,7 @@ def resolve_policy(value, *, has_development, provider):
     if policy["mode"] != "off":
         if not has_development:
             raise ValueError("Monitoring requires development data")
-        if provider not in {"modal", "baseten"}:
+        if provider not in {"modal", "baseten", "sagemaker"}:
             raise ValueError("This provider does not support the requested monitoring policy")
     if required:
         if not policy["final"]:

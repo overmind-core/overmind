@@ -142,6 +142,11 @@ def _scale(cls, deployment, *, minimum: int, maximum: int, idle_seconds: int):
 
 def release(deployment, gpu_type: str) -> None:
     """Drop every autoscaler variant for one GPU class."""
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        serving_runtime.release(deployment, gpu_type)
+        return
     deployed = deployment.deployed_model
     try:
         cls = _chat_cls(deployed, gpu_type)
@@ -171,6 +176,11 @@ def release(deployment, gpu_type: str) -> None:
 
 def retire_previous_options(deployment) -> None:
     """Scale down an option set that is not the stable one for this GPU."""
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        serving_runtime.retire_previous_options(deployment)
+        return
     deployed = deployment.deployed_model
     key = (max(int(deployment.max_replicas), 1), _window(deployment.idle_shutdown_seconds))
     if key == (_STABLE_MAX, _STABLE_WINDOW):
@@ -209,6 +219,12 @@ def connect(deployment):
 
 
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.bind(
+            deployment, minimum=minimum, maximum=maximum, idle_seconds=idle_seconds
+        )
     deployed = deployment.deployed_model
     try:
         cls = _chat_cls(deployed, deployment.gpu_type)
@@ -226,6 +242,10 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int):
 
 
 def spawn_probe(instance, deployment) -> str:
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.spawn_probe(instance, deployment)
     deployed = deployment.deployed_model
     body = (
         {
@@ -258,6 +278,10 @@ def spawn_probe(instance, deployment) -> str:
 
 
 def probe_state(call_id: str) -> str:
+    if str(call_id).startswith("sm-probe:"):
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.probe_state(call_id)
     try:
         result = modal.FunctionCall.from_id(call_id).get(timeout=0)
     except TimeoutError:
@@ -275,6 +299,10 @@ def probe_state(call_id: str) -> str:
 
 
 def runner_count(instance, *, decision: bool) -> int | None:
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.runner_count(instance, decision=decision)
     del decision
     try:
         stats_call = instance.infer.get_current_stats
@@ -567,6 +595,13 @@ def repair_forced_calls(raw: bytes, shaped: bytes) -> bytes:
 
 def chat(deployment, body: bytes) -> tuple[int, bytes, str]:
     shaped = _served_body(deployment, body, stream=False)
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        status, raw, content_type = serving_runtime.invoke_chat(deployment, shaped)
+        if status < 400 and "json" in content_type:
+            raw = repair_forced_calls(raw, shaped)
+        return status, raw, content_type
     response = _post(deployment, body, stream=False, payload=shaped)
     try:
         content_type = response.headers.get("content-type") or "application/json"
@@ -579,6 +614,12 @@ def chat(deployment, body: bytes) -> tuple[int, bytes, str]:
 
 
 def iter_chat_stream(deployment, body: bytes):
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        shaped = _served_body(deployment, body, stream=True)
+        yield from serving_runtime.iter_chat_stream(deployment, shaped)
+        return
     response = _post(deployment, body, stream=True)
     try:
         if response.status_code >= 400:
@@ -593,6 +634,10 @@ def iter_chat_stream(deployment, body: bytes):
 
 
 def post_systemone(deployment, body: dict) -> dict:
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.post_systemone(deployment, body)
     base = _tunnel(deployment)
     if not base:
         raise InputValidationError(WORKER_UNAVAILABLE)

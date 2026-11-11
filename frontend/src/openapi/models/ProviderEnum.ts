@@ -19,6 +19,7 @@
  * * `tinker` - Tinker
  * * `baseten` - Baseten
  * * `modal` - Modal
+ * * `sagemaker` - Sagemaker
  * @export
  */
 export const ProviderEnum = {
@@ -26,7 +27,8 @@ export const ProviderEnum = {
     nebius: 'nebius',
     tinker: 'tinker',
     baseten: 'baseten',
-    modal: 'modal'
+    modal: 'modal',
+    sagemaker: 'sagemaker'
 } as const;
 export type ProviderEnum = typeof ProviderEnum[keyof typeof ProviderEnum];
 

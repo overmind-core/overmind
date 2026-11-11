@@ -55,7 +55,7 @@ def request_preparation(
     training_type="lora",
     runtime=None,
 ):
-    if runtime is None and settings.FINETUNING_BACKEND != "modal":
+    if runtime is None and settings.FINETUNING_BACKEND not in {"modal", "sagemaker"}:
         raise InputValidationError(
             "Exact preprocessing is available for the Modal training backend."
         )
@@ -121,7 +121,12 @@ def retry_preparation(preparation):
     if preparation.state != "failed" or not preparation.report.get("retryable"):
         raise InputValidationError("This preprocessing operation cannot be retried safely.")
     if preparation.remote_id:
-        modal.FunctionCall.from_id(preparation.remote_id).cancel()
+        if (preparation.config.get("runtime") or {}).get("backend") == "sagemaker":
+            from overbae.sagemaker import preparation_ops
+
+            preparation_ops.cancel_preparation(preparation.remote_id)
+        else:
+            modal.FunctionCall.from_id(preparation.remote_id).cancel()
     TrainingPreparation.objects.filter(
         pk=preparation.pk, state="failed", touched_at=preparation.touched_at
     ).update(
@@ -151,7 +156,11 @@ def begin_preparation(cell, model, context_length, *, user, **kwargs):
             triggered_by=user,
             preparation=prep,
             base_model=prep.config["model"],
-            provider=FinetuningJob.Provider.MODAL,
+            provider=(
+                FinetuningJob.Provider.SAGEMAKER
+                if (prep.config.get("runtime") or {}).get("backend") == "sagemaker"
+                else FinetuningJob.Provider.MODAL
+            ),
             name=f"{prep.cell.dataset.name} · {prep.config['model'].split('/')[-1]}",
             hyperparameters={
                 "context_length": prep.config["context_length"],
@@ -279,6 +288,11 @@ def setup_job_for_launch(values, runtime):
 
 
 def observe_progress(prep):
+    if (prep.config.get("runtime") or {}).get("backend") == "sagemaker":
+        from overbae.sagemaker import preparation_ops
+
+        preparation_ops.observe_progress(prep)
+        return
     try:
         volume = modal.Volume.from_name(
             "overmind-sft", environment_name=prep.config["runtime"]["environment"]
@@ -434,35 +448,49 @@ def advance(preparation_id):
                                 report_export("exporting", completed_rows)
                 digest = file_digest(source)
                 report_export("uploading", completed_rows)
-                remote = f"/preparations/{prep.id}/rows.jsonl.gz"
-                volume = modal.Volume.from_name(
-                    "overmind-sft", environment_name=prep.config["runtime"]["environment"]
-                )
-                # Same cap as training-file commits. A launch wave otherwise stacks layers
-                # until Modal refuses every writer on this volume.
-                from overbae.services.training_transfer import VOLUME_WRITERS
-                from overbae.tasks.utils.task_lock import hold_one_slot
+                if (prep.config.get("runtime") or {}).get("backend") == "sagemaker":
+                    from overbae.sagemaker import preparation_ops
 
-                with (
-                    hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600),
-                    volume.batch_upload(force=True) as batch,
-                ):
-                    batch.put_file(source, remote)
-            function = modal.Function.from_name(
-                prep.config["runtime"]["app"],
-                "prepare_" + train_function_name(prep.config["stack"]),
-                environment_name=prep.config["runtime"]["environment"],
-            )
-            call = function.spawn(
-                str(prep.id), {**prep.config, "rows_path": "/data" + remote, "rows_sha256": digest}
-            )
-            TrainingPreparation.objects.filter(
-                pk=prep.pk, state="starting", deadline=prep.deadline
-            ).update(state="running", remote_id=call.object_id, touched_at=timezone.now())
+                    remote_id = preparation_ops.start_preparation(prep, source, digest)
+                    TrainingPreparation.objects.filter(
+                        pk=prep.pk, state="starting", deadline=prep.deadline
+                    ).update(state="running", remote_id=remote_id, touched_at=timezone.now())
+                else:
+                    remote = f"/preparations/{prep.id}/rows.jsonl.gz"
+                    volume = modal.Volume.from_name(
+                        "overmind-sft", environment_name=prep.config["runtime"]["environment"]
+                    )
+                    # Same cap as training-file commits. A launch wave otherwise stacks layers
+                    # until Modal refuses every writer on this volume.
+                    from overbae.services.training_transfer import VOLUME_WRITERS
+                    from overbae.tasks.utils.task_lock import hold_one_slot
+
+                    with (
+                        hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600),
+                        volume.batch_upload(force=True) as batch,
+                    ):
+                        batch.put_file(source, remote)
+                    function = modal.Function.from_name(
+                        prep.config["runtime"]["app"],
+                        "prepare_" + train_function_name(prep.config["stack"]),
+                        environment_name=prep.config["runtime"]["environment"],
+                    )
+                    call = function.spawn(
+                        str(prep.id),
+                        {**prep.config, "rows_path": "/data" + remote, "rows_sha256": digest},
+                    )
+                    TrainingPreparation.objects.filter(
+                        pk=prep.pk, state="starting", deadline=prep.deadline
+                    ).update(state="running", remote_id=call.object_id, touched_at=timezone.now())
         else:
-            report = validate_preparation_report(
-                modal.FunctionCall.from_id(prep.remote_id).get(timeout=0)
-            )
+            if (prep.config.get("runtime") or {}).get("backend") == "sagemaker":
+                from overbae.sagemaker import preparation_ops
+
+                report = preparation_ops.poll_preparation(prep)
+            else:
+                report = validate_preparation_report(
+                    modal.FunctionCall.from_id(prep.remote_id).get(timeout=0)
+                )
             state = (
                 "failed" if report.get("error") else "ready" if report["ready"] else "incompatible"
             )
@@ -589,7 +617,7 @@ def preparation_error(prep):
 
 
 def retry_for_job(job):
-    if settings.FINETUNING_BACKEND != "modal" or job.remote_job_id:
+    if settings.FINETUNING_BACKEND not in {"modal", "sagemaker"} or job.remote_job_id:
         return
     prep = for_job(job)
     if prep.state == "failed":
