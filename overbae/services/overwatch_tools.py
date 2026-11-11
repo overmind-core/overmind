@@ -94,13 +94,14 @@ def _private_result(name: str, result: dict[str, Any]) -> str:
 
 def query(tool: str, arguments: dict[str, Any]) -> tuple[str, bool]:
     """Arguments are validated by the internal API before any query executes."""
-    if tool in {"customer_activity", "model_usage"}:
+    reports = {
+        "customer_activity": overwatch_usage.customer_activity,
+        "model_usage": overwatch_usage.model_usage,
+        "project_activity": overwatch_usage.project_activity,
+    }
+    if tool in reports:
         with user_insights.analytics_read_budget(seconds=10):
-            report = (
-                overwatch_usage.customer_activity(arguments)
-                if tool == "customer_activity"
-                else overwatch_usage.model_usage(arguments)
-            )
+            report = reports[tool](arguments)
         return report, True
     handlers = {
         "activation_funnel": _activation_funnel,
