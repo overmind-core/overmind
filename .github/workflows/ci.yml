@@ -194,8 +194,14 @@ jobs:
       - name: Create .env file
         run: touch .env
 
+      - name: Cache document OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-tesseract
+          key: ${{ runner.os }}-tesseract-ocr-eng-osd-fra-spa
+
       - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+        run: bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
 
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
@@ -259,13 +265,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      - name: Cache document OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-tesseract
+          key: ${{ runner.os }}-tesseract-ocr-eng-osd-fra-spa
+
+      - name: Cache Playwright system packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-playwright
+          key: ${{ runner.os }}-playwright-deps-${{ hashFiles('uv.lock') }}
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('uv.lock') }}
+
       - name: Install Console dependencies and browser for the Console journeys
         run: |
           cd frontend && bun install --frozen-lockfile
-          cd .. && uv run playwright install --with-deps chromium-headless-shell
-
-      - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+          cd ..
+          bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+          bash .github/scripts/ci_apt_install.sh ~/apt-playwright -- uv run playwright install-deps chromium-headless-shell
+          uv run playwright install chromium-headless-shell
 
       - name: Run journeys
         run: make test-journeys test_args="--junitxml=journeys.xml -o junit_duration_report=call"
