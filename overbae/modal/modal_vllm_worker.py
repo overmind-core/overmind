@@ -35,6 +35,7 @@ from modal_shared.context_budget import (
 from modal_shared.operational_events import STORE, Journal, pool_key
 from modal_shared.serving.args import lora_load_request
 from modal_shared.serving.artifacts import BASE_MANIFEST, read_base_manifest
+from modal_shared.serving.sglang import select_sglang_adapter
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
 IS_DEV = MODAL_ENVIRONMENT == "overmind-dev"
@@ -54,6 +55,18 @@ TARGET_CONCURRENT_INPUTS = 28  # autoscaler only adds a replica near this load
 MAX_CONTAINERS_PER_MODEL = 1  # queue excess; raise if sustained load needs fan-out
 
 VLLM_PORT = 8000
+
+
+def _request_body(worker, path: str, body: bytes, adapter) -> bytes:
+    prepared = completion_body(path, body)
+    engine = str(getattr(worker, "engine", "vllm"))
+    if (
+        adapter
+        and engine.startswith("sglang")
+        and path in {"/v1/chat/completions", "/v1/completions"}
+    ):
+        return select_sglang_adapter(prepared, adapter[0])
+    return prepared
 
 
 def _local_vllm_headers(worker, headers: dict) -> dict:
@@ -686,8 +699,8 @@ class _BaseVLLMWorker:
         """RPC entry point for the InferenceAPIServer proxy, returning
         ``{"status": int, "headers": dict, "body": bytes}``.
 
-        ``adapter`` is a ``(served_name, weights-relative path)`` pair for shared-base mode; the
-        request body must name that adapter as its model.
+        ``adapter`` is a ``(served_name, weights-relative path)`` pair for shared-base mode.
+        vLLM selects that name as ``model``. SGLang applies it only from ``lora_path``.
 
         Modal RPC rather than HTTP: ``@modal.asgi_app()`` on a parametrized class dispatches
         through a 303 redirect, which mandates GET and so loses a POST. ``@modal.enter()`` blocks
@@ -718,7 +731,7 @@ class _BaseVLLMWorker:
                 await asyncio.to_thread(journal.emit, "adapter_ready", model_id=adapter[0])
 
         try:
-            body = completion_body(path, body)
+            body = _request_body(self, path, body, adapter)
         except ValueError as exc:
             return {
                 "status": 400,
@@ -773,7 +786,7 @@ class _BaseVLLMWorker:
             await self._ensure_adapter(adapter[0], adapter[1])
 
         try:
-            body = completion_body(path, body)
+            body = _request_body(self, path, body, adapter)
         except ValueError as exc:
             yield {"status": 400, "headers": {"content-type": "application/json"}}
             yield json.dumps(
