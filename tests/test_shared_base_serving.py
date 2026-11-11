@@ -363,6 +363,66 @@ async def test_adapter_load_leaves_the_weights_mount_closed(monkeypatch, tmp_pat
         shutil.rmtree("/tmp/overmind-adapters", ignore_errors=True)
 
 
+class _CompletionClient:
+    seen: list[bytes] = []
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return None
+
+    async def request(self, method, url, headers, content):
+        _CompletionClient.seen.append(content)
+        return Mock(status_code=200, headers={}, content=b"{}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", ["sglang", "sglang_lfm3", "vllm"])
+async def test_sglang_completion_names_the_loaded_adapter(monkeypatch, engine):
+    monkeypatch.setattr("httpx.AsyncClient", _CompletionClient)
+    _CompletionClient.seen = []
+    obj = serving._BaseVLLMWorker()
+    obj.engine = engine
+
+    async def ensure(name, rel):
+        assert (name, rel) == ("ft-292bb9da-lfm3", ".adapters/ft")
+
+    obj._ensure_adapter = ensure
+    body = json.dumps(
+        {"model": "ft-292bb9da-lfm3", "messages": [{"role": "user", "content": "hi"}]}
+    ).encode()
+    result = await serving._BaseVLLMWorker.infer._get_raw_f()(
+        obj,
+        method="POST",
+        path="/v1/chat/completions",
+        body=body,
+        headers={},
+        adapter=("ft-292bb9da-lfm3", ".adapters/ft"),
+    )
+    assert result["status"] == 200
+    sent = json.loads(_CompletionClient.seen[0])
+    assert sent["model"] == "ft-292bb9da-lfm3"
+    if engine.startswith("sglang"):
+        assert sent["lora_path"] == "ft-292bb9da-lfm3"
+    else:
+        assert "lora_path" not in sent
+
+    _CompletionClient.seen = []
+    await serving._BaseVLLMWorker.infer._get_raw_f()(
+        obj,
+        method="GET",
+        path="/v1/models",
+        body=b"",
+        headers={},
+        adapter=("ft-292bb9da-lfm3", ".adapters/ft"),
+    )
+    assert _CompletionClient.seen == [b""]
+
+
 def test_engine_health_wait_reports_liveness_without_claiming_load_progress(monkeypatch):
     journal = Mock()
     process = Mock(poll=Mock(return_value=None))

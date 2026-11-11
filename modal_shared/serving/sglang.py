@@ -172,6 +172,16 @@ def build_sglang_args(
     return cmd
 
 
+def select_sglang_adapter(body: bytes, name: str) -> bytes:
+    """A loaded adapter is applied only when ``lora_path`` is that name.
+
+    ``model`` with no colon is the base, and any model string still returns 200.
+    """
+    payload = json.loads(body)
+    payload["lora_path"] = name
+    return json.dumps(payload).encode()
+
+
 def normalize_sglang_adapter(adapter_dir, *, keep_targets: str = "") -> None:
     """SGLang accepts ``all``, ``all-linear``, or a list of module names.
 
