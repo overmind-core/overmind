@@ -114,7 +114,7 @@ def test_usage_counts_window_sources_tokens_and_models_without_duplicate_members
         completion_tokens=100,
     )
     InferenceCall.objects.filter(pk=older.pk).update(created_at=datetime(2026, 10, 30, tzinfo=UTC))
-    response = query({"query": "Usage", "days": 7})
+    response = query({"query": "Usage", "days": 7, "view": "details"})
     assert response.status_code == 200
     text = response.data["content"]
     assert "4 successful" in text and "1 unsuccessful" in text
@@ -122,7 +122,7 @@ def test_usage_counts_window_sources_tokens_and_models_without_duplicate_members
     assert "Application: 1 successful" in text
     assert "Playground: 1 successful" in text and "Internal: 1 successful" in text
     assert "Unknown source: 1 successful" in text
-    assert "Previous 7 UTC days: 1 successful" in text
+    assert "Previous matched period: 1 successful" in text
     assert "ft-test: 4 successful" in text
     assert "individual caller" in text
     assert "zero" in text.lower() and "unavailable" in text.lower()
@@ -181,7 +181,7 @@ def test_customer_billing_remains_user_attributed_and_keeps_lifetime_totals(sett
     BillingTelemetry.objects.create(
         user=other, project=project, amount="-99.00", service="inference-ft-model"
     )
-    response = query({"email": user.email, "days": 7})
+    response = query({"email": user.email, "days": 7, "view": "details"})
     assert response.status_code == 200
     text = response.data["content"]
     assert "$2.50 spent in window" in text
@@ -190,3 +190,86 @@ def test_customer_billing_remains_user_attributed_and_keeps_lifetime_totals(sett
     assert "$12.50 current balance" in text
     assert "Subscription: active" in text
     assert "$99" not in text
+
+
+def record_calls(project, count, at, tokens=10, outcome="succeeded"):
+    deployed, _ = DeployedModel.objects.get_or_create(
+        project=project, model_id=f"ft-{project.slug}"
+    )
+    rows = [
+        InferenceCall(
+            project=project,
+            deployed_model=deployed,
+            outcome=outcome,
+            prompt_tokens=tokens,
+            completion_tokens=0,
+            source="application",
+        )
+        for _ in range(count)
+    ]
+    InferenceCall.objects.bulk_create(rows)
+    InferenceCall.objects.filter(pk__in=[row.pk for row in rows]).update(created_at=at)
+
+
+def test_project_rankings_use_successful_calls_not_memberships_or_failed_calls():
+    user = make_user(first_name="Avery", last_name="Chen")
+    alpha = make_project(member=user, name="Alpha")
+    beta = make_project(member=user, name="Beta")
+    ProjectMembership.objects.create(project=alpha, user=make_user())
+    now = datetime(2026, 11, 9, 10, tzinfo=UTC)
+    record_calls(alpha, 2, now, tokens=50)
+    record_calls(beta, 3, now)
+    record_calls(alpha, 5, now, outcome="failed")
+    record_calls(make_project(member=make_user(is_guest=True), name="Guest"), 10, now)
+    response = query({"days": 7}, tool="project_activity")
+    assert response.status_code == 200
+    text = response.data["content"]
+    assert text.index("Beta") < text.index("Alpha")
+    assert "Guest" not in text
+    assert "Avery Chen" in text and "not identified callers" in text
+    assert "3 successful" in text and "2 successful" in text
+    assert "individual" in text and "projects" in text
+    assert len(text) < 1400
+    token_rank = query({"days": 7, "rank_by": "tokens"}, tool="project_activity")
+    assert token_rank.status_code == 200
+    assert token_rank.data["content"].index("Alpha") < token_rank.data["content"].index("Beta")
+
+
+def test_snapshot_is_short_with_equal_elapsed_comparison_and_details_on_request():
+    project = make_project(member=make_user())
+    record_calls(project, 4, datetime(2026, 11, 9, 10, tzinfo=UTC), tokens=100)
+    record_calls(project, 2, datetime(2026, 11, 2, 10, tzinfo=UTC))
+    # The unelapsed part of the previous period must not depress the comparison.
+    record_calls(project, 10, datetime(2026, 11, 2, 18, tzinfo=UTC))
+    response = query({"days": 7}, tool="model_usage")
+    assert response.status_code == 200
+    text = response.data["content"]
+    assert "4 successful" in text and "100%" in text
+    assert "matched" in text.lower()
+    assert "ft-" not in text and len(text) < 1000
+    details = query({"days": 7, "view": "details"}, tool="model_usage")
+    assert details.status_code == 200
+    assert "ft-" in details.data["content"]
+    assert "100 input" not in text
+
+
+def test_declining_projects_include_stopped_usage_without_claiming_churn():
+    stopped = make_project(member=make_user(), name="Stopped")
+    growing = make_project(member=make_user(), name="Growing")
+    record_calls(stopped, 3, datetime(2026, 11, 2, 10, tzinfo=UTC))
+    record_calls(growing, 5, datetime(2026, 11, 9, 10, tzinfo=UTC))
+    response = query({"days": 7, "rank_by": "decline"}, tool="project_activity")
+    assert response.status_code == 200
+    text = response.data["content"]
+    assert "Stopped" in text and "Growing" not in text
+    assert "0 successful" in text and "100%" in text
+    assert "churned" not in text.lower()
+
+
+def test_no_calls_does_not_claim_zero_tokens_or_perfect_success():
+    make_project(member=make_user())
+    response = query({"days": 7}, tool="model_usage")
+    assert response.status_code == 200
+    assert "No hosted-model calls" in response.data["content"]
+    assert "100%" not in response.data["content"]
+    assert "0 tokens" not in response.data["content"]

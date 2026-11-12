@@ -26,6 +26,7 @@ from overbae.services import overwatch_tools, user_insights
 
 logger = logging.getLogger(__name__)
 TOOL_CACHE_SECONDS = 3600
+REPORT_CACHE_SECONDS = 300
 # product_usage keeps its own PostHog cache and still reads product rows live.
 CACHED_TOOLS = frozenset(
     {
@@ -34,6 +35,7 @@ CACHED_TOOLS = frozenset(
         "customer_activity",
         "customers_at_step",
         "model_usage",
+        "project_activity",
     }
 )
 DAYS = {"type": "integer", "minimum": 1, "maximum": 365}
@@ -65,6 +67,20 @@ SCHEMAS["customers_at_step"] = {
         "limit": {"type": "integer", "minimum": 1, "maximum": 25},
     },
     "required": ["days", "step"],
+    "additionalProperties": False,
+}
+
+VIEW = {"enum": ["snapshot", "details"]}
+for name in ("customer_activity", "model_usage"):
+    SCHEMAS[name]["properties"]["view"] = VIEW
+SCHEMAS["project_activity"] = {
+    "type": "object",
+    "properties": {
+        "days": DAYS,
+        "view": VIEW,
+        "rank_by": {"enum": ["calls", "tokens", "growth", "decline"]},
+    },
+    "required": ["days"],
     "additionalProperties": False,
 }
 
@@ -101,6 +117,10 @@ def _tool_cache_key(tool: str, arguments: dict) -> str:
     # One snapshot per tool and arguments. Hash the query so a customer email is
     # not a Redis key, and never include the bearer token.
     normalized = dict(arguments)
+    if tool in {"customer_activity", "model_usage", "project_activity"}:
+        normalized["view"] = normalized.get("view", "snapshot")
+    if tool == "project_activity":
+        normalized["rank_by"] = normalized.get("rank_by", "calls")
     if tool == "customer_activity":
         field = "email" if "email" in normalized else "query"
         normalized[field] = " ".join(normalized[field].split())
@@ -117,7 +137,7 @@ def _tool_cache_key(tool: str, arguments: dict) -> str:
             sort_keys=True,
         ).encode()
     ).hexdigest()
-    return f"overwatch:agent:query:{fingerprint}"
+    return f"overwatch:agent:snapshot:{fingerprint}"
 
 
 class QueryResultSerializer(serializers.Serializer):
@@ -170,7 +190,11 @@ class OverwatchQueryView(APIView):
                     cursor.execute("SET TRANSACTION READ ONLY")
                 content, private = overwatch_tools.query(tool, args)
             computed_at = timezone.now()
-            ttl = 300 if tool in {"customer_activity", "model_usage"} else TOOL_CACHE_SECONDS
+            ttl = (
+                REPORT_CACHE_SECONDS
+                if tool in {"customer_activity", "model_usage", "project_activity"}
+                else TOOL_CACHE_SECONDS
+            )
             result = QueryResultSerializer(
                 {
                     "content": content,

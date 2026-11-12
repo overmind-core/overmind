@@ -55,13 +55,15 @@ def _totals(calls):
     )
 
 
-def _usage(project_ids, days, now):
+def _usage(project_ids, days, now, details):
     since = window_start(days)
     calls = InferenceCall.objects.filter(project_id__in=project_ids, created_at__lte=now)
     current = calls.filter(created_at__gte=since)
     totals = _totals(current)
     previous = _totals(
-        calls.filter(created_at__gte=since - timedelta(days=days), created_at__lt=since)
+        calls.filter(
+            created_at__gte=since - timedelta(days=days), created_at__lte=now - timedelta(days=days)
+        )
     )
     sources = list(
         current.order_by()
@@ -81,16 +83,20 @@ def _usage(project_ids, days, now):
         )
         .order_by("origin")
     )
-    models = list(
-        current.order_by()
-        .values("deployed_model__model_id")
-        .annotate(
-            calls=Count("pk"),
-            succeeded=Count("pk", filter=Q(outcome="succeeded")),
-            input_tokens=Sum("prompt_tokens"),
-            output_tokens=Sum("completion_tokens"),
+    models = (
+        list(
+            current.order_by()
+            .values("deployed_model__model_id")
+            .annotate(
+                calls=Count("pk"),
+                succeeded=Count("pk", filter=Q(outcome="succeeded")),
+                input_tokens=Sum("prompt_tokens"),
+                output_tokens=Sum("completion_tokens"),
+            )
+            .order_by("-calls", "deployed_model__model_id")[:5]
         )
-        .order_by("-calls", "deployed_model__model_id")[:5]
+        if details
+        else []
     )
     last = calls.filter(outcome="succeeded").aggregate(at=Max("created_at"))["at"]
     return totals, previous, sources, models, last
@@ -106,14 +112,50 @@ def model_usage(arguments, user=None):
         else ProjectMembership.objects.filter(user__is_guest=False)
     )
     project_ids = memberships.values("project_id")
-    totals, previous, sources, models, last = _usage(project_ids, days, now)
-    lines = [
-        f"Model usage in the last {days} UTC days (today is partial):",
-        f"{totals['succeeded']:,} successful / {totals['calls'] - totals['succeeded']:,} unsuccessful recorded calls; {totals['active_days']} active days; {totals['projects']} active projects.",
-        f"Recorded tokens: {totals['input_tokens']:,} input / {totals['output_tokens']:,} output (all outcomes).",
-        f"Previous {days} UTC days: {previous['succeeded']:,} successful calls; {previous['input_tokens'] + previous['output_tokens']:,} recorded tokens. Previous period contains full days.",
-        f"Last successful model call: {last.isoformat() if last else 'none recorded'}.",
-    ]
+    totals, previous, sources, models, last = _usage(
+        project_ids, days, now, arguments.get("view") == "details"
+    )
+    tokens = totals["input_tokens"] + totals["output_tokens"]
+    label = _label(user.get_full_name() or user.email, 70) if user else "Model usage"
+    lines = [f"{label} · {since:%d %b}–{now:%d %b %Y} (UTC, today partial)"]
+    if totals["calls"]:
+        lines.extend(
+            [
+                f"{totals['succeeded']:,} successful calls across {totals['projects']} active projects.",
+                f"• {_compact(tokens)} recorded tokens · {totals['active_days']} active days",
+                f"• {100 * totals['succeeded'] / totals['calls']:.1f}% success · {totals['calls'] - totals['succeeded']:,} unsuccessful calls",
+                f"• {_change(totals['succeeded'], previous['succeeded'])}",
+            ]
+        )
+        if not tokens:
+            lines.append("Token counts are unavailable or zero in the retained records.")
+    else:
+        lines.append("No hosted-model calls recorded in this period (0 successful).")
+        if previous["succeeded"]:
+            lines.append(_change(0, previous["succeeded"]))
+    if totals["succeeded"] and sources:
+        dominant = max(sources, key=lambda row: row["succeeded"])
+        share = dominant["succeeded"] / totals["succeeded"] * 100
+        if share >= 50:
+            origin = {
+                "application": "API",
+                "playground": "Playground",
+                "internal": "Internal",
+                "unknown": "Unknown-source",
+            }[dominant["origin"]]
+            lines.append(f"{origin} traffic accounts for {share:.0f}% of successful calls.")
+    lines.append(f"Last successful call: {_when(last)}.")
+    if user:
+        lines.append("Shared-project activity; individual caller attribution is unavailable.")
+    lines.append("Recorded hosted-model activity only; ask ‘show details’ for sources and models.")
+    if arguments.get("view", "snapshot") != "details":
+        return "\n".join(lines)
+    lines.extend(
+        [
+            f"Recorded tokens: {totals['input_tokens']:,} input / {totals['output_tokens']:,} output (all outcomes).",
+            f"Previous matched period: {previous['succeeded']:,} successful calls; {previous['input_tokens'] + previous['output_tokens']:,} recorded tokens.",
+        ]
+    )
     source_labels = {
         "application": "Application",
         "playground": "Playground",
@@ -168,7 +210,7 @@ def model_usage(arguments, user=None):
         lines.append("Top models by recorded calls (up to 5):")
         for row in models:
             line = f"{_label(row['deployed_model__model_id'], 80)}: {row['succeeded']:,} successful / {row['calls'] - row['succeeded']:,} unsuccessful; {row['input_tokens']:,} input / {row['output_tokens']:,} output."
-            if len("\n".join(lines)) + len(line) > 2300:
+            if len("\n".join(lines)) + len(line) > 2400:
                 lines.append("Additional model rows omitted to fit Slack.")
                 break
             lines.append(line)
@@ -186,3 +228,107 @@ def customer_activity(arguments):
         return f"Multiple customers match. Reply with the exact email. Showing up to 5 matches:\n{choices}"
     user = matches[0]
     return f"Customer: {_label(user.email, 254)}\nSigned up: {user.date_joined.date()}\n{model_usage(arguments, user)}"
+
+
+def _compact(value):
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}m"
+    if value >= 10_000:
+        return f"{value / 1000:.1f}k"
+    return f"{value:,}"
+
+
+def _when(value):
+    return value.strftime("%d %b %Y, %H:%M UTC") if value else "none recorded"
+
+
+def _change(current, previous):
+    if not previous:
+        return "No successful calls in the matched previous period; no percentage comparison."
+    delta = (current - previous) / previous * 100
+    if not delta:
+        return "Successful calls unchanged from the matched previous period."
+    return f"Successful calls {'up' if delta > 0 else 'down'} {abs(delta):.0f}% vs matched previous period ({previous:,})."
+
+
+def project_activity(arguments):
+    """Rank project facts once, independently of how many customers share them."""
+    days, now = arguments["days"], timezone.now()
+    since = window_start(days)
+    previous_end = now - timedelta(days=days)
+    current = Q(created_at__gte=since)
+    previous = Q(created_at__lt=since, created_at__lte=previous_end)
+    succeeded = Q(outcome="succeeded")
+    project_ids = ProjectMembership.objects.filter(user__is_guest=False).values("project_id")
+    rows = (
+        InferenceCall.objects.filter(
+            project_id__in=project_ids,
+            created_at__gte=since - timedelta(days=days),
+            created_at__lte=now,
+        )
+        .order_by()
+        .values("project_id", "project__name")
+        .annotate(
+            successful=Count("pk", filter=current & succeeded),
+            previous=Count("pk", filter=previous & succeeded),
+            tokens=Sum(F("prompt_tokens") + F("completion_tokens"), filter=current, default=0),
+            last=Max("created_at", filter=current & succeeded),
+        )
+        .annotate(change=F("successful") - F("previous"))
+    )
+    rank = arguments.get("rank_by", "calls")
+    if rank == "growth":
+        rows = rows.filter(change__gt=0).order_by("-change", "project_id")
+    elif rank == "decline":
+        rows = rows.filter(change__lt=0).order_by("change", "project_id")
+    elif rank == "tokens":
+        rows = rows.filter(tokens__gt=0).order_by("-tokens", "project_id")
+    else:
+        rows = rows.filter(successful__gt=0).order_by("-successful", "project_id")
+    detail = arguments.get("view", "snapshot") == "details"
+    limit = 5 if detail else 3
+    found = list(rows[: limit + 1])
+    title = {
+        "calls": "Most active projects",
+        "tokens": "Projects using the most tokens",
+        "growth": "Projects with growing usage",
+        "decline": "Projects with declining usage",
+    }[rank]
+    lines = [f"{title} · {since:%d %b}–{now:%d %b %Y} (UTC, today partial)"]
+    lines.append("Project activity is measurable; individual user rankings are unavailable.")
+    if not found:
+        lines.append("No projects match this measure in the retained hosted-model records.")
+    for index, row in enumerate(found[:limit], 1):
+        lines.append(
+            f"{index}. {_label(row['project__name'], 60)} · {row['successful']:,} successful calls · {_compact(row['tokens'])} recorded tokens"
+        )
+        members = list(
+            ProjectMembership.objects.filter(project_id=row["project_id"], user__is_guest=False)
+            .select_related("user")
+            .order_by("user__email")[:3]
+        )
+        names = ", ".join(
+            _label(member.user.get_full_name() or member.user.email, 60) for member in members[:2]
+        )
+        lines.append(
+            f"Members: {names}{' + others' if len(members) > 2 else ''} (not identified callers)."
+        )
+        if rank in {"growth", "decline"} or detail:
+            lines.append(_change(row["successful"], row["previous"]))
+        if detail:
+            lines.append(f"Last successful call in period: {_when(row['last'])}.")
+    if len(found) > limit:
+        lines.append(f"Showing the top {limit}; more projects match.")
+    measure = (
+        "recorded tokens (all outcomes)"
+        if rank == "tokens"
+        else "successful calls"
+        if rank == "calls"
+        else "absolute change in successful calls vs matched previous period"
+    )
+    lines.append(
+        f"Ranked by {measure}; all sources, hosted models only. Zero tokens may mean missing telemetry."
+    )
+    if not detail:
+        lines.append("Ask ‘show details’, ‘who is growing?’ or ‘who is dropping off?’.")
+    return "\n".join(lines)
