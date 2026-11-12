@@ -21,6 +21,7 @@ from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_failure import failure_receipt
 from modal_shared.training_telemetry import record_heartbeat, record_stage
 from overbae.sagemaker.s3_store import (
+    get_json,
     put_json,
     sync_directory_to_s3,
     sync_s3_to_directory,
@@ -52,10 +53,11 @@ def _sync_run_telemetry(run_dir: Path, bucket: str, run_id: str) -> None:
 def run_prepare() -> int:
     prep_id = os.environ["OVERMIND_PREPARATION_ID"]
     sft_bucket = os.environ["AWS_SFT_BUCKET_NAME"]
-    request = json.loads(os.environ["OVERMIND_PREPARATION_REQUEST"])
     dest = DATA_MOUNT / "preparations" / prep_id
     dest.mkdir(parents=True, exist_ok=True)
     sync_s3_to_directory(sft_bucket, f"preparations/{prep_id}", dest)
+    raw_req = os.environ.get("OVERMIND_PREPARATION_REQUEST")
+    request = json.loads(raw_req) if raw_req else json.loads((dest / "request.json").read_text())
 
     meter = ComputeMeter(cpu=8, memory_gib=8)
 
@@ -86,6 +88,10 @@ def run_train() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     sync_s3_to_directory(sft_bucket, f"runs/{run_id}", run_dir)
 
+    env_from_s3 = get_json(sft_bucket, f"runs/{run_id}/env.json")
+    if isinstance(env_from_s3, dict):
+        for k, v in env_from_s3.items():
+            os.environ.setdefault(str(k), str(v))
     model_id = os.environ.get("MODEL_ID", "")
     if weights_bucket and model_id:
         slug = model_id.replace("/", "--")

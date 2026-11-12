@@ -5,6 +5,22 @@ variable "private_subnet_ids" { type = list(string) }
 variable "app_sg_id" { type = string }
 variable "db_instance_class" { type = string }
 variable "redis_node_type" { type = string }
+variable "db_multi_az" {
+  type    = bool
+  default = true
+}
+variable "db_skip_final_snapshot" {
+  type    = bool
+  default = false
+}
+variable "redis_num_cache_clusters" {
+  type    = number
+  default = 2
+}
+variable "s3_force_destroy" {
+  type    = bool
+  default = false
+}
 
 resource "random_id" "suffix" {
   byte_length = 4
@@ -67,22 +83,22 @@ resource "aws_db_parameter_group" "postgres16" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier             = "${var.project_name}-${var.environment}-pg"
-  engine                 = "postgres"
-  engine_version         = "16"
-  instance_class         = var.db_instance_class
-  allocated_storage      = 100
-  max_allocated_storage  = 1000
-  storage_encrypted      = true
-  db_name                = "overbae"
-  username               = "overbae"
-  password               = random_password.db.result
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.data.id]
-  parameter_group_name   = aws_db_parameter_group.postgres16.name
-  multi_az               = true
-  skip_final_snapshot    = false
-  final_snapshot_identifier = "${var.project_name}-${var.environment}-pg-final"
+  identifier                = "${var.project_name}-${var.environment}-pg"
+  engine                    = "postgres"
+  engine_version            = "16"
+  instance_class            = var.db_instance_class
+  allocated_storage         = 20
+  max_allocated_storage     = 100
+  storage_encrypted         = true
+  db_name                   = "overbae"
+  username                  = "overbae"
+  password                  = random_password.db.result
+  db_subnet_group_name      = aws_db_subnet_group.main.name
+  vpc_security_group_ids    = [aws_security_group.data.id]
+  parameter_group_name      = aws_db_parameter_group.postgres16.name
+  multi_az                  = var.db_multi_az
+  skip_final_snapshot       = var.db_skip_final_snapshot
+  final_snapshot_identifier = var.db_skip_final_snapshot ? null : "${var.project_name}-${var.environment}-pg-final"
 }
 
 resource "aws_elasticache_subnet_group" "redis" {
@@ -91,18 +107,18 @@ resource "aws_elasticache_subnet_group" "redis" {
 }
 
 resource "aws_elasticache_replication_group" "redis" {
-  replication_group_id       = "${var.project_name}-${var.environment}-redis"
+  replication_group_id       = substr("${var.project_name}-${var.environment}-redis", 0, 40)
   description                = "Overmind Celery broker and cache"
   engine                     = "redis"
   engine_version             = "7.1"
   node_type                  = var.redis_node_type
-  num_cache_clusters         = 2
+  num_cache_clusters         = var.redis_num_cache_clusters
   port                       = 6379
   subnet_group_name          = aws_elasticache_subnet_group.redis.name
   security_group_ids         = [aws_security_group.data.id]
   at_rest_encryption_enabled = true
   transit_encryption_enabled = false
-  automatic_failover_enabled = true
+  automatic_failover_enabled = var.redis_num_cache_clusters > 1
 }
 
 resource "aws_efs_file_system" "media" {
@@ -118,22 +134,30 @@ resource "aws_efs_mount_target" "media" {
 }
 
 resource "aws_s3_bucket" "sft" {
-  bucket = "${var.project_name}-${var.environment}-sft-${random_id.suffix.hex}"
+  bucket        = "${var.project_name}-${var.environment}-sft-${random_id.suffix.hex}"
+  force_destroy = var.s3_force_destroy
 }
 
 resource "aws_s3_bucket" "weights" {
-  bucket = "${var.project_name}-${var.environment}-weights-${random_id.suffix.hex}"
+  bucket        = "${var.project_name}-${var.environment}-weights-${random_id.suffix.hex}"
+  force_destroy = var.s3_force_destroy
 }
 
 resource "aws_s3_bucket" "archive" {
-  bucket = "${var.project_name}-${var.environment}-checkpoints-${random_id.suffix.hex}"
+  bucket        = "${var.project_name}-${var.environment}-checkpoints-${random_id.suffix.hex}"
+  force_destroy = var.s3_force_destroy
 }
 
 resource "aws_s3_bucket" "static" {
-  bucket = "${var.project_name}-${var.environment}-static-${random_id.suffix.hex}"
+  bucket        = "${var.project_name}-${var.environment}-static-${random_id.suffix.hex}"
+  force_destroy = var.s3_force_destroy
 }
 
 output "db_endpoint" { value = aws_db_instance.postgres.address }
+output "db_password" {
+  value     = random_password.db.result
+  sensitive = true
+}
 output "db_secret_arn" { value = aws_secretsmanager_secret.db_password.arn }
 output "redis_endpoint" { value = aws_elasticache_replication_group.redis.primary_endpoint_address }
 output "efs_file_system_id" { value = aws_efs_file_system.media.id }

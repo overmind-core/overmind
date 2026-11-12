@@ -40,7 +40,13 @@ def training_image_uri(stack: str, runtime: dict[str, Any] | None = None) -> str
     region = runtime.get("region") or getattr(settings, "AWS_REGION", "eu-west-1")
     prefix = getattr(settings, "SAGEMAKER_ECR_REPOSITORY_PREFIX", "overmind")
     tag = runtime.get("image_tag") or getattr(settings, "SAGEMAKER_IMAGE_TAG", "latest")
-    return f"{prefix}-train-{stack}:{tag}@{region}"
+    if ".dkr.ecr." in prefix:
+        return f"{prefix}-train-{stack}:{tag}"
+    try:
+        account_id = boto3_client("sts", region_name=region).get_caller_identity()["Account"]
+        return f"{account_id}.dkr.ecr.{region}.amazonaws.com/{prefix}-train-{stack}:{tag}"
+    except Exception:  # noqa: BLE001
+        return f"{prefix}-train-{stack}:{tag}"
 
 
 def start_preparation(prep: TrainingPreparation, source_path: Path, digest: str) -> str:
@@ -75,7 +81,6 @@ def start_preparation(prep: TrainingPreparation, source_path: Path, digest: str)
             "OVERMIND_SAGEMAKER_MODE": "prepare",
             "OVERMIND_PREPARATION_ID": str(prep.id),
             "AWS_SFT_BUCKET_NAME": bucket,
-            "OVERMIND_PREPARATION_REQUEST": json.dumps(request_payload),
         },
         StoppingCondition={"MaxRuntimeInSeconds": 23 * 60 * 60},
     )
