@@ -194,8 +194,19 @@ jobs:
       - name: Create .env file
         run: touch .env
 
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache document OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-tesseract
+          # The debs hold only what this image lacked, so they belong to the image.
+          key: tesseract-ocr-eng-osd-fra-spa-${{ steps.image.outputs.version }}
+
       - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+        run: bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
 
       - name: Run tests
         # Match local `make test`: xdist is already in the test dep group.
@@ -259,13 +270,34 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache document OCR packages
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-tesseract
+          # The debs hold only what this image lacked, so they belong to the image.
+          key: tesseract-ocr-eng-osd-fra-spa-${{ steps.image.outputs.version }}
+
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-headless-shell-${{ steps.playwright.outputs.version }}
+
       - name: Install Console dependencies and browser for the Console journeys
+        # No --with-deps: the runner image has the browser libraries, and the flag adds only font packages from apt.
         run: |
           cd frontend && bun install --frozen-lockfile
-          cd .. && uv run playwright install --with-deps chromium-headless-shell
-
-      - name: Install document OCR runtime
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+          cd ..
+          bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
+          uv run playwright install chromium-headless-shell
 
       - name: Run journeys
         run: make test-journeys test_args="--junitxml=journeys.xml -o junit_duration_report=call"
