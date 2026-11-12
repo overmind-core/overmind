@@ -292,7 +292,7 @@ jobs:
           key: ${{ runner.os }}-playwright-chromium-headless-shell-${{ steps.playwright.outputs.version }}
 
       - name: Install Console dependencies and browser for the Console journeys
-        # No --with-deps: on ubuntu-24.04 it adds only font packages from apt.
+        # No --with-deps: the runner image has the browser libraries, and the flag adds only font packages from apt.
         run: |
           cd frontend && bun install --frozen-lockfile
           cd ..
