@@ -2422,6 +2422,18 @@ class SageMakerRunner(ModalRunner):
         image_uri = training_image_uri(preparation.config["stack"], release)
 
         training_submission.dispatching(job, run_id)
+        full_env = {
+            **env,
+            "OVERMIND_SAGEMAKER_MODE": "train",
+            "OVERMIND_RUN_ID": run_id,
+            "OVERMIND_TRAINING_JOB_NAME": run_id,
+            "OVERMIND_GPU_TYPE": gpu_type,
+            "OVERMIND_GPU_COUNT": str(gpu_count),
+            "AWS_SFT_BUCKET_NAME": bucket,
+            "AWS_WEIGHTS_BUCKET_NAME": getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", ""),
+        }
+        put_json(bucket, f"runs/{run_id}/env.json", full_env)
+        sm_env = {k: str(v) for k, v in full_env.items() if len(str(v)) <= 250}
         resp = boto3_client("sagemaker").create_training_job(
             TrainingJobName=run_id,
             RoleArn=role_arn,
@@ -2439,16 +2451,7 @@ class SageMakerRunner(ModalRunner):
             StoppingCondition={
                 "MaxRuntimeInSeconds": int(hp.get("runtime_limit_seconds") or 86400)
             },
-            Environment={
-                **env,
-                "OVERMIND_SAGEMAKER_MODE": "train",
-                "OVERMIND_RUN_ID": run_id,
-                "OVERMIND_TRAINING_JOB_NAME": run_id,
-                "OVERMIND_GPU_TYPE": gpu_type,
-                "OVERMIND_GPU_COUNT": str(gpu_count),
-                "AWS_SFT_BUCKET_NAME": bucket,
-                "AWS_WEIGHTS_BUCKET_NAME": getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", ""),
-            },
+            Environment=sm_env,
         )
         arn = (
             resp.get("TrainingJobArn")

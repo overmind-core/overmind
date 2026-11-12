@@ -32,3 +32,28 @@ output "ecr_repositories" {
   description = "ECR repository URLs for Overmind images"
   value       = module.ecr.repository_urls
 }
+
+output "ecs_cluster_name" {
+  description = "ECS Fargate cluster name"
+  value       = module.ecs.cluster_name
+}
+
+output "backend_task_definition_arn" {
+  description = "ECS backend task definition ARN"
+  value       = module.ecs.backend_task_definition_arn
+}
+
+output "public_subnet_ids" {
+  description = "Public subnet IDs"
+  value       = module.networking.public_subnet_ids
+}
+
+output "private_subnet_ids" {
+  description = "Private subnet IDs"
+  value       = module.networking.private_subnet_ids
+}
+
+output "app_security_group_id" {
+  description = "Application security group ID"
+  value       = module.networking.app_security_group_id
+}

@@ -19,6 +19,22 @@ variable "weights_bucket_arn" { type = string }
 variable "archive_bucket_arn" { type = string }
 variable "sagemaker_execution_role_arn" { type = string }
 variable "systemone_endpoint_name" { type = string }
+variable "backend_desired_count" {
+  type    = number
+  default = 2
+}
+variable "worker_desired_count" {
+  type    = number
+  default = 1
+}
+variable "hf_token" {
+  type    = string
+  default = "hf_placeholder"
+}
+variable "sandbox_token" {
+  type    = string
+  default = "sandbox_placeholder"
+}
 
 locals {
   worker_topology = jsondecode(file("${path.module}/../../../../docker/worker-topology.json"))
@@ -40,6 +56,9 @@ locals {
     { name = "SAGEMAKER_EXECUTION_ROLE_ARN", value = var.sagemaker_execution_role_arn },
     { name = "SAGEMAKER_SYSTEMONE_ENDPOINT_NAME", value = var.systemone_endpoint_name },
     { name = "SANDBOX_URL", value = "http://sandbox.overmind.local:8080" },
+    { name = "SANDBOX_TOKEN", value = var.sandbox_token },
+    { name = "HF_TOKEN", value = var.hf_token },
+    { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
   ]
 }
 
@@ -75,6 +94,19 @@ resource "aws_iam_role" "execution" {
 resource "aws_iam_role_policy_attachment" "execution_managed" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+data "aws_iam_policy_document" "execution_secrets" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.db_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "execution_secrets" {
+  name   = "${var.project_name}-${var.environment}-ecs-exec-secrets"
+  role   = aws_iam_role.execution.id
+  policy = data.aws_iam_policy_document.execution_secrets.json
 }
 
 resource "aws_iam_role" "task" {
@@ -162,7 +194,7 @@ resource "aws_iam_role_policy" "task" {
 }
 
 resource "aws_lb" "app" {
-  name               = "${var.project_name}-${var.environment}-alb"
+  name               = substr("${var.project_name}-${var.environment}-alb", 0, 32)
   internal           = false
   load_balancer_type = "application"
   security_groups    = [var.alb_sg_id]
@@ -170,7 +202,7 @@ resource "aws_lb" "app" {
 }
 
 resource "aws_lb_target_group" "backend" {
-  name        = "${var.project_name}-${var.environment}-api-tg"
+  name        = substr("${var.project_name}-${var.environment}-tg", 0, 32)
   port        = 8000
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -216,6 +248,7 @@ resource "aws_ecs_task_definition" "backend" {
       essential    = true
       portMappings = [{ containerPort = 8000, hostPort = 8000, protocol = "tcp" }]
       environment  = local.shared_env
+      secrets      = [{ name = "POSTGRES_PASSWORD", valueFrom = var.db_secret_arn }]
       mountPoints  = [{ sourceVolume = "media", containerPath = "/data/media", readOnly = false }]
       logConfiguration = {
         logDriver = "awslogs"
@@ -233,7 +266,7 @@ resource "aws_ecs_service" "backend" {
   name            = "${var.project_name}-${var.environment}-backend"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = 2
+  desired_count   = var.backend_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -273,6 +306,7 @@ resource "aws_ecs_task_definition" "workers" {
       essential   = true
       command     = each.value
       environment = local.shared_env
+      secrets     = [{ name = "POSTGRES_PASSWORD", valueFrom = var.db_secret_arn }]
       mountPoints = [{ sourceVolume = "media", containerPath = "/data/media", readOnly = false }]
       logConfiguration = {
         logDriver = "awslogs"
@@ -291,7 +325,7 @@ resource "aws_ecs_service" "workers" {
   name            = "${var.project_name}-${var.environment}-${each.key}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.workers[each.key].arn
-  desired_count   = 1
+  desired_count   = var.worker_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
@@ -302,4 +336,16 @@ resource "aws_ecs_service" "workers" {
 
 output "alb_dns_name" {
   value = aws_lb.app.dns_name
+}
+
+output "cluster_name" {
+  value = aws_ecs_cluster.main.name
+}
+
+output "backend_task_definition_arn" {
+  value = aws_ecs_task_definition.backend.arn
+}
+
+output "task_role_arn" {
+  value = aws_iam_role.task.arn
 }

@@ -40,6 +40,60 @@ variable "redis_node_type" {
   default     = "cache.r6g.large"
 }
 
+variable "db_multi_az" {
+  description = "Whether the RDS PostgreSQL instance runs in Multi-AZ mode"
+  type        = bool
+  default     = true
+}
+
+variable "db_skip_final_snapshot" {
+  description = "Whether to skip final DB snapshot on destroy"
+  type        = bool
+  default     = false
+}
+
+variable "redis_num_cache_clusters" {
+  description = "Number of cache clusters in the Redis replication group"
+  type        = number
+  default     = 2
+}
+
+variable "s3_force_destroy" {
+  description = "Whether S3 buckets allow force_destroy on teardown"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_backend_desired_count" {
+  description = "Desired count for the backend API ECS service"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_worker_desired_count" {
+  description = "Desired count for each Celery worker ECS service"
+  type        = number
+  default     = 1
+}
+
+variable "enable_interface_vpc_endpoints" {
+  description = "Whether to provision PrivateLink interface VPC endpoints"
+  type        = bool
+  default     = true
+}
+
+variable "hf_token" {
+  description = "Hugging Face token for gated base models"
+  type        = string
+  default     = "hf_placeholder"
+}
+
+variable "sandbox_token" {
+  description = "Shared bearer token for the isolated Data Workshop sandbox"
+  type        = string
+  default     = "sandbox_placeholder"
+}
+
 variable "image_tag" {
   description = "Container image tag for the Overmind application and workers"
   type        = string

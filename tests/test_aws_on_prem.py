@@ -84,7 +84,7 @@ def test_bedrock_llm_completion_tools_schema_and_embeddings(aws_env):
     assert model_registry.bedrock_configured() is True
     resolved = model_registry.resolve_model(model_registry.TaskType.JUDGE_SCORING)
     assert resolved == "claude-sonnet-5"
-    assert model_registry.bedrock_model_id(resolved) == "us.anthropic.claude-sonnet-5-v1:0"
+    assert model_registry.bedrock_model_id(resolved) == "us.anthropic.claude-sonnet-5"
 
     content, stats = llms.call_llm("Check agent trajectory", system_prompt="Be concise.")
     assert content == "Bedrock VPC completion ok."
@@ -92,7 +92,7 @@ def test_bedrock_llm_completion_tools_schema_and_embeddings(aws_env):
     assert stats["completion_tokens"] == 10
     assert stats["cached_tokens"] == 5
     assert stats["finish_reason"] == "stop"
-    assert stats["served_model"] == "us.anthropic.claude-sonnet-5-v1:0"
+    assert stats["served_model"] == "us.anthropic.claude-sonnet-5"
 
     structured, schema_stats = llms.call_llm(
         "Grade the trajectory",

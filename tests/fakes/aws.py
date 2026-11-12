@@ -544,6 +544,9 @@ class FakeAWS:
         self.s3.ensure_bucket("test-sft-bucket")
         self.s3.ensure_bucket("test-weights-bucket")
 
+    def get_caller_identity(self) -> dict[str, Any]:
+        return {"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:role/overmind-task"}
+
     def client(self, service_name: str, *, region_name: str | None = None) -> Any:
         _ = region_name
         mapping = {
@@ -553,6 +556,7 @@ class FakeAWS:
             "sagemaker-runtime": self.sagemaker_runtime,
             "application-autoscaling": self.autoscaling,
             "pricing": self.pricing,
+            "sts": self,
         }
         if service_name not in mapping:
             raise ValueError(f"Unsupported fake AWS service: {service_name}")

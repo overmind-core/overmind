@@ -256,12 +256,12 @@ OPENROUTER_MODEL_SLUGS: dict[str, str] = {m.name: m.slug for m in CATALOG if m.s
 LLM_PROVIDER_BY_MODEL: dict[str, str] = {m.name: str(m.vendor) for m in CATALOG}
 
 BEDROCK_MODEL_IDS: dict[str, str] = {
-    "claude-fable-5": "us.anthropic.claude-fable-5-v1:0",
-    "claude-opus-5": "us.anthropic.claude-opus-5-v1:0",
-    "claude-sonnet-5": "us.anthropic.claude-sonnet-5-v1:0",
+    "claude-fable-5": "us.anthropic.claude-fable-5",
+    "claude-opus-5": "us.anthropic.claude-opus-5",
+    "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
     "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1:0",
-    "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6-v1:0",
+    "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1",
+    "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
     "claude-opus-4-5": "us.anthropic.claude-opus-4-5-20251101-v1:0",
     "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "llama-3.3-70b-instruct": "us.meta.llama3-3-70b-instruct-v1:0",
@@ -270,7 +270,7 @@ BEDROCK_MODEL_IDS: dict[str, str] = {
     "qwen3-32b": "qwen.qwen3-32b-v1:0",
     "qwen3-14b": "qwen.qwen3-14b-v1:0",
     "qwen3-8b": "qwen.qwen3-8b-v1:0",
-    "deepseek-v3.2": "us.deepseek.v3-2-v1:0",
+    "deepseek-v3.2": "deepseek.v3.2",
 }
 _BEDROCK_REVERSE: dict[str, str] = {v: k for k, v in BEDROCK_MODEL_IDS.items()}
 

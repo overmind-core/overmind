@@ -182,13 +182,22 @@ def _register_endpoint(deployed) -> str:
     instance_type = sagemaker_instance_type(deployed.gpu_type or "H100", 1)
     prefix = getattr(settings, "SAGEMAKER_ECR_REPOSITORY_PREFIX", "overmind")
     tag = getattr(settings, "SAGEMAKER_IMAGE_TAG", "latest")
+    region = getattr(settings, "AWS_REGION", "eu-west-1")
+    if ".dkr.ecr." in prefix:
+        serve_image = f"{prefix}-serve-vllm:{tag}"
+    else:
+        try:
+            account_id = boto3_client("sts", region_name=region).get_caller_identity()["Account"]
+            serve_image = f"{account_id}.dkr.ecr.{region}.amazonaws.com/{prefix}-serve-vllm:{tag}"
+        except Exception:  # noqa: BLE001
+            serve_image = f"{prefix}-serve-vllm:{tag}"
 
     with contextlib.suppress(Exception):
         sm.create_model(
             ModelName=model_name,
             ExecutionRoleArn=role_arn,
             PrimaryContainer={
-                "Image": f"{prefix}-serve-vllm:{tag}",
+                "Image": serve_image,
                 "ModelDataUrl": f"s3://{wbucket}/{deployed.model_id}/",
                 "Environment": {
                     "MODEL_ID": deployed.model_id,

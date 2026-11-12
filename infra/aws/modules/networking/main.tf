@@ -3,9 +3,13 @@ variable "environment" { type = string }
 variable "aws_region" { type = string }
 variable "vpc_cidr" { type = string }
 variable "availability_zones" { type = list(string) }
+variable "enable_interface_vpc_endpoints" {
+  type    = bool
+  default = true
+}
 
 locals {
-  interface_endpoints = toset([
+  interface_endpoints = var.enable_interface_vpc_endpoints ? toset([
     "ecr.api",
     "ecr.dkr",
     "logs",
@@ -14,7 +18,7 @@ locals {
     "bedrock-runtime",
     "sagemaker.api",
     "sagemaker.runtime",
-  ])
+  ]) : toset([])
 }
 
 resource "aws_vpc" "main" {
