@@ -194,11 +194,16 @@ jobs:
       - name: Create .env file
         run: touch .env
 
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
       - name: Cache document OCR packages
         uses: actions/cache@v4
         with:
           path: ~/apt-tesseract
-          key: ${{ runner.os }}-tesseract-ocr-eng-osd-fra-spa
+          # The debs hold only what this image lacked, so they belong to the image.
+          key: tesseract-ocr-eng-osd-fra-spa-${{ steps.image.outputs.version }}
 
       - name: Install document OCR runtime
         run: bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
@@ -265,30 +270,33 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
       - name: Cache document OCR packages
         uses: actions/cache@v4
         with:
           path: ~/apt-tesseract
-          key: ${{ runner.os }}-tesseract-ocr-eng-osd-fra-spa
+          # The debs hold only what this image lacked, so they belong to the image.
+          key: tesseract-ocr-eng-osd-fra-spa-${{ steps.image.outputs.version }}
 
-      - name: Cache Playwright system packages
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-playwright
-          key: ${{ runner.os }}-playwright-deps-${{ hashFiles('uv.lock') }}
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-playwright-chromium-headless-shell-${{ steps.playwright.outputs.version }}
 
       - name: Install Console dependencies and browser for the Console journeys
+        # No --with-deps: on ubuntu-24.04 it adds only font packages from apt.
         run: |
           cd frontend && bun install --frozen-lockfile
           cd ..
           bash .github/scripts/ci_apt_install.sh ~/apt-tesseract tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd tesseract-ocr-fra tesseract-ocr-spa
-          bash .github/scripts/ci_apt_install.sh ~/apt-playwright -- uv run playwright install-deps chromium-headless-shell
           uv run playwright install chromium-headless-shell
 
       - name: Run journeys
