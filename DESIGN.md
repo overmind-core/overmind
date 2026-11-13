@@ -268,6 +268,15 @@ violet, plum, warm grey) for charts that distinguish categories. They are a
 fixed set, never hash-derived per render, so a given slot is always the same
 colour across every chart.
 
+### Entity and provider accents
+
+An entity's icon carries the accent of its type (`ENTITY_META` in
+`components/entity-ref/shell.tsx`): trace `cat-1`, dataset `cat-2`, capability and
+eval run `cat-3`, model `cat-4`, optimisation and training run `cat-5`, project
+`cat-6`. The label stays neutral. The accent is the type, never a status: a green
+dataset icon does not mean success. `FileTypeIcon` gives a file the accent of what
+it holds. Provider logos use the full-colour mark where `@lobehub/icons` has one.
+
 ### Named rules
 
 **The Copper Eye rule.** The brand copper exists in exactly one place:
