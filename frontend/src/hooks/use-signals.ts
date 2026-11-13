@@ -53,12 +53,19 @@ export const useDeleteSignalSubscriptionMutation = (projectId: string | undefine
 
 export const useSignalEventsQuery = (
   projectId: string | undefined,
-  filters: { signalType?: string; unseen?: boolean; page?: number; session?: string } = {}
+  filters: {
+    signalType?: string;
+    unseen?: boolean;
+    page?: number;
+    session?: string;
+    capability?: string;
+  } = {}
 ) =>
   useQuery({
     enabled: !!projectId,
     queryFn: () =>
       apiClient.signalEvents.signalEventsList({
+        capability: filters.capability,
         conversation: filters.session,
         page: filters.page,
         pageSize: 50,
@@ -71,10 +78,27 @@ export const useSignalEventsQuery = (
       projectId,
       filters.session ?? null,
       filters.signalType ?? null,
+      filters.capability ?? null,
       !!filters.unseen,
       filters.page ?? 1,
     ],
     refetchInterval: 30_000,
+  });
+
+export const useSignalInsightsQuery = (
+  projectId: string | undefined,
+  filters: { session?: string; days: number }
+) =>
+  useQuery({
+    enabled: !!projectId,
+    queryFn: () =>
+      apiClient.signalEvents.signalEventsInsightsRetrieve({
+        conversation: filters.session,
+        days: filters.days,
+        project: projectId!,
+      }),
+    queryKey: ["signal-insights", projectId, filters.session ?? null, filters.days],
+    refetchInterval: 60_000,
   });
 
 export const useUnseenSignalCountQuery = (projectId: string | undefined) =>

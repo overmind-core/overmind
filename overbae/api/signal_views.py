@@ -1,5 +1,5 @@
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -12,10 +12,13 @@ from overbae.api.signal_serializers import (
     SignalEventSeenResponseSerializer,
     SignalEventSeenSerializer,
     SignalEventSerializer,
+    SignalInsightsQuerySerializer,
+    SignalInsightsSerializer,
     SignalSubscriptionSerializer,
 )
 from overbae.innermind.signals import signal_factory
 from overbae.models import Project, SignalEvent, SignalSubscription
+from overbae.services.signal_insights import signal_insights
 
 
 @extend_schema_view(
@@ -61,6 +64,23 @@ class SignalEventViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return SignalEvent.objects.filter(
             project_id__in=project_ids_for(self.request.user, self.request.auth)
         ).select_related("capability")
+
+    @extend_schema(
+        summary="Signal insights: events grouped by signal and capability, ranked",
+        filters=True,
+        parameters=[
+            OpenApiParameter("project", str, required=True),
+            OpenApiParameter("days", int, description="1 to 30; defaults to 7."),
+        ],
+        responses=SignalInsightsSerializer,
+    )
+    @action(detail=False, methods=["get"], pagination_class=None)
+    def insights(self, request):
+        query = SignalInsightsQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        events = self.filter_queryset(self.get_queryset())
+        insights = signal_insights(events, query.validated_data["days"])
+        return Response(SignalInsightsSerializer(insights).data)
 
     @extend_schema(
         summary="Mark signal events seen",

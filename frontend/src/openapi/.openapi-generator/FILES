@@ -392,10 +392,15 @@ models/ScopeEnum.ts
 models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts
+models/SeverityEnum.ts
 models/SignalCatalogEntry.ts
 models/SignalEvent.ts
 models/SignalEventSeenRequest.ts
 models/SignalEventSeenResponse.ts
+models/SignalInsight.ts
+models/SignalInsightCause.ts
+models/SignalInsightStatusEnum.ts
+models/SignalInsights.ts
 models/SignalSubscription.ts
 models/SignalSubscriptionRequest.ts
 models/SignalTypeEnum.ts
