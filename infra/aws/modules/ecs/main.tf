@@ -35,6 +35,14 @@ variable "sandbox_token" {
   type    = string
   default = "sandbox_placeholder"
 }
+variable "frontend_url" {
+  type    = string
+  default = "http://localhost:5173"
+}
+variable "cors_allowed_origins" {
+  type    = string
+  default = "http://localhost:5173"
+}
 
 locals {
   worker_topology = jsondecode(file("${path.module}/../../../../docker/worker-topology.json"))
@@ -59,6 +67,8 @@ locals {
     { name = "SANDBOX_TOKEN", value = var.sandbox_token },
     { name = "HF_TOKEN", value = var.hf_token },
     { name = "DJANGO_ALLOWED_HOSTS", value = "*" },
+    { name = "FRONTEND_URL", value = var.frontend_url },
+    { name = "DJANGO_CORS_ALLOWED_ORIGINS", value = var.cors_allowed_origins },
   ]
 }
 
@@ -224,6 +234,53 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+resource "aws_cloudfront_distribution" "api" {
+  enabled         = true
+  is_ipv6_enabled = true
+  price_class     = "PriceClass_100"
+
+  origin {
+    domain_name = aws_lb.app.dns_name
+    origin_id   = "alb-backend"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "alb-backend"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+
+    forwarded_values {
+      query_string = true
+      headers      = ["*"]
+      cookies {
+        forward = "all"
+      }
+    }
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-${var.environment}-backend"
   network_mode             = "awsvpc"
@@ -336,6 +393,10 @@ resource "aws_ecs_service" "workers" {
 
 output "alb_dns_name" {
   value = aws_lb.app.dns_name
+}
+
+output "api_https_domain" {
+  value = aws_cloudfront_distribution.api.domain_name
 }
 
 output "cluster_name" {

@@ -23,6 +23,26 @@ output "archive_bucket_name" {
   value       = module.storage.archive_bucket_name
 }
 
+output "static_bucket_name" {
+  description = "S3 bucket hosting the Console static website"
+  value       = module.storage.static_bucket_name
+}
+
+output "static_cloudfront_id" {
+  description = "CloudFront distribution ID for the Console static website"
+  value       = module.storage.static_cloudfront_id
+}
+
+output "frontend_website_url" {
+  description = "HTTPS URL for the Overmind Console UI (S3 static website via CloudFront)"
+  value       = "https://${module.storage.static_website_endpoint}"
+}
+
+output "backend_https_url" {
+  description = "HTTPS URL for the Overmind Backend API"
+  value       = "https://${module.ecs.api_https_domain}"
+}
+
 output "sagemaker_execution_role_arn" {
   description = "IAM Role ARN used by SageMaker Training, Processing, and Endpoints"
   value       = module.sagemaker.execution_role_arn

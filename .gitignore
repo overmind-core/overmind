@@ -196,5 +196,11 @@ tests/journeys/.runs/
 /tests/evidence/*
 !/tests/evidence/README.md
 
+# Terraform local plugin cache and state files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
 # Local interview packs (candidate task and answer key)
 /interview/
