@@ -741,6 +741,8 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
+SANDBOX_SESSION_PROVIDER = os.environ.get("SANDBOX_SESSION_PROVIDER", "native")
+DAYTONA_API_KEY = os.environ.get("DAYTONA_API_KEY", "")
 
 _REQUIRED_KEYS = {
     "SANDBOX_URL": "the isolated Workshop sandbox",

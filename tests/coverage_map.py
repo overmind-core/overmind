@@ -234,6 +234,13 @@ COVERAGE_MAP: dict[str, Entry] = {
         "A pipeline step runs from its retained package with its pinned runtime and no "
         "network; a failed exit never reports success.",
     ),
+    "sandbox-sessions": Entry(
+        S3,
+        CONTRACT,
+        "Every session provider keeps kernel state between executions, never runs one "
+        "execution id twice, moves files both ways, reports a lost session as gone and keeps "
+        "a session from the processes and network of any other.",
+    ),
     "metrics-math": Entry(
         S3,
         LOGIC,
