@@ -19,6 +19,11 @@ def main(argv: list[str]) -> None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from sandbox.documents.checkpoints import read
     from sandbox.documents.extract import DocumentError, extract
+    from sandbox.kernel import confine
+
+    # A hostile document reaches the parsers. Their worker processes import this package
+    # again, which reads the folder it lies in.
+    confine(os.getcwd(), readable=(sys.path[0],))
 
     def progress(value):
         with open("progress.jsonl", "a", encoding="utf-8") as report:
