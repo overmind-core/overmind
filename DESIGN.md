@@ -695,7 +695,9 @@ heading and project count. Dataset listings and their empty states have no New
 dataset action. Columns show name, intent,
 active version, row count, source, capability and last update. Intent uses a
 monochrome outlined chip, not a status tint. Selecting a row
-opens the existing cell-based notebook. There is no chat-style landing composer.
+opens the existing cell-based notebook. The Datasets landing opens on the assistant
+composer under a "Ready to train" title, over the night sky of the connection pages (`ConnectionBackground`); the dataset
+list is a sheet below it that slides up to full height. A checkbox on a row attaches that dataset to the composer.
 
 Dataset navigation and content share a continuous outer bezel (3px). The 248px
 column starts collapsed, including on landing. The notebook folder button reveals
@@ -742,7 +744,9 @@ content or state briefly washes the existing frame with a neutral surface token.
 Cells never move independently of their connectors. Initial load, unchanged
 refreshes, usage metadata and exact-cell inspection remain quiet. Reduced motion uses
 a shorter, gentler acknowledgement; background/offscreen updates do not replay.
-There is no platform chat or bottom chat composer. Dataset metadata changes use
+The assistant chat is a bar at the bottom of the canvas. Hover or focus expands it to a
+composer; the expand control opens the conversation as a resizable panel on the left,
+over the canvas. The panel has no shadow; its transcript fades into the panel surface at both ends. Dataset metadata changes use
 shared lifecycle endpoints. The rail on the right groups its controls in a compact,
 opaque card-colored box with a 1px neutral border and small corners. It holds
 a folder button that expands or collapses the existing workspace column and,

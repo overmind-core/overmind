@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
 
 import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
+import { FileTypeIcon } from "@/components/file-type-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { DateTime } from "@/components/ui/datetime";
@@ -21,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useActivityHighlights } from "@/hooks/use-activity";
 import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
@@ -321,7 +324,7 @@ function getColumns(opts: {
                   size="chip"
                   variant="outline"
                 >
-                  <Icon.file className="size-3 shrink-0 text-muted-foreground" />
+                  <FileTypeIcon className="size-3" filename={filename} />
                   <span className="min-w-0 truncate">{filename}</span>
                   <span className="shrink-0 text-muted-foreground">
                     {extension?.toUpperCase() ?? "File"}
@@ -434,6 +437,40 @@ function getColumns(opts: {
   return cols;
 }
 
+const ATTACH_COLUMN: ColumnDef<Dataset> = {
+  cell: ({ row }) => {
+    const published = !!row.original.activeVersion;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Checkbox
+              aria-label={`Attach ${datasetDisplayName(row.original)} to chat`}
+              checked={row.getIsSelected()}
+              disabled={!published}
+              onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+              onClick={(event) => event.stopPropagation()}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {!published
+            ? "This dataset has no published data."
+            : row.getIsSelected()
+              ? "Remove from chat"
+              : "Attach to chat"}
+        </TooltipContent>
+      </Tooltip>
+    );
+  },
+  enableResizing: false,
+  enableSorting: false,
+  header: "",
+  id: "attach",
+  meta: { label: "Attach to chat", noTruncate: true },
+  size: 36,
+};
+
 export function DatasetsBrowser({
   datasets,
   search,
@@ -448,7 +485,12 @@ export function DatasetsBrowser({
   hideCapabilityColumn,
   fill = true,
   rowSearch,
+  rowSelection,
+  onRowSelectionChange,
 }: DatasetsFilterProps & {
+  /** With both set, each row gets a checkbox that attaches its dataset to the assistant. */
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
   isLoading: boolean;
   error?: unknown;
   onRetry?: () => unknown;
@@ -503,18 +545,18 @@ export function DatasetsBrowser({
     ? 160
     : 90;
 
-  const columns = useMemo(
-    () =>
-      getColumns({
-        deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
-        hideCapabilityColumn,
-        onDelete: (ds) => deleteMutation.mutate(ds.id),
-        onDeleteClick: guard(() => undefined),
-        roleWidth,
-        sourceWidth,
-      }),
-    [deleteMutation, guard, hideCapabilityColumn, roleWidth, sourceWidth]
-  );
+  const selectable = !!onRowSelectionChange;
+  const columns = useMemo(() => {
+    const base = getColumns({
+      deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
+      hideCapabilityColumn,
+      onDelete: (ds) => deleteMutation.mutate(ds.id),
+      onDeleteClick: guard(() => undefined),
+      roleWidth,
+      sourceWidth,
+    });
+    return selectable ? [ATTACH_COLUMN, ...base] : base;
+  }, [deleteMutation, guard, hideCapabilityColumn, roleWidth, selectable, sourceWidth]);
 
   return (
     <DataTable
@@ -524,6 +566,7 @@ export function DatasetsBrowser({
       emptyState={
         <EmptyState className="flex-1" icon={Icon.dataset} size="section" title="No datasets yet" />
       }
+      enableRowSelection={selectable}
       error={error}
       getRowId={(row) => row.id}
       hasActiveFilters={hasActiveFilters}
@@ -550,10 +593,12 @@ export function DatasetsBrowser({
           to: "/datasets/$datasetId",
         })
       }
+      onRowSelectionChange={onRowSelectionChange}
       ordering={ordering}
       page={currentPage}
       pageSize={pageSize}
       rowClassName={(row) => (highlights[`dataset:${row.id}`] ? "activity-highlight" : undefined)}
+      rowSelection={rowSelection}
       storageKey="datasets-table"
     />
   );
