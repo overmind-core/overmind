@@ -10,6 +10,18 @@ Turnkey Terraform stack for deploying Overmind inside a customer-owned AWS VPC w
 
 ## Usage
 
+### One-Command Deploy & Destroy (`setup.sh`)
+
+```bash
+# Deploy customer VPC, RDS, Redis, EFS, S3, CloudFront HTTPS endpoints, ECR image, migrations, and Console UI
+./infra/aws/setup.sh deploy
+
+# Tear down the stack
+./infra/aws/setup.sh destroy
+```
+
+### Manual Terraform Usage
+
 ```bash
 cd infra/aws
 terraform init

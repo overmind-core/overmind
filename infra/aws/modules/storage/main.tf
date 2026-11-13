@@ -153,6 +153,103 @@ resource "aws_s3_bucket" "static" {
   force_destroy = var.s3_force_destroy
 }
 
+resource "aws_s3_bucket_website_configuration" "static" {
+  bucket = aws_s3_bucket.static.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
+resource "aws_cloudfront_origin_access_control" "static" {
+  name                              = "${var.project_name}-${var.environment}-static-oac-${random_id.suffix.hex}"
+  description                       = "OAC for Overmind Console static S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_distribution" "static" {
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_100"
+
+  origin {
+    domain_name              = aws_s3_bucket.static.bucket_regional_domain_name
+    origin_id                = "s3-static"
+    origin_access_control_id = aws_cloudfront_origin_access_control.static.id
+  }
+
+  default_cache_behavior {
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-static"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 0
+  }
+
+  custom_error_response {
+    error_code            = 404
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
+data "aws_iam_policy_document" "static_website" {
+  statement {
+    sid       = "AllowCloudFrontServicePrincipalReadOnly"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.static.arn}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.static.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "static" {
+  bucket = aws_s3_bucket.static.id
+  policy = data.aws_iam_policy_document.static_website.json
+}
+
 output "db_endpoint" { value = aws_db_instance.postgres.address }
 output "db_password" {
   value     = random_password.db.result
@@ -164,6 +261,9 @@ output "efs_file_system_id" { value = aws_efs_file_system.media.id }
 output "sft_bucket_name" { value = aws_s3_bucket.sft.bucket }
 output "weights_bucket_name" { value = aws_s3_bucket.weights.bucket }
 output "archive_bucket_name" { value = aws_s3_bucket.archive.bucket }
+output "static_bucket_name" { value = aws_s3_bucket.static.bucket }
+output "static_website_endpoint" { value = aws_cloudfront_distribution.static.domain_name }
+output "static_cloudfront_id" { value = aws_cloudfront_distribution.static.id }
 output "sft_bucket_arn" { value = aws_s3_bucket.sft.arn }
 output "weights_bucket_arn" { value = aws_s3_bucket.weights.arn }
 output "archive_bucket_arn" { value = aws_s3_bucket.archive.arn }

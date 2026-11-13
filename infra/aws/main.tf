@@ -92,4 +92,6 @@ module "ecs" {
   worker_desired_count         = var.ecs_worker_desired_count
   hf_token                     = var.hf_token
   sandbox_token                = var.sandbox_token
+  frontend_url                 = "https://${module.storage.static_website_endpoint}"
+  cors_allowed_origins         = "https://${module.storage.static_website_endpoint},http://${module.storage.static_website_endpoint}"
 }
