@@ -46,7 +46,7 @@ def requested_configuration(values, *, runtime=None, training_plan=None):
         "contract": contract(values.get("cell"), values.get("hyperparameters")),
         "accepted_findings": values.get("accepted_findings", []),
     }
-    if settings.FINETUNING_BACKEND == "modal":
+    if settings.FINETUNING_BACKEND in ("modal", "sagemaker"):
         result["runtime"] = runtime or training_release.current()
     if training_plan:
         result["training_plan"] = training_plan

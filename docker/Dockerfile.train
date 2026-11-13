@@ -1,0 +1,75 @@
+# Multi-stage Dockerfile for SageMaker SFT Training & Dataset Preparation
+# Mirrors modal_shared/images/train.py stacks with shared sft_assets/ and modal_shared/
+ARG CUDA_BASE=nvidia/cuda:12.8.0-devel-ubuntu22.04
+FROM ${CUDA_BASE} AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    HF_HOME=/tmp/hf_cache \
+    HF_XET_HIGH_PERFORMANCE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/root:/workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS u2026_10_7
+RUN pip install --no-cache-dir "torch==2.10.0" --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install --no-cache-dir \
+    "unsloth[cu128-torch2100]==2026.10.7" \
+    "unsloth_zoo==2026.10.7" \
+    "transformers==5.17.0" \
+    "datasets>=3.0.0" \
+    "huggingface_hub>=0.27.0" \
+    "sentencepiece" \
+    "protobuf" \
+    "jsonschema==4.26.0" \
+    "boto3>=1.35.0" && \
+    git clone --depth 1 --branch v1.10.0 https://github.com/huggingface/trl.git /opt/trl_src
+
+ENV TRL_SRC=/opt/trl_src \
+    UNSLOTH_IMAGE=u2026_10_7 \
+    OVERMIND_SFT_ASSETS_DIR=/root/sft_assets
+
+WORKDIR /workspace
+COPY modal_shared /root/modal_shared
+COPY overbae/services/sft_assets /root/sft_assets
+COPY overbae/sagemaker /workspace/overbae/sagemaker
+COPY overbae/core/aws.py /workspace/overbae/core/aws.py
+
+ENTRYPOINT ["python", "-m", "overbae.sagemaker.sft_entrypoint"]
+
+FROM base AS decision
+RUN pip install --no-cache-dir "torch==2.10.0" "torchvision==0.25.0" --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install --no-cache-dir \
+    "unsloth==2026.10.3" \
+    "unsloth_zoo==2026.10.3" \
+    "transformers==5.17.0" \
+    "trl==1.13.0" \
+    "datasets==4.7.0" \
+    "sentencepiece" \
+    "protobuf" \
+    "bitsandbytes==0.49.2" \
+    "jsonschema==4.26.0" \
+    "boto3>=1.35.0"
+
+ENV UNSLOTH_IMAGE=decision \
+    UNSLOTH_DISABLE_STATISTICS=1 \
+    UNSLOTH_COMPILE_DISABLE=1 \
+    OVERMIND_SFT_ASSETS_DIR=/root/sft_assets
+
+WORKDIR /workspace
+COPY modal_shared /root/modal_shared
+COPY overbae/services/sft_assets /root/sft_assets
+COPY overbae/sagemaker /workspace/overbae/sagemaker
+COPY overbae/core/aws.py /workspace/overbae/core/aws.py
+
+ENTRYPOINT ["python", "-m", "overbae.sagemaker.sft_entrypoint"]

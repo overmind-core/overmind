@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
+
+from overbae.core.aws import boto3_client
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,7 @@ def _s3_key(finetuning_job) -> str:
 
 
 def _s3_client():
-    return boto3.client(
-        "s3",
-        region_name=getattr(settings, "AWS_REGION", "eu-west-1"),
-        aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", "") or None,
-        aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", "") or None,
-    )
+    return boto3_client("s3", region_name=getattr(settings, "AWS_REGION", "eu-west-1"))
 
 
 def checkpoint_archive_exists(finetuning_job) -> bool:
@@ -62,7 +58,7 @@ def checkpoint_archive_exists(finetuning_job) -> bool:
 
 def get_checkpoint_download_url(finetuning_job) -> dict | None:
     """Absent or unsupported archives return None; storage failures remain errors."""
-    if finetuning_job.provider not in ("baseten", "modal"):
+    if finetuning_job.provider not in ("baseten", "modal", "sagemaker"):
         return None
     bucket = getattr(settings, "AWS_BUCKET_NAME", "") or ""
     if not bucket:

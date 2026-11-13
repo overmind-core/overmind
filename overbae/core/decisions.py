@@ -17,6 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from overbae.core.aws import boto3_client
 from overbae.core.model_registry import PROVIDERS, decision_model, decision_models
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,34 @@ def response_usage(payload: dict, elapsed: float) -> dict[str, Any]:
     }
 
 
+def sagemaker_decisions_endpoint() -> str:
+    return (
+        os.environ.get("SAGEMAKER_SYSTEMONE_ENDPOINT_NAME", "")
+        or getattr(settings, "SAGEMAKER_SYSTEMONE_ENDPOINT_NAME", "")
+    ).strip()
+
+
+def sagemaker_decisions_configured() -> bool:
+    return bool(sagemaker_decisions_endpoint())
+
+
+def _invoke_sagemaker_endpoint(endpoint_name: str, body: dict) -> dict:
+    raw = boto3_client("sagemaker-runtime").invoke_endpoint(
+        EndpointName=endpoint_name,
+        ContentType="application/json",
+        Accept="application/json",
+        Body=_encoded(body),
+    )
+    body_stream = raw.get("Body")
+    content = body_stream.read() if hasattr(body_stream, "read") else (body_stream or b"{}")
+    payload = json.loads(
+        content.decode("utf-8") if isinstance(content, (bytes, bytearray)) else content
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid response")
+    return payload
+
+
 def post_request(body, *, remaining):
     provider = PROVIDERS["openrouter"]
     return httpx.post(
@@ -219,12 +248,22 @@ def post_request(body, *, remaining):
 
 
 def request_once(body):
+    endpoint = sagemaker_decisions_endpoint()
     provider = PROVIDERS["openrouter"]
-    if not provider.configured():
+    if not provider.configured() and not endpoint:
         raise DecisionError("not_configured")
     started = time.monotonic()
-    account = hashlib.sha256(provider.key().encode()).hexdigest()[:24]
+    token_source = provider.key() if provider.configured() else f"sagemaker:{endpoint}"
+    account = hashlib.sha256(token_source.encode()).hexdigest()[:24]
     reserve_capacity(account, len(_encoded(body)), started + _TIMEOUT)
+    if endpoint and not provider.configured():
+        try:
+            payload = _invoke_sagemaker_endpoint(endpoint, body)
+        except ValueError as exc:
+            raise DecisionError("invalid_response", stats={"response_cost": None}) from exc
+        except Exception as exc:
+            raise DecisionError("submission_unknown", stats={"response_cost": None}) from exc
+        return payload, response_usage(payload, time.monotonic() - started)
     try:
         response = post_request(body, remaining=max(0.1, _TIMEOUT - (time.monotonic() - started)))
     except httpx.HTTPError as exc:
@@ -248,6 +287,18 @@ def request_once(body):
 
 
 def _request(body: dict, *, deadline: float, account: str) -> dict:
+    endpoint = sagemaker_decisions_endpoint()
+    provider = PROVIDERS["openrouter"]
+    if endpoint and not provider.configured():
+        reserve_capacity(account, len(_encoded(body)), deadline)
+        if deadline - time.monotonic() <= 0:
+            raise DecisionError("provider_timeout", stats={"response_cost": 0.0})
+        try:
+            return _invoke_sagemaker_endpoint(endpoint, body)
+        except ValueError as exc:
+            raise DecisionError("invalid_response", stats={"response_cost": None}) from exc
+        except Exception as exc:
+            raise DecisionError("provider_unavailable", stats={"response_cost": None}) from exc
     uncertain_cost = False
     for attempt in range(3):
         try:
@@ -317,9 +368,11 @@ def decide(
         raise DecisionError("project_required")
     batches = question_batches(state, questions)
     provider = PROVIDERS["openrouter"]
-    if not provider.configured():
+    endpoint = sagemaker_decisions_endpoint()
+    if not provider.configured() and not endpoint:
         raise DecisionError("not_configured")
-    account = hashlib.sha256(provider.key().encode()).hexdigest()[:24]
+    token_source = provider.key() if provider.configured() else f"sagemaker:{endpoint}"
+    account = hashlib.sha256(token_source.encode()).hexdigest()[:24]
     deadline = started + _TIMEOUT
     answers: dict[str, ChoiceAnswer] = {}
     attempts: list[dict[str, Any]] = []

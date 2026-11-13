@@ -255,6 +255,25 @@ MODELS_BY_NAME: dict[str, Model] = {m.name: m for m in CATALOG}
 OPENROUTER_MODEL_SLUGS: dict[str, str] = {m.name: m.slug for m in CATALOG if m.slug}
 LLM_PROVIDER_BY_MODEL: dict[str, str] = {m.name: str(m.vendor) for m in CATALOG}
 
+BEDROCK_MODEL_IDS: dict[str, str] = {
+    "claude-fable-5": "us.anthropic.claude-fable-5",
+    "claude-opus-5": "us.anthropic.claude-opus-5",
+    "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
+    "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-opus-4-6": "us.anthropic.claude-opus-4-6-v1",
+    "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+    "claude-opus-4-5": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+    "claude-sonnet-4-5": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "llama-3.3-70b-instruct": "us.meta.llama3-3-70b-instruct-v1:0",
+    "llama-3.1-8b-instruct": "us.meta.llama3-1-8b-instruct-v1:0",
+    "llama-3.2-3b-instruct": "us.meta.llama3-2-3b-instruct-v1:0",
+    "qwen3-32b": "qwen.qwen3-32b-v1:0",
+    "qwen3-14b": "qwen.qwen3-14b-v1:0",
+    "qwen3-8b": "qwen.qwen3-8b-v1:0",
+    "deepseek-v3.2": "deepseek.v3.2",
+}
+_BEDROCK_REVERSE: dict[str, str] = {v: k for k, v in BEDROCK_MODEL_IDS.items()}
+
 _DATE_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
 
@@ -304,6 +323,21 @@ def openrouter_slug(model_name: str) -> str:
     if "/" in name:
         return name.removeprefix("openrouter/")
     raise ValueError(f"Unsupported model: {name}")
+
+
+def bedrock_model_id(model_name: str) -> str:
+    raw = (model_name or "").strip().removeprefix("bedrock/")
+    name = normalize_model_name(raw)
+    if name in BEDROCK_MODEL_IDS:
+        return BEDROCK_MODEL_IDS[name]
+    if raw in _BEDROCK_REVERSE:
+        return raw
+    for catalog_name, slug in OPENROUTER_MODEL_SLUGS.items():
+        if raw == slug and catalog_name in BEDROCK_MODEL_IDS:
+            return BEDROCK_MODEL_IDS[catalog_name]
+    if "." in raw or raw.startswith("arn:aws:bedrock:"):
+        return raw
+    raise ValueError(f"Unsupported Bedrock model: {model_name}")
 
 
 def resolve_openrouter_slug(model_name: str) -> str:
@@ -376,11 +410,16 @@ def model_chain(task: TaskType | str) -> list[str]:
 
 
 def resolve_model(task: TaskType) -> str:
-    if not openrouter_configured():
-        raise RuntimeError(
-            f"No LLM API key configured for task '{task.value}'. Set OPENROUTER_API_KEY."
-        )
-    return model_chain(task)[0]
+    if openrouter_configured():
+        return model_chain(task)[0]
+    if bedrock_configured():
+        for candidate in model_chain(task):
+            if candidate in BEDROCK_MODEL_IDS:
+                return candidate
+        return "claude-sonnet-5"
+    raise RuntimeError(
+        f"No LLM API key configured for task '{task.value}'. Set OPENROUTER_API_KEY."
+    )
 
 
 def default_judge_model() -> str:
@@ -461,8 +500,13 @@ PROVIDERS: dict[str, Provider] = {
         "https://generativelanguage.googleapis.com/v1beta/openai/",
         reasoning_effort=True,
     ),
+    "bedrock": Provider("bedrock", "AWS_BEDROCK_ENABLED"),
 }
 
 
 def openrouter_configured() -> bool:
     return PROVIDERS["openrouter"].configured()
+
+
+def bedrock_configured() -> bool:
+    return os.environ.get("AWS_BEDROCK_ENABLED", "False") == "True"

@@ -27,12 +27,16 @@ from tenacity import (
 from modal_shared.context_budget import INCOMPLETE_FINISH_REASONS
 from modal_shared.modelfam import serve_image_key
 from modal_shared.shared import routing_headers as _modal_routing_headers
+from overbae.core.aws import boto3_client
 from overbae.core.model_registry import (
     PROVIDERS,
     Provider,
     TaskType,
+    bedrock_configured,
+    bedrock_model_id,
     is_decision_model,
     normalize_model_name,
+    openrouter_configured,
     openrouter_slug,
     reasoning_of,
     resolve_model,
@@ -339,6 +343,7 @@ class EmbeddingUnavailableError(RuntimeError):
 
 
 _EMBEDDING_MODEL = "text-embedding-3-small"
+_BEDROCK_EMBEDDING_MODEL = "amazon.titan-embed-text-v2:0"
 
 
 # Well under the 2048-input / payload ceilings; keeps each request small and retryable.
@@ -358,9 +363,21 @@ def _vector(item: Any) -> list[float]:
 
 
 def get_embedding(input_text: str) -> list[float]:
+    if os.environ.get("OPENAI_API_KEY"):
+        response = _openai_client().embeddings.create(model=_EMBEDDING_MODEL, input=[input_text])
+        return _vector(response.data[0])
+    if bedrock_configured():
+        raw = boto3_client("bedrock-runtime").invoke_model(
+            modelId=_BEDROCK_EMBEDDING_MODEL,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps({"inputText": input_text}).encode("utf-8"),
+        )
+        body = raw["body"].read() if hasattr(raw.get("body"), "read") else raw.get("body", b"{}")
+        parsed = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
+        return _vector(parsed)
     _require_openai_key()
-    response = _openai_client().embeddings.create(model=_EMBEDDING_MODEL, input=[input_text])
-    return _vector(response.data[0])
+    return []
 
 
 def _extra(obj: Any) -> dict[str, Any]:
@@ -498,6 +515,225 @@ def _reasoning_extra_body(
     return None
 
 
+_BEDROCK_STOP_REASONS: dict[str, str] = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "model_context_window_exceeded": "length",
+    "tool_use": "tool_calls",
+    "content_filtered": "content_filter",
+    "guardrail_intervened": "content_filter",
+}
+
+
+def _bedrock_converse_messages(
+    messages: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    system_blocks: list[dict[str, Any]] = []
+    converse_messages: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content")
+        if role in ("system", "developer"):
+            if isinstance(content, str) and content:
+                system_blocks.append({"text": content})
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("text"):
+                        system_blocks.append({"text": str(block["text"])})
+            continue
+        if role == "tool":
+            tool_use_id = str(msg.get("tool_call_id") or "tool_call_0")
+            text_val = content if isinstance(content, str) else json.dumps(content or "")
+            converse_messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "toolResult": {
+                                "toolUseId": tool_use_id,
+                                "content": [{"text": text_val}],
+                            }
+                        }
+                    ],
+                }
+            )
+            continue
+        blocks: list[dict[str, Any]] = []
+        if isinstance(content, str) and content:
+            blocks.append({"text": content})
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("text"):
+                    blocks.append({"text": str(part["text"])})
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            raw_args = fn.get("arguments", "{}")
+            try:
+                parsed_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            except ValueError:
+                parsed_args = {}
+            blocks.append(
+                {
+                    "toolUse": {
+                        "toolUseId": str(tc.get("id") or "call_0"),
+                        "name": str(fn.get("name") or "tool"),
+                        "input": parsed_args if isinstance(parsed_args, dict) else {},
+                    }
+                }
+            )
+        if not blocks:
+            blocks.append({"text": ""})
+        converse_messages.append(
+            {"role": "assistant" if role == "assistant" else "user", "content": blocks}
+        )
+    return system_blocks, converse_messages
+
+
+def _bedrock_tool_config(
+    tools: list[dict[str, Any]] | None,
+    response_format: type[BaseModel] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if response_format is not None:
+        schema_name = response_format.__name__
+        return (
+            {
+                "tools": [
+                    {
+                        "toolSpec": {
+                            "name": schema_name,
+                            "description": f"Return structured output matching {schema_name}.",
+                            "inputSchema": {"json": to_strict_json_schema(response_format)},
+                        }
+                    }
+                ],
+                "toolChoice": {"tool": {"name": schema_name}},
+            },
+            schema_name,
+        )
+    if not tools:
+        return None, None
+    bedrock_tools = []
+    for tool in tools:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        if not isinstance(fn, dict) or not fn.get("name"):
+            continue
+        bedrock_tools.append(
+            {
+                "toolSpec": {
+                    "name": str(fn["name"]),
+                    "description": str(fn.get("description") or fn["name"]),
+                    "inputSchema": {
+                        "json": fn.get("parameters") or {"type": "object", "properties": {}}
+                    },
+                }
+            }
+        )
+    return ({"tools": bedrock_tools} if bedrock_tools else None), None
+
+
+def _do_bedrock_completion(
+    model_name: str,
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int,
+    response_format: type[BaseModel] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    request_kwargs: dict[str, Any] | None = None,
+    keep_text_and_tools: bool = False,
+) -> tuple[str, dict] | tuple[str, list[dict[str, Any]], dict]:
+    request_kwargs = dict(request_kwargs or {})
+    resolved_id = bedrock_model_id(model_name)
+    system_blocks, converse_messages = _bedrock_converse_messages(messages)
+    inference_config: dict[str, Any] = {
+        "maxTokens": int(request_kwargs.pop("max_tokens", None) or max_tokens),
+    }
+    if "temperature" in request_kwargs and request_kwargs["temperature"] is not None:
+        inference_config["temperature"] = float(request_kwargs.pop("temperature"))
+    if "top_p" in request_kwargs and request_kwargs["top_p"] is not None:
+        inference_config["topP"] = float(request_kwargs.pop("top_p"))
+
+    converse_kwargs: dict[str, Any] = {
+        "modelId": resolved_id,
+        "messages": converse_messages,
+        "inferenceConfig": inference_config,
+    }
+    if system_blocks:
+        converse_kwargs["system"] = system_blocks
+    tool_config, schema_tool_name = _bedrock_tool_config(tools, response_format)
+    if tool_config:
+        converse_kwargs["toolConfig"] = tool_config
+
+    started = time.monotonic()
+    raw = boto3_client("bedrock-runtime").converse(**converse_kwargs)
+    response_ms = (time.monotonic() - started) * 1000
+
+    output_msg = (raw.get("output") or {}).get("message") or {}
+    content_blocks = output_msg.get("content") or []
+    text_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    schema_payload: str | None = None
+    for block in content_blocks:
+        if not isinstance(block, dict):
+            continue
+        if "text" in block and block["text"] is not None:
+            text_parts.append(str(block["text"]))
+        if "toolUse" in block and isinstance(block["toolUse"], dict):
+            tu = block["toolUse"]
+            tu_name = str(tu.get("name") or "")
+            tu_input = tu.get("input")
+            serialized = json.dumps(tu_input if tu_input is not None else {})
+            if schema_tool_name and tu_name == schema_tool_name:
+                schema_payload = serialized
+            else:
+                tool_calls.append(
+                    {
+                        "id": str(tu.get("toolUseId") or f"call_{len(tool_calls)}"),
+                        "type": "function",
+                        "function": {
+                            "name": tu_name,
+                            "arguments": serialized,
+                        },
+                    }
+                )
+
+    stop_reason = str(raw.get("stopReason") or "end_turn")
+    finish_reason = _BEDROCK_STOP_REASONS.get(stop_reason, stop_reason)
+    if schema_tool_name and schema_payload is not None and finish_reason == "tool_calls":
+        finish_reason = "stop"
+
+    usage = raw.get("usage") or {}
+    stats: dict[str, Any] = {
+        "provider_request_id": (raw.get("ResponseMetadata") or {}).get("RequestId"),
+        "reasoning_tokens": None,
+        "finish_reason": finish_reason,
+        "prompt_tokens": int(usage.get("inputTokens") or 0),
+        "completion_tokens": int(usage.get("outputTokens") or 0),
+        "response_ms": response_ms,
+        "response_cost": None,
+        "cached_tokens": int(usage.get("cacheReadInputTokens") or 0),
+        "cache_discount": None,
+        "served_model": resolved_id,
+    }
+    text = "\n".join(text_parts).strip()
+    if keep_text_and_tools:
+        if finish_reason in INCOMPLETE_FINISH_REASONS:
+            raise IncompleteCompletionError(text, stats)
+        return text, tool_calls, stats
+
+    if schema_payload is not None:
+        content = schema_payload
+    elif tool_calls:
+        content = json.dumps({"content": text or None, "tool_calls": tool_calls})
+    else:
+        content = text
+    if not content and finish_reason not in INCOMPLETE_FINISH_REASONS:
+        raise ValueError("No content or tool calls received from LLM")
+    if finish_reason in INCOMPLETE_FINISH_REASONS:
+        raise IncompleteCompletionError(content.strip(), stats)
+    return content.strip(), stats
+
+
 def call_llm(
     input_text: str,
     system_prompt: str | None = None,
@@ -542,6 +778,17 @@ def call_llm(
         if model_spec is not None:
             if model_spec.params:
                 request_kwargs = {**model_spec.params, **request_kwargs}
+            if (model_spec.provider or "").lower() == "bedrock":
+                selected_model_name = normalize_model_name(model_spec.model_id)
+                result = _do_bedrock_completion(
+                    model_spec.model_id,
+                    messages,
+                    max_tokens=effective_max_tokens(selected_model_name, max_tokens),
+                    response_format=response_format,
+                    tools=tools,
+                    request_kwargs=request_kwargs,
+                )
+                return result  # type: ignore[return-value]
             client, selected_model, provider = _model_spec_client_and_name(model_spec)
             selected_model_name = normalize_model_name(model_spec.model_id)
 
@@ -579,6 +826,16 @@ def call_llm(
             return _extract_llm_response(response)
 
         selected_model_name = normalize_model_name(model) if model else _get_default_model()
+        if not openrouter_configured() and bedrock_configured():
+            result = _do_bedrock_completion(
+                selected_model_name,
+                messages,
+                max_tokens=effective_max_tokens(selected_model_name, max_tokens),
+                response_format=response_format,
+                tools=tools,
+                request_kwargs=request_kwargs,
+            )
+            return result  # type: ignore[return-value]
         selected_model = openrouter_slug(selected_model_name)
         client = _openrouter_client()
 
@@ -680,6 +937,21 @@ def call_llm_tools(
     this keeps both, which agentic loops need when a model narrates while
     proposing calls.
     """
+    if not openrouter_configured() and bedrock_configured():
+        selected_model_name = normalize_model_name(model) if model else _get_default_model()
+        try:
+            result = _do_bedrock_completion(
+                selected_model_name,
+                messages,
+                max_tokens=effective_max_tokens(selected_model_name, max_tokens),
+                tools=tools,
+                keep_text_and_tools=True,
+            )
+            return result  # type: ignore[return-value]
+        except (IncompleteCompletionError, SoftTimeLimitExceeded):
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Error calling LLM: {e}") from e
     completion_kwargs, selected = _tool_completion_kwargs(
         messages, tools, model, max_tokens, fallback_models
     )

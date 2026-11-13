@@ -59,23 +59,26 @@ def stage_data(job, paths, run_id, preparation, volume, upload_fn, *, num_exampl
 
         # One commit for every selection file, and at most five launches at once.
         # A commit per file across a sweep stacks volume layers until Modal refuses.
-        with hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600):
-            with volume.batch_upload() as batch:
-                for name in paths:
-                    report(
-                        {
-                            "stage": "uploading_selections",
-                            "completed": details["acknowledged_bytes"],
-                            "total": total_bytes,
-                            "unit": "bytes",
-                            "measurement": "provider_acknowledged_files",
-                        }
-                    )
-                    # put_file only queues bytes; successful context exit acknowledges the file.
-                    batch.put_file(
-                        Path(directory) / f"{name}.keys", f"/runs/{run_id}/selected-{name}.keys"
-                    )
+        if volume is None:
+            from overbae.sagemaker.preparation_ops import stage_run_dataset_s3
+            from overbae.sagemaker.s3_store import sft_bucket, upload_file
+
+            bucket = sft_bucket()
             for name in paths:
+                report(
+                    {
+                        "stage": "uploading_selections",
+                        "completed": details["acknowledged_bytes"],
+                        "total": total_bytes,
+                        "unit": "bytes",
+                        "measurement": "provider_acknowledged_files",
+                    }
+                )
+                upload_file(
+                    bucket,
+                    f"runs/{run_id}/selected-{name}.keys",
+                    Path(directory) / f"{name}.keys",
+                )
                 details["files_completed"] += 1
                 details["acknowledged_bytes"] += selections[name]["rows"] * 32
             report(
@@ -88,13 +91,51 @@ def stage_data(job, paths, run_id, preparation, volume, upload_fn, *, num_exampl
                 }
             )
             report({"stage": "waiting_for_materialization"})
-            result = upload_fn.remote(
+            result = stage_run_dataset_s3(
                 run_id=run_id,
                 preparation_id=str(preparation.id),
                 artifact_sha256=preparation.report["artifact_sha256"],
                 selections=selections,
+                selection_dir=Path(directory),
                 monitoring=(job.hyperparameters or {}).get("monitoring"),
             )
+        else:
+            with hold_one_slot("sft-volume", VOLUME_WRITERS, timeout=3600):
+                with volume.batch_upload() as batch:
+                    for name in paths:
+                        report(
+                            {
+                                "stage": "uploading_selections",
+                                "completed": details["acknowledged_bytes"],
+                                "total": total_bytes,
+                                "unit": "bytes",
+                                "measurement": "provider_acknowledged_files",
+                            }
+                        )
+                        # put_file only queues bytes; successful context exit acknowledges the file.
+                        batch.put_file(
+                            Path(directory) / f"{name}.keys", f"/runs/{run_id}/selected-{name}.keys"
+                        )
+                for name in paths:
+                    details["files_completed"] += 1
+                    details["acknowledged_bytes"] += selections[name]["rows"] * 32
+                report(
+                    {
+                        "stage": "uploading_selections",
+                        "completed": total_bytes,
+                        "total": total_bytes,
+                        "unit": "bytes",
+                        "measurement": "provider_acknowledged_files",
+                    }
+                )
+                report({"stage": "waiting_for_materialization"})
+                result = upload_fn.remote(
+                    run_id=run_id,
+                    preparation_id=str(preparation.id),
+                    artifact_sha256=preparation.report["artifact_sha256"],
+                    selections=selections,
+                    monitoring=(job.hyperparameters or {}).get("monitoring"),
+                )
     if isinstance(result, dict) and result.get("monitoring_plan"):
         training_monitoring.save_plan(job, result["monitoring_plan"])
 
@@ -109,16 +150,21 @@ def observe(job, *, volume=None):
     ):
         return
     try:
-        if volume is None:
-            volume = modal.Volume.from_name(
-                "overmind-sft", environment_name=training_release.for_job(job)["environment"]
-            )
-        content = bytearray()
-        for chunk in volume.read_file(f"/runs/{details['run_id']}/transfer-progress.json"):
-            content.extend(chunk)
-            if len(content) > 16384:
-                return
-        raw = json.loads(content)
+        if job.provider == "sagemaker":
+            from overbae.sagemaker.s3_store import get_json, sft_bucket
+
+            raw = get_json(sft_bucket(), f"runs/{details['run_id']}/transfer-progress.json")
+        else:
+            if volume is None:
+                volume = modal.Volume.from_name(
+                    "overmind-sft", environment_name=training_release.for_job(job)["environment"]
+                )
+            content = bytearray()
+            for chunk in volume.read_file(f"/runs/{details['run_id']}/transfer-progress.json"):
+                content.extend(chunk)
+                if len(content) > 16384:
+                    return
+            raw = json.loads(content)
         if not isinstance(raw, dict) or raw.get("stage") not in STAGES or not raw.get("source_at"):
             return
         values = {

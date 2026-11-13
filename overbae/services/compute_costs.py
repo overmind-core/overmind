@@ -131,7 +131,7 @@ def gpu_charge(usages):
 
 
 def record_training_charge(job):
-    if job.provider != "modal" or job.cost_synced_at is not None:
+    if job.provider not in ("modal", "sagemaker") or job.cost_synced_at is not None:
         return
     receipt = gpu_charge((job.progress or {}).get("compute_usage", []))
     if receipt is None or receipt["cost_usd"] <= 0:
@@ -152,7 +152,7 @@ def record_training_charge(job):
                 BillingService.FINETUNING_JOB,
                 project_id=current.project_id,
                 idempotency_key=f"finetuning-job:{current.pk}",
-                metadata={"job_id": str(current.pk), "provider": "modal", **receipt},
+                metadata={"job_id": str(current.pk), "provider": current.provider, **receipt},
             )
         current.cost_usd, current.cost_synced_at = cost, timezone.now()
         current.result = {**(current.result or {}), "compute_charge": receipt}
@@ -172,7 +172,9 @@ def training_cost(job):
         "recorded_training_usd": recorded,
         "recorded_at": job.cost_synced_at.isoformat() if job.cost_synced_at else None,
         "recorded_basis": (job.result or {}).get("compute_charge") or None,
-        "coverage": "training_gpu" if job.provider == "modal" else "provider_training",
+        "coverage": "training_gpu"
+        if job.provider in ("modal", "sagemaker")
+        else "provider_training",
         "training_compute": training,
         "preparation_compute": preparation,
         "recorded_plus_estimated_usd": recorded + sum(estimates)

@@ -495,14 +495,15 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             job.baseline_model = incumbent
 
     runner = get_runner(job=job)
+    runtime = (job.requested_configuration or {}).get("runtime")
     backend = (
-        "modal"
-        if (job.requested_configuration or {}).get("runtime")
+        runtime.get("backend", "modal")
+        if isinstance(runtime, dict) and runtime
         else getattr(settings, "FINETUNING_BACKEND", "baseten")
     )
-    # Baseten and Modal are self-hosted-script backends whose train.py reads an
+    # Baseten, Modal and SageMaker are self-hosted-script backends whose train.py reads an
     # optional val.jsonl; Together needs its own separate eval dataset API.
-    supports_validation = backend in {"baseten", "modal"}
+    supports_validation = backend in {"baseten", "modal", "sagemaker"}
 
     # An existing remote id means this is a re-drive — skip submission, go to polling.
     existing_remote_id = _remote_id(job)
@@ -515,10 +516,11 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 "together": FinetuningJob.Provider.TOGETHER_AI,
                 "baseten": FinetuningJob.Provider.BASETEN,
                 "modal": FinetuningJob.Provider.MODAL,
+                "sagemaker": FinetuningJob.Provider.SAGEMAKER,
             }.get(backend, FinetuningJob.Provider.BASETEN)
             FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
             job.provider = provider
-            if backend == "modal":
+            if backend in {"modal", "sagemaker"}:
                 newly_preparing = job.status != FinetuningJob.Status.PREPARING
                 if newly_preparing:
                     _transition(

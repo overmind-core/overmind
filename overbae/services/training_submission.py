@@ -123,7 +123,7 @@ def restage(job):
     locked = FinetuningJob.objects.select_for_update().get(pk=job.pk)
     intent = locked.provider_submission
     if (
-        locked.provider != "modal"
+        locked.provider not in {"modal", "sagemaker"}
         or locked.status not in {"preparing", "submission_unknown"}
         or locked.remote_job_id
         or not intent
@@ -194,6 +194,19 @@ def reconcile(job, remote_id):
     # The runner imports submission ownership when dispatching.
     from overbae.services.finetuning_runner import get_runner
 
+    if job.provider == "sagemaker":
+        if not remote_id.startswith(f"ft-{job.id}-") or ":" not in remote_id:
+            raise ValueError("Supply the saved SageMaker training job for this exact training job.")
+        snapshot = get_runner("sagemaker", job=job).poll(remote_id)
+        if snapshot.state not in {"running", "succeeded", "failed", "cancelled"}:
+            raise ValueError("The provider has not confirmed this call.")
+        acknowledge(job, remote_id)
+        FinetuningJob.objects.filter(pk=job.pk, status="submission_unknown").update(
+            status="running", error_message=""
+        )
+        job.refresh_from_db()
+        return job
+
     if (
         job.provider != "modal"
         or not remote_id.startswith(f"ft-{job.id}-")
@@ -235,6 +248,15 @@ def recover(job):
     run_id = job.provider_submission.get("run_id")
     if not run_id or job.remote_job_id:
         return job
+    if job.provider == "sagemaker":
+        from overbae.core.aws import boto3_client
+
+        try:
+            desc = boto3_client("sagemaker").describe_training_job(TrainingJobName=run_id)
+        except Exception:  # noqa: BLE001
+            return job
+        arn = desc.get("TrainingJobArn") or run_id
+        return reconcile(job, f"{run_id}:{arn}")
     release = training_release.for_job(job)
     snapshot = modal.Function.from_name(
         release["app"], "get_progress", environment_name=release["environment"]

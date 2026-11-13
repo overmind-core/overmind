@@ -178,7 +178,11 @@ async def _observe(row, state, since):
 
 
 def collect(row):
-    if not row.probe_call_id or row.deployed_model.inference_contract != "chat":
+    if (
+        not row.probe_call_id
+        or str(row.probe_call_id).startswith("sm-")
+        or row.deployed_model.inference_contract != "chat"
+    ):
         return
     run, _ = OperationalRun.objects.get_or_create(
         project_id=row.project_id,

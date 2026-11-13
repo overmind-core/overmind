@@ -128,6 +128,12 @@ async def bounded_call(method, *args, **kwargs):
 
 
 def spawn(request):
+    from django.conf import settings
+
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        from overbae.sagemaker import serving_runtime
+
+        return serving_runtime.spawn_inference_request(request)
     function = modal.Function.from_name(
         request.payload.get("serving_app", "overmind-inference"),
         "inference_request",
@@ -139,6 +145,10 @@ def spawn(request):
 
 
 def recover(request):
+    from django.conf import settings
+
+    if getattr(settings, "FINETUNING_BACKEND", "modal") == "sagemaker":
+        return None
     store = modal.Dict.from_name(STORE, environment_name=request.payload["environment"])
     return async_to_sync(bounded_call)(store.get.aio, "request:" + str(request.pk), None)
 
@@ -300,7 +310,7 @@ def advance(request_id):
             request.refresh_from_db()
             _follow(request)
             operation = observe(request)
-            if request.remote_id:
+            if request.remote_id and not str(request.remote_id).startswith("sm-"):
                 collect(
                     operation,
                     environment=request.payload["environment"],
