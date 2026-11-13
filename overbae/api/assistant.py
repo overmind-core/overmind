@@ -147,7 +147,7 @@ class AssistantThreadViewSet(ProjectPipelineViewSet):
         try:
             thread = threads.open_thread(project, about.get("kind", ""), about.get("record"))
         except InputValidationError as exc:
-            raise NotFound(str(exc)) from exc
+            raise NotFound from exc
         return Response(AssistantThreadSerializer(thread).data)
 
     @extend_schema(responses=AssistantThreadSerializer)
