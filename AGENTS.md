@@ -30,7 +30,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Tenancy is project-scoped with no org layer. A view that accepts guest writes opts in with `guest_allowed = True`, never with a permission class or middleware.
 - OTLP ingest never creates a capability, a scan never deletes one, and `DELETE` is a soft delete. On OTLP spans, wire identity is `overmind.capability.id` alone.
 - Celery routing must agree across `CELERY_TASK_ROUTES`, `make worker`, docker-compose and `docker/worker-topology.json`. Only prefork pools enforce `time_limit`. `tests/test_celery_topology.py` checks compose and `make worker` against the routes.
-- Native coding agents own interpretation, code and semantic work. The platform runs deterministic, lineage-bound operations and never invokes a platform planning or generation agent.
+- Two authors do interpretation, code and semantic work: a customer's coding agent over MCP, and the platform assistant in the Console (`services/assistant/`). Both call the same domain services; deterministic, lineage-bound operations stay in the platform. The assistant's loop runs in a worker as saved steps, never in a sandbox; a sandbox session (`services/sandbox_sessions/`) only runs code.
 - Work-starting operations take a project-scoped request key: an identical retry returns the same record, and a changed payload conflicts. An unknown provider acknowledgement is reconciled from its saved call ID, never resubmitted.
 - Measured facts only. Missing usage, progress, scores and telemetry stay unknown; never fill them with a percentage, a zero, an ETA or elapsed time.
 - Code under `overbae/modal/`, `modal_shared/` and `overbae/services/sft_assets/` reaches Modal only after `modal deploy`; training and serving pin immutable releases.
@@ -38,7 +38,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Overwatch (`/api/internal/overwatch/*`, app in `sales-dashboard/`) only reads product records and runs no user authentication. Its tokens, caches and Slack boundary are in backend-architecture `references/auth-and-billing.md`.
 - `DESIGN.md` carries a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the document.
 
-Subsystem detail lives in the skills: backend-architecture (Celery, tracing and scoring, evaluation, capabilities, auth and billing, training, serving, data-first), data-workshop, mcp, frontend-design.
+Subsystem detail lives in the skills: backend-architecture (Celery, tracing and scoring, evaluation, capabilities, auth and billing, training, serving, data-first, assistant), data-workshop, mcp, frontend-design.
 
 ## Style
 

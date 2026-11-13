@@ -83,7 +83,7 @@ External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-sco
 
 ## Console canvas
 
-The landing page is a project dataset table; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. There is no chat, funding control, cell search or cell-selector strip.
+The landing page opens on the assistant composer (`components/assistant/assistant-composer.tsx`): files or attached datasets plus one sentence start a thread on the working dataset. The project dataset table is a sheet below it; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. The assistant chat is a bar at the bottom of the canvas that opens into a resizable left panel (`components/assistant/`); the End preparation banner shows only while the assistant does not run. There is no funding control, cell search or cell-selector strip.
 
 The dataset inventory exposes current work from retained pipeline and transfer receipts.
 Uploads attached to a dataset report measured bytes; transformations and previews stay
