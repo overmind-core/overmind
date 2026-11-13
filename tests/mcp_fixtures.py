@@ -111,6 +111,8 @@ EXPECTED_TOOL_NAMES = {
     "cancel_dataset",
     "schedule_native_evaluation",
     "list_signals",
+    "list_assistant_handoffs",
+    "complete_assistant_handoff",
     "set_signal_subscription",
 }
 

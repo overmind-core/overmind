@@ -3,6 +3,7 @@
 from overbae.api.otlp import process_span
 
 from . import (  # noqa: E402
+    assistant,
     baseten_billing_sync,
     capability_rebind,
     cleanup_modal,
@@ -25,6 +26,7 @@ from . import (  # noqa: E402
 from .dataset_context import refresh_dataset_context
 
 __all__ = [
+    "assistant",
     "baseten_billing_sync",
     "capability_rebind",
     "cleanup_modal",

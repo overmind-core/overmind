@@ -27,6 +27,7 @@ AGENTS = (
     (re.compile(r"^cursor\b"), "cursor", "Cursor"),
     (re.compile(r"^gemini[- ]cli\b"), "gemini", "Gemini CLI"),
     (re.compile(r"^opencode\b"), "opencode", "OpenCode"),
+    (re.compile(r"^overmind assistant$"), "overmind", "Overmind assistant"),
 )
 
 
@@ -54,7 +55,8 @@ def connection_actor(context):
 
 
 def connected(context):
-    if context.client_name == "overmind-transfer":
+    # The platform's own clients connect nothing: no agent was set up.
+    if context.client_name in ("overmind-transfer", "overmind assistant"):
         return
     actor_kind, actor_name = connection_actor(context)
     ActivityClient.objects.get_or_create(

@@ -96,6 +96,16 @@ def test_packages_use_independently_scalable_interactive_capacity():
     assert "workshop-runner" not in services
 
 
+def test_assistant_steps_reach_the_sandbox_and_cannot_starve_their_reconciler():
+    from overbae.tasks.assistant import advance, reconcile
+
+    steps = settings.CELERY_TASK_ROUTES[advance.name]["queue"]
+    assert settings.CELERY_TASK_ROUTES[reconcile.name]["queue"] != steps
+    workers = [name for name, queues in _compose_worker_queues().items() if steps in queues]
+    services = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())["services"]
+    assert workers and all("sandbox_net" in services[name]["networks"] for name in workers)
+
+
 def test_fresh_worker_registers_every_routed_and_scheduled_task():
     # Test collection imports task modules that a fresh worker may never discover.
     result = subprocess.run(

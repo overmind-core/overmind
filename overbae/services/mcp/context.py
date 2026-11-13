@@ -11,11 +11,26 @@ from uuid import UUID
 from overbae.models import APIToken, MCPOAuthToken, Project, User
 from overbae.services.mcp.errors import MCPError
 
+ASSISTANT = "overmind assistant"
+
+
+@dataclass(frozen=True)
+class PlatformCredential:
+    """Stands where a token does when the platform's own assistant calls a tool for a user.
+    The assistant checks that user's project membership before each call."""
+
+    project_id: UUID
+    pk: str = "assistant"
+
+    @property
+    def scope(self) -> dict:
+        return {"scope": "project", "permission": ["read", "write"]}
+
 
 @dataclass(frozen=True)
 class MCPContext:
     user: User
-    token: APIToken | MCPOAuthToken
+    token: APIToken | MCPOAuthToken | PlatformCredential
     project: Project | None
     client_ip: str | None = None
     inference_base_url: str = ""

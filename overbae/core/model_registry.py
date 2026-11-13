@@ -358,6 +358,7 @@ class TaskType(StrEnum):
     CRITERIA_GENERATION = "criteria_generation"
     EVAL_RECOMMENDATION = "eval_recommendation"
     EVAL_EXPLANATION = "eval_explanation"
+    ASSISTANT = "assistant"
     DEFAULT = "default"
 
 
@@ -366,6 +367,7 @@ TASK_ROLES: dict[TaskType, Role] = {
     TaskType.CRITERIA_GENERATION: Role.FAST,
     TaskType.EVAL_RECOMMENDATION: Role.FAST,
     TaskType.EVAL_EXPLANATION: Role.EXPLAIN,
+    TaskType.ASSISTANT: Role.AGENT,
     TaskType.DEFAULT: Role.FAST,
 }
 

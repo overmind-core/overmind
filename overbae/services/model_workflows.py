@@ -24,6 +24,19 @@ MODELS = {
     "training_experiment": TrainingExperiment,
     "training_plan": TrainingPlan,
 }
+# States the platform never leaves by itself: the workflow ended or waits for a decision.
+RESTING = frozenset(
+    {
+        "completed",
+        "failed",
+        "submission_unknown",
+        "draft",
+        "prepared",
+        "paused",
+        "preparation_failed",
+        "incomplete",
+    }
+)
 DESCRIBERS = {
     "data_exploration": exploration.describe,
     "decision_performance": decision_performance.describe,
@@ -219,17 +232,5 @@ def guidance(kind, record):
             "preparation_failed",
             "incomplete",
         },
-        "poll_after_seconds": None
-        if record.state
-        in {
-            "completed",
-            "failed",
-            "submission_unknown",
-            "draft",
-            "prepared",
-            "paused",
-            "preparation_failed",
-            "incomplete",
-        }
-        else 10,
+        "poll_after_seconds": None if record.state in RESTING else 10,
     }
