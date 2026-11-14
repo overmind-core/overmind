@@ -247,6 +247,15 @@ class Slot:
     limit: int
 
 
+# Holders of memory that can give it back: asked when work waits for room.
+_yielders: list = []
+
+
+def on_pressure(give_way) -> None:
+    """Register ``give_way() -> bool``: free some reserved memory, true when it did."""
+    _yielders.append(give_way)
+
+
 def reserve(need: int, budget: int) -> Slot:
     token = uuid.uuid4().hex
     deadline = time.monotonic() + RESERVE_WAIT_SECONDS
@@ -263,6 +272,8 @@ def reserve(need: int, budget: int) -> Slot:
                         "since": time.time(),
                     }
                     return Slot(token, uid, int(need * _GROWTH))
+        if any(give_way() for give_way in _yielders):
+            continue
         if time.monotonic() > deadline:
             raise BusyError
         time.sleep(0.5)

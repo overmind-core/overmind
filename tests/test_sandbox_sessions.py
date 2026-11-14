@@ -11,6 +11,7 @@ from overbae.services.sandbox_sessions import (
     conformance,
 )
 from overbae.services.sandbox_sessions.native import NativeProvider
+from sandbox import sessions
 
 pytestmark = pytest.mark.covers("sandbox-sessions")
 
@@ -82,3 +83,17 @@ def test_the_native_kernel_is_unprivileged_and_cannot_change_its_inputs(provider
         assert result.ok and result.output == "'a,b\\n1,2\\n'\n", result
     finally:
         provider.stop(session)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="The kernel starts on Linux only")
+def test_an_idle_session_gives_way_to_work_that_waits_for_memory():
+    session = sessions.start()
+    try:
+        # Used a moment ago: a conversation between two cells keeps its kernel.
+        assert not sessions.give_way()
+        assert sessions.give_way(idle_for=0)
+        request = {"id": "a", "code": "1", "timeout": 5}
+        with pytest.raises(sessions.GoneError, match="memory for other work"):
+            sessions.run(session, request)
+    finally:
+        sessions.end(session, "")

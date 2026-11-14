@@ -30,6 +30,8 @@ SESSION_BYTES = 2 * execute.GIB
 # A session keeps a kernel within the cores a hosted provider gives one.
 SESSION_CPUS = 2
 IDLE_SECONDS = 15 * 60
+# A session that did nothing for this long gives way when other work waits for its memory.
+YIELD_IDLE_SECONDS = 30
 MAX_INPUT_BYTES = execute.GIB
 MAX_OUTPUT_BYTES = 64 * 1024**2
 MAX_EXECUTION_SECONDS = 600
@@ -146,6 +148,24 @@ def end(session_id: str, reason: str) -> None:
     if len(_ended) > REMEMBERED_ENDS:
         del _ended[next(iter(_ended))]
     _destroy(session.slot, session.root, session.process)
+
+
+def give_way(idle_for: float = YIELD_IDLE_SECONDS) -> bool:
+    """End the session idle longest, for work that waits for memory. A session is a cache:
+    its conversation starts another with the same staged data, while a run that finds no
+    memory fails. True when a session ended."""
+    now = time.monotonic()
+    for session_id, session in sorted(_sessions.items(), key=lambda item: item[1].used):
+        if now - session.used < idle_for:
+            return False
+        # Held for good: a cell that arrives now must find the session gone, not half ended.
+        if session.executing.acquire(blocking=False):
+            end(session_id, "The sandbox needed this session's memory for other work.")
+            return True
+    return False
+
+
+execute.on_pressure(give_way)
 
 
 def _find(session_id: str) -> Session:
