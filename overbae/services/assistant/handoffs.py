@@ -8,12 +8,16 @@ LISTED = 20
 MAX_CHARS = 20_000
 
 
-def open_for(thread, call: str, instructions) -> AssistantHandoff:
-    """The handoff of one tool call: a step that runs again finds the first one."""
+def checked(instructions) -> str:
     if not isinstance(instructions, str) or not instructions.strip():
         raise InputValidationError("instructions is the text the coding agent reads.")
     if len(instructions) > MAX_CHARS:
         raise InputValidationError(f"instructions is at most {MAX_CHARS:,} characters.")
+    return instructions
+
+
+def open_for(thread, call: str, instructions: str) -> AssistantHandoff:
+    """The handoff of one tool call: a step that runs again finds the first one."""
     return AssistantHandoff.objects.get_or_create(
         thread=thread, call=call, defaults={"instructions": instructions}
     )[0]

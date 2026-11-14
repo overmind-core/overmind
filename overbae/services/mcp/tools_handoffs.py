@@ -46,7 +46,8 @@ def register_handoff_tools(catalog) -> None:
             name="list_assistant_handoffs",
             title="List assistant handoffs",
             description="List work the Console assistant left for you because it needs this "
-            "repository or machine. Do each one as its instructions say, then report with "
+            "repository or machine. The user approved each one in the Console. Do each one "
+            "as its instructions say, under your own permission rules, then report with "
             "complete_assistant_handoff; the assistant's conversation waits for the report.",
             input_model=ListHandoffsInput,
             output_model=ListHandoffsOutput,

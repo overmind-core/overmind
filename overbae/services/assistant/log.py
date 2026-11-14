@@ -3,6 +3,7 @@ open streams to read again and carries the text of a reply while it is written."
 
 import json
 import logging
+import math
 from functools import cache
 
 import redis
@@ -59,26 +60,42 @@ def changed(thread_id, *, clear_draft: bool = False) -> None:
     transaction.on_commit(lambda: _send(thread_id, commands))
 
 
-def draft(thread_id, added: str, tools: list[str], *, first: bool) -> None:
-    """Send the text a reply gained. The key holds the whole draft for a stream that opens
-    in the middle of it; ``first`` drops what an abandoned reply left there."""
+def draft(thread_id, added: str, tools: list[str], *, at: int) -> None:
+    """Send the text a reply gained after its first ``at`` characters. The key holds the
+    whole draft for a stream that opens in the middle of it, and that stream may get a
+    delta the key already held: the position makes it harmless. A reply's first delta drops
+    what an abandoned reply left in the key."""
 
     def commands(pipe):
-        if first:
+        if not at:
             pipe.delete(draft_key(thread_id))
         pipe.append(draft_key(thread_id), added)
         pipe.expire(draft_key(thread_id), DRAFT_TTL_SECONDS)
-        pipe.publish(
-            channel(thread_id), json.dumps({"type": "draft", "added": added, "tools": tools})
-        )
+        message = {"type": "draft", "added": added, "at": at, "tools": tools}
+        pipe.publish(channel(thread_id), json.dumps(message))
 
     _send(thread_id, commands)
+
+
+def _storable(value):
+    """``value`` as jsonb holds it: no NUL character and no number that is not finite. A
+    kernel prints either, and so does a row of customer data."""
+    if isinstance(value, str):
+        return value.replace("\x00", "\ufffd")
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {_storable(key): _storable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_storable(item) for item in value]
+    return value
 
 
 def append(
     thread: AssistantThread, kind: str, payload: dict, *, claim=None, presentation=None
 ) -> AssistantEvent:
     """Add one event. With ``claim``, only while that claim still holds the thread."""
+    payload, presentation = _storable(payload), _storable(presentation)
     with transaction.atomic():
         # The row lock orders concurrent appends; the unique constraint backs it.
         held = (

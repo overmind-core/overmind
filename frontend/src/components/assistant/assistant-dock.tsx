@@ -1,4 +1,4 @@
-import { type CSSProperties, useId, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { useNavigate } from "@tanstack/react-router";
@@ -154,11 +154,16 @@ export function AssistantDock({
   handlers.current = { collapse, deliver, guard };
   const threadId = thread?.id;
   const sending = send.isPending;
+  // Its own identity: an image loads again whenever this function changes.
+  const loadImage = useCallback(
+    (name: string) =>
+      apiClient.assistantThreads.assistantThreadsImagesRetrieve({ id: threadId!, name }),
+    [threadId]
+  );
   const actions: ResultActions = useMemo(
     () => ({
       answered,
-      loadImage: (name) =>
-        apiClient.assistantThreads.assistantThreadsImagesRetrieve({ id: threadId!, name }),
+      loadImage,
       onAnswer: (message, interaction) =>
         handlers.current.guard(() => handlers.current.deliver(message, interaction))(),
       onCell: (cell, dataset) => {
@@ -176,7 +181,7 @@ export function AssistantDock({
         void navigate({ search: { datasetId: dataset, projectId, train: true }, to: "/training" }),
       sending,
     }),
-    [answered, cells, datasetId, navigate, onSelectCell, projectId, sending, threadId]
+    [answered, cells, datasetId, loadImage, navigate, onSelectCell, projectId, sending]
   );
   const sendHint = stopping ? "Stopping" : active ? "Queue a follow-up" : "Send message";
 

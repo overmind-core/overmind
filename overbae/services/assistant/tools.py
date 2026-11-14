@@ -186,8 +186,8 @@ OWN_TOOLS = {
         "Give work to the user's coding agent when it needs their repository or machine: "
         "instrumentation, the Optimiser loop, a model swap in their code, local files. Write "
         "complete instructions: the goal, the exact Overmind ids, the commands or MCP tools "
-        "to use, and what to report. The agent reads them over MCP; the platform waits for "
-        "its report and gives it to you.",
+        "to use, and what to report. The user approves the instructions first; then the "
+        "agent reads them over MCP, and the platform waits for its report and gives it to you.",
         {
             "type": "object",
             "properties": {
@@ -322,30 +322,25 @@ def _approval(thread, digest: str) -> tuple[str, int] | None:
     return next(((call, user) for call, user in given if call not in used), None)
 
 
-def _ask(name: str, arguments: dict, digest: str) -> Outcome:
-    shown = json.dumps(arguments, indent=1, default=str, ensure_ascii=False)
+def _ask(digest: str, shown: dict, prompt: str, decline: str, error: str) -> Outcome:
+    """Refuse a call until the user approves exactly it: ``shown`` is what they approve."""
     return Outcome(
         False,
-        {
-            "error": "This call starts paid work and the user has not approved it. Nothing "
-            "ran. The user now sees an approval request for this exact call. Say in one "
-            "sentence what it costs, from an estimate or readiness tool result, and end "
-            "your turn. Call the tool again with the same arguments after the user approves."
-        },
+        {"error": error},
         asks=digest,
         presentation={
             "root": {
                 "type": "Stack",
                 "direction": "column",
                 "children": [
-                    {"type": "Code", "code": shown, "language": "json"},
+                    shown,
                     {
                         "type": "Choices",
                         "id": APPROVE,
-                        "prompt": f"Start paid work: {name}?",
+                        "prompt": prompt,
                         "options": [
                             {"label": "Approve", "value": APPROVE},
-                            {"label": "Do not start", "value": "decline"},
+                            {"label": decline, "value": "decline"},
                         ],
                     },
                 ],
@@ -379,7 +374,18 @@ def _platform(thread, user, call_id, name, arguments) -> Outcome:
         digest = _digest(name, arguments)
         granted = _approval(thread, digest)
         if granted is None:
-            return _ask(name, arguments, digest)
+            shown = json.dumps(arguments, indent=1, default=str, ensure_ascii=False)
+            return _ask(
+                digest,
+                {"type": "Code", "code": shown, "language": "json"},
+                f"Start paid work: {name}?",
+                "Do not start",
+                "This call starts paid work and the user has not approved it. Nothing ran. "
+                "The user now sees an approval request for this exact call. Say in one "
+                "sentence what it costs, from an estimate or readiness tool result, and end "
+                "your turn. Call the tool again with the same arguments after the user "
+                "approves.",
+            )
         # The approver pays, whoever wrote the newest message.
         approval, approver = granted
         user = get_user_model().objects.get(pk=approver)
@@ -393,7 +399,9 @@ def _platform(thread, user, call_id, name, arguments) -> Outcome:
     result = _invoke(thread, user, name, arguments)
     content = result.structuredContent or {}
     if result.isError:
-        return Outcome(False, content)
+        # A call that failed spent its approval: the platform keeps that failure under the
+        # approval's request key, so the next attempt needs a new one.
+        return Outcome(False, content, approval=approval)
     # A wait is for work this call started, or for the job the model asks get_job about.
     started = _receipts(name, content) if name == "get_job" or not definition.read_only else []
     moving = jobs.moving(started)
@@ -521,11 +529,27 @@ def _open_toolset(thread, _user, _call_id, arguments) -> Outcome:
 
 
 def _hand_off(thread, _user, call_id, arguments) -> Outcome:
-    handoff = handoffs.open_for(thread, call_id, arguments.get("instructions"))
+    instructions = handoffs.checked(arguments.get("instructions"))
+    # The model wrote these after it read customer data, and an agent with the user's
+    # repository acts on them: the user reads them first.
+    digest = _digest("hand_off", {"instructions": instructions})
+    granted = _approval(thread, digest)
+    if granted is None:
+        return _ask(
+            digest,
+            {"type": "Text", "text": instructions},
+            "Give this work to your coding agent?",
+            "Do not send",
+            "The user has not approved this handoff. Nothing was sent. The user now sees "
+            "the instructions and an approval request. End your turn. Call the tool again "
+            "with the same instructions after the user approves.",
+        )
+    handoff = handoffs.open_for(thread, call_id, instructions)
     return Outcome(
         True,
         {"handoff": str(handoff.pk), "state": handoff.state},
         jobs=[{"kind": "handoff", "id": str(handoff.pk)}],
+        approval=granted[0],
     )
 
 

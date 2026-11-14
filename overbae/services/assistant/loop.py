@@ -8,13 +8,14 @@ lease loses the claim to the next one, and from then on it can write nothing."""
 import contextlib
 import json
 import logging
+import threading
 import time
 import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from overbae.core.llms import IncompleteCompletionError, call_llm_tools, stream_llm_tools
@@ -36,14 +37,20 @@ logger = logging.getLogger(__name__)
 Kind, State = AssistantEvent.Kind, AssistantThread.State
 Queued = AssistantInput.State.QUEUED
 
-# A running step that is silent for this long has lost its worker. Longer than the longest
-# tool call: a session start, its staged datasets and a cell at the time limit.
-LEASE = timedelta(minutes=15)
+# A running step that is silent for this long has lost its worker. Its process renews the
+# lease while the step runs, so the lease only has to outlive a few missed beats.
+LEASE = timedelta(seconds=60)
 HEARTBEAT_SECONDS = 10
+# A step that runs longer hangs: its lease is renewed no more. Longer than the longest tool
+# call: a session start, its staged datasets and a cell at the time limit.
+STEP_SECONDS = 15 * 60
 DRAFT_INTERVAL_SECONDS = 0.1
 # A step enqueues the next one itself; the reconciler takes over when that was lost.
 READY_GRACE = timedelta(seconds=30)
-ABANDONED = {"error": "This call did not run: the run was stopped or interrupted."}
+ABANDONED = {
+    "error": "This call has no recorded result: the run stopped or was interrupted. It may "
+    "have run. Inspect before you repeat a call that changes something."
+}
 # Newest user messages and replies the model keeps word for word after a summary.
 COMPACT_KEEP = 6
 COMPACT_PROMPT = """\
@@ -58,6 +65,48 @@ class _StoppedError(Exception):
     pass
 
 
+# The steps this process runs: thread id to its claim and when its lease stops being renewed.
+_steps: dict[str, tuple[int, float]] = {}
+_steps_lock = threading.Lock()
+_beater: threading.Thread | None = None
+
+
+def _beat() -> None:
+    while True:
+        time.sleep(HEARTBEAT_SECONDS)
+        now = time.monotonic()
+        with _steps_lock:
+            live = [(pk, claim) for pk, (claim, until) in _steps.items() if until > now]
+        if not live:
+            continue
+        try:
+            for pk, claim in live:
+                AssistantThread.objects.filter(pk=pk, claim=claim, state=State.RUNNING).update(
+                    updated_at=timezone.now()
+                )
+        except Exception:  # noqa: BLE001 - the next beat tries again
+            logger.warning("assistant heartbeat failed", exc_info=True)
+        finally:
+            connection.close()
+
+
+@contextlib.contextmanager
+def _beating(thread):
+    """Keep the step's lease alive from another thread: a tool call cannot beat for itself.
+    A worker that dies takes the beat along, and the thread is free after ``LEASE``."""
+    global _beater  # noqa: PLW0603 - one beat thread for each worker process
+    with _steps_lock:
+        _steps[str(thread.pk)] = (thread.claim, time.monotonic() + STEP_SECONDS)
+        if _beater is None or not _beater.is_alive():
+            _beater = threading.Thread(target=_beat, name="assistant-heartbeat", daemon=True)
+            _beater.start()
+    try:
+        yield
+    finally:
+        with _steps_lock:
+            _steps.pop(str(thread.pk), None)
+
+
 def advance(thread_id) -> bool:
     """Run one step of the thread. True when another step is due."""
     settle(thread_id)
@@ -65,7 +114,8 @@ def advance(thread_id) -> bool:
     if thread is None:
         return False
     try:
-        more = _attempt(thread)
+        with _beating(thread):
+            more = _attempt(thread)
         held = _held(thread).filter(state=State.RUNNING)
         if more:
             held.update(state=State.READY, updated_at=timezone.now())
@@ -256,6 +306,9 @@ def _compact(thread, user, window) -> bool:
             model=chain[0],
             fallback_models=chain[1:],
         )
+    except IncompleteCompletionError as exc:
+        # The provider charged for the summary it cut off, and what it wrote still serves.
+        text, stats = exc.content, exc.stats
     except (RuntimeError, TimeoutError) as exc:
         logger.warning("assistant summary failed for thread %s: %s", thread.pk, exc)
         return False
@@ -369,7 +422,7 @@ def _model_turn(thread, user, window) -> None:
                 raise _StoppedError
         if now - published > DRAFT_INTERVAL_SECONDS and (len(text), names) != shown:
             sent = shown[0] if shown else 0
-            log.draft(thread.pk, text[sent:], names, first=shown is None)
+            log.draft(thread.pk, text[sent:], names, at=sent)
             published, shown = now, (len(text), names)
 
     chain = model_chain(TaskType.ASSISTANT)
@@ -510,7 +563,9 @@ def stop(thread: AssistantThread) -> None:
             thread.save(update_fields=["stop_requested"])
         elif thread.state == State.WAITING:
             held = thread.waiting_on["jobs"]
-            for job in held:
+            # Only what this call started: a job the thread asked get_job about may be
+            # another author's.
+            for job in [] if thread.waiting_on["name"] == "get_job" else held:
                 if job["kind"] == "dataset_pipeline":
                     # The run may have ended since the thread last looked.
                     with contextlib.suppress(DatasetError):
@@ -525,6 +580,9 @@ def stop(thread: AssistantThread) -> None:
                 thread,
                 f"Stopped. Started jobs that continue: {continuing}." if continuing else "Stopped.",
             )
+        elif thread.inputs.filter(state=Queued).exists():
+            # Messages that wait for the dataset's source to land.
+            _stopped(thread, "Stopped.")
     log.changed(thread.pk)
 
 

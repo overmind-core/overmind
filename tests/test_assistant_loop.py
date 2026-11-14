@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -10,6 +11,7 @@ from mcp_fixtures import call_tool
 from overbae.core.errors import InputValidationError
 from overbae.core.llms import stream_llm_tools
 from overbae.models import (
+    AssistantHandoff,
     AssistantThread,
     BillingTelemetry,
     DataExploration,
@@ -101,6 +103,18 @@ def test_a_message_for_a_dataset_still_landing_waits_for_its_source(fake_llm, us
     assert kinds(thread) == ["user", "assistant"]
 
 
+def test_stop_drops_a_message_that_waits_for_its_source(fake_llm, user, thread):
+    landing = Dataset.objects.filter(pk=thread.subject_id)
+    landing.update(state=Dataset.State.LANDING)
+    threads.send(thread, user, request_key="first", text="Prepare this.")
+    drive(thread)
+
+    loop.stop(thread)
+    landing.update(state=Dataset.State.IDLE)
+    drive(thread)
+    assert kinds(thread) == ["status"] and loop.due() == [] and fake_llm.streamed() == []
+
+
 def test_a_thread_waits_for_a_job_and_resumes_with_its_state(fake_llm, user, thread, monkeypatch):
     monkeypatch.setattr(data_exploration.run, "delay", lambda *args, **kwargs: None)
     fake_llm.stream_rounds([([explore(thread)], ""), ([], "The profile is complete.")])
@@ -159,7 +173,7 @@ def test_a_step_that_lost_its_lease_is_interrupted_and_can_write_nothing(fake_ll
     thread.refresh_from_db()
     stuck = thread.claim
     AssistantThread.objects.filter(pk=thread.pk).update(
-        state=AssistantThread.State.RUNNING, updated_at=timezone.now() - timedelta(hours=1)
+        state=AssistantThread.State.RUNNING, updated_at=timezone.now() - timedelta(minutes=2)
     )
 
     assert loop.due() == [str(thread.pk)]
@@ -334,10 +348,52 @@ def test_one_approval_starts_one_paid_call_and_a_stopped_wait_spends_it(
     assert InferenceRequest.objects.count() == 1
 
 
-def test_a_handoff_waits_for_the_coding_agents_report_over_mcp(fake_llm, user, thread):
+def test_a_paid_call_that_failed_spent_its_approval(fake_llm, user, thread, monkeypatch):
+    monkeypatch.setattr(inspect_inference_request, "apply_async", lambda *args, **kwargs: None)
+    monkeypatch.setattr(inspect_inference_request, "delay", lambda *args, **kwargs: None)
+    deployment = uuid.uuid4()
+    paid = tool_call(
+        "run_inference",
+        {
+            "deployment": str(deployment),
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 32,
+        },
+    )
+    fake_llm.stream_rounds([([paid], ""), ([], "It needs approval."), ([paid], ""), ([], "No.")])
+    threads.send(thread, user, request_key="ask", text="Run it.")
+    drive(thread)
+    (refused,) = results(thread)
+    answer = {"call": refused["call"], "id": "approve", "values": {"choice": "approve"}}
+    threads.send(thread, user, request_key="yes", text="Approve", interaction=answer)
+    drive(thread)
+    failed = results(thread)[1]
+    assert not failed["ok"] and failed["approval"] == refused["call"]
+
+    DeployedModel.objects.create(
+        pk=deployment, project=thread.project, model_id="served", status="ready"
+    )
+    fake_llm.stream_rounds([([paid], ""), ([], "It needs approval again.")])
+    threads.send(thread, user, request_key="again", text="Run it again.")
+    drive(thread)
+    repeated = results(thread)[2]
+    assert not repeated["ok"] and repeated["asks"] == refused["asks"]
+    assert not InferenceRequest.objects.exists()
+
+
+def test_a_handoff_waits_for_the_users_approval_and_the_agents_report(fake_llm, user, thread):
     handed = [tool_call("hand_off", {"instructions": "Run the optimiser loop for run 7."})]
-    fake_llm.stream_rounds([(handed, ""), ([], "The loop ran.")])
+    rounds = [(handed, ""), ([], "Approve the handoff."), (handed, ""), ([], "The loop ran.")]
+    fake_llm.stream_rounds(rounds)
     threads.send(thread, user, request_key="first", text="Optimise the agent.")
+    drive(thread)
+    (refused,) = results(thread)
+    shown = thread.events.get(kind="tool_result").presentation["root"]["children"][0]
+    assert refused["asks"] and shown["text"] == "Run the optimiser loop for run 7."
+    assert not AssistantHandoff.objects.exists()
+
+    answer = {"call": refused["call"], "id": "approve", "values": {"choice": "approve"}}
+    threads.send(thread, user, request_key="yes", text="Approve", interaction=answer)
     drive(thread)
     assert thread.state == AssistantThread.State.WAITING and loop.due() == []
 
@@ -351,6 +407,13 @@ def test_a_handoff_waits_for_the_coding_agents_report_over_mcp(fake_llm, user, t
 
     assert loop.due() == [str(thread.pk)]
     drive(thread)
-    assert results(thread)[0]["content"]["now"] == [
+    assert results(thread)[1]["content"]["now"] == [
         {"kind": "handoff", "state": "done", "result": "Score rose from 0.61 to 0.74."}
     ]
+
+
+def test_the_log_stores_what_a_kernel_prints_that_jsonb_refuses(thread):
+    printed = {"output": "a\x00b", "mean": float("nan"), "rows": [[float("inf"), 1.5]]}
+    saved = log.append(thread, "tool_result", {"call": "c", "content": printed})
+    saved.refresh_from_db()
+    assert saved.payload["content"] == {"output": "a\ufffdb", "mean": None, "rows": [[None, 1.5]]}

@@ -93,6 +93,7 @@ function useThreadStream(threadId: string | undefined, datasetId: string): Strea
         thread?: unknown;
         text?: string;
         added?: string;
+        at?: number;
         tools?: string[];
       }) => {
         if (frame.type === "event" && frame.event) {
@@ -112,10 +113,11 @@ function useThreadStream(threadId: string | undefined, datasetId: string): Strea
           live = true;
           update(() => ({ thread: AssistantThreadFromJSON(frame.thread) }));
         } else if (frame.type === "draft") {
-          // A stream that opens in the middle of a reply gets its text so far, then what it gains.
+          // A stream that opens in the middle of a reply gets its text so far, then what it
+          // gains. A gain names its position: one the text already holds changes nothing.
           update((old) => ({
             draft: {
-              text: frame.text ?? (old.draft?.text ?? "") + (frame.added ?? ""),
+              text: frame.text ?? (old.draft?.text ?? "").slice(0, frame.at) + (frame.added ?? ""),
               tools: frame.tools ?? old.draft?.tools ?? [],
             },
           }));
