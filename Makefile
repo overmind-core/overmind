@@ -12,7 +12,7 @@ install-hooks:
 worker:
 	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES TOGETHER_API_KEY=placeholder-local-dev \
 		uv run celery -A overbae worker -l info --pool=solo -n local@%h \
-		-Q control,io,io_traces,batch,landing,interactive
+		-Q control,io,assistant,io_traces,batch,landing,interactive
 
 # Runs scripts as your own user: no isolation, local development only.
 sandbox:

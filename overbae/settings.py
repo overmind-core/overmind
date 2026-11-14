@@ -433,6 +433,10 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.native_evaluation.advance_plan": {"queue": "batch"},
     "overbae.tasks.native_evaluation.refresh_monitor": {"queue": "batch"},
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
+    # A streamed model reply holds a worker slot for its whole length, so steps have their
+    # own queue. The reconciler only reads and enqueues: it must run when that queue is full.
+    "overbae.tasks.assistant.advance": {"queue": "assistant"},
+    "overbae.tasks.assistant.reconcile": {"queue": "control"},
     "overbae.tasks.innermind.generate_row": {"queue": "batch"},
     "overbae.tasks.innermind.score_eval_run": {"queue": "batch"},
     # Model warm-up blocks for minutes; control stays free for reconcilers and metrics.
@@ -456,6 +460,11 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    "assistant-reconcile": {
+        "task": "overbae.tasks.assistant.reconcile",
+        "schedule": 5.0,
+        "options": {"expires": 4.0},
+    },
     "workshop-bindings": {
         "task": "overbae.tasks.datasets.refresh_pipeline_bindings",
         "schedule": 30.0,
@@ -741,6 +750,12 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
+SANDBOX_SESSION_PROVIDER = os.environ.get("SANDBOX_SESSION_PROVIDER", "native")
+DAYTONA_API_KEY = os.environ.get("DAYTONA_API_KEY", "")
+# Sandbox sessions one project holds at a time; the session idle longest gives way.
+ASSISTANT_PROJECT_SESSIONS = int(os.environ.get("ASSISTANT_PROJECT_SESSIONS", "2"))
+# Prompt tokens of one assistant reply above which the older conversation is summarized.
+ASSISTANT_COMPACT_TOKENS = int(os.environ.get("ASSISTANT_COMPACT_TOKENS", "120000"))
 
 _REQUIRED_KEYS = {
     "SANDBOX_URL": "the isolated Workshop sandbox",

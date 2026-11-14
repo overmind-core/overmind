@@ -20,7 +20,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from sandbox import execute, packages
+from sandbox import execute, kernel, packages, sessions
 from sandbox.documents.checkpoints import MAX_CACHE_BYTES
 from sandbox.documents.languages import validate_languages
 from sandbox.protocol import FramingError, HeaderReader, frame, header_bytes
@@ -228,16 +228,42 @@ async def run(request: Request) -> Response:
 
 
 async def health(_request: Request) -> Response:
-    return JSONResponse({"ok": True, "runtime": packages.runtime_id()})
+    # ``landlock`` 0 means this host keeps runs apart by uid alone.
+    return JSONResponse(
+        {"ok": True, "runtime": packages.runtime_id(), "landlock": kernel.landlock_abi()}
+    )
+
+
+def _guarded(handler):
+    async def call(request: Request) -> Response:
+        if not _authorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return await handler(request)
+
+    return call
 
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: Starlette) -> AsyncIterator[None]:
     execute.runs_dir()
-    yield
+    stop = threading.Event()
+    watcher = threading.Thread(target=sessions.watch, args=(stop,), daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        await run_in_threadpool(watcher.join)
 
 
 app = Starlette(
-    routes=[Route("/v1/run", run, methods=["POST"]), Route("/health", health, methods=["GET"])],
+    routes=[
+        Route("/v1/run", run, methods=["POST"]),
+        Route("/health", health, methods=["GET"]),
+        *(
+            Route(path, _guarded(handler), methods=methods)
+            for path, handler, methods in sessions.ROUTES
+        ),
+    ],
     lifespan=lifespan,
 )

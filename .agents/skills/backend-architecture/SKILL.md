@@ -42,3 +42,4 @@ Read the one that matches the task:
 | [references/training.md](references/training.md)                       | Preparation, launch, monitoring, transfer, native decision training                 |
 | [references/serving.md](references/serving.md)                         | Deployments, shared-base LoRA, activation, inference requests, operational receipts |
 | [references/data-first.md](references/data-first.md)                   | Training plans, partitions, native evaluation, experiments, performance runs        |
+| [references/assistant.md](references/assistant.md)                     | The Console assistant's loop and tools, sandbox session providers, the stream       |

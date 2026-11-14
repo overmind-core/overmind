@@ -84,6 +84,9 @@ export default function MarkdownContentImpl({
             </h3>
           ),
           hr: () => (dividers ? <hr className="my-3 border-border/60" /> : null),
+          // Never loaded: a remote image tells its host who reads this, and a model can
+          // put what it read into the address.
+          img: ({ alt, src }) => <span className="text-muted-foreground">{alt || src}</span>,
           li: ({ children }) => <li className="mb-1">{children}</li>,
           ol: ({ children }) => (
             <ol className="mb-3 list-decimal pl-5 last:mb-0 space-y-0.5">{children}</ol>

@@ -441,6 +441,7 @@ def sandbox_server():
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SANDBOX_TOKEN": token,
+        "SANDBOX_ADVERTISE_URL": url,
         "SANDBOX_ALLOW_SHARED_UID": "1",
         # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
         "TMPDIR": scratch.name,

@@ -764,3 +764,373 @@ body:has(
     animation: none;
   }
 }
+
+/* In the components layer, so a utility on the same element wins. */
+@layer components {
+  /* Assistant chat: a bar at the bottom of the canvas that opens into a panel on the left. */
+  .assistant-dock {
+    interpolate-size: allow-keywords;
+    left: 50%;
+    width: min(48rem, calc(100% - 1.5rem));
+    max-height: calc(100% - 1.5rem);
+    transform: translateX(-50%);
+    transition:
+      left 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      width 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      height 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .assistant-dock[data-panel="true"] {
+    left: 0.75rem;
+    width: min(var(--assistant-panel-width, 26rem), calc(100% - 1.5rem));
+    height: calc(100% - 1.5rem);
+    transform: translateX(0);
+  }
+
+  /* The open panel covers the canvas's left edge, so the canvas's notices move right. */
+  :has(.assistant-dock[data-panel="true"]) > .assistant-notices {
+    left: auto;
+  }
+
+  .assistant-dock[data-resizing="true"] {
+    user-select: none;
+    transition: none;
+  }
+
+  .assistant-dock-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows 420ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 180ms ease;
+  }
+
+  .assistant-dock[data-expanded="true"] .assistant-dock-body {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  .assistant-dock-footer {
+    padding: 0.125rem 0.25rem;
+  }
+
+  .assistant-dock[data-panel="true"] .assistant-dock-footer {
+    padding: 0.25rem 0.625rem 0.375rem;
+  }
+
+  .assistant-dock[data-panel="true"] .assistant-composer-stack {
+    margin: 0 0.375rem 0.375rem;
+  }
+
+  .assistant-resize-handle {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 1;
+    width: 0.5rem;
+    touch-action: none;
+    cursor: col-resize;
+    outline: none;
+  }
+
+  .assistant-resize-handle::after {
+    position: absolute;
+    top: calc(50% - 1rem);
+    right: 0;
+    width: 2px;
+    height: 2rem;
+    content: "";
+    background: var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .assistant-resize-handle:is(:hover, :focus-visible)::after,
+  .assistant-dock[data-resizing="true"] .assistant-resize-handle::after {
+    background: var(--primary);
+  }
+
+  .assistant-conversation {
+    padding: 0.75rem 1rem 3.5rem;
+    scroll-padding-block: 1rem 3.5rem;
+    scrollbar-width: thin;
+  }
+
+  /* The transcript fades into the dock surface at both ends. */
+  .assistant-history::before,
+  .assistant-history::after {
+    position: absolute;
+    pointer-events: none;
+    content: "";
+    backdrop-filter: blur(3px);
+  }
+
+  .assistant-history::before {
+    inset: 0 0 auto;
+    z-index: 1;
+    height: 1.5rem;
+    background: linear-gradient(to bottom, var(--muted), transparent);
+    mask-image: linear-gradient(to bottom, black, transparent);
+  }
+
+  .assistant-history::after {
+    inset: auto 0 0;
+    height: 3.5rem;
+    background: linear-gradient(to bottom, transparent, var(--muted) 90%);
+    mask-image: linear-gradient(to bottom, transparent, black 85%);
+  }
+
+  .assistant-message + .assistant-message {
+    margin-block-start: 1.5rem;
+  }
+
+  .assistant-user-prompt {
+    width: fit-content;
+    max-width: 92%;
+    padding: 0.5rem 0.75rem;
+    margin-inline-start: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    background: var(--wash-raised);
+    border: 1px solid var(--border);
+    border-inline-end: 2px solid var(--input);
+    border-radius: var(--radius-sm);
+  }
+
+  .assistant-chat-inner {
+    position: relative;
+    border-radius: var(--radius-sm);
+    transition: border-color 140ms ease;
+  }
+
+  .assistant-chat-inner:focus-within {
+    border-color: var(--input);
+  }
+
+  .assistant-prompt-mark {
+    position: absolute;
+    top: 0.625rem;
+    left: 0.625rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: var(--muted-foreground);
+    pointer-events: none;
+  }
+
+  .assistant-dock[data-expanded="false"] .assistant-prompt-mark {
+    display: none;
+  }
+
+  .assistant-chat-inner:focus-within .assistant-prompt-mark {
+    color: var(--foreground);
+  }
+
+  .assistant-chat-input {
+    padding: 0.625rem 0.75rem 0.25rem 1.75rem;
+    caret-color: var(--foreground);
+    caret-shape: block;
+  }
+
+  .assistant-tool-count {
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* The elbow that joins each tool call to its group. */
+  .assistant-tool-row {
+    position: relative;
+  }
+
+  .assistant-tool-row::before {
+    position: absolute;
+    inset-inline-start: -0.875rem;
+    top: -0.25rem;
+    bottom: -0.25rem;
+    pointer-events: none;
+    content: "";
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .assistant-tool-row::after {
+    position: absolute;
+    inset-inline-start: -0.875rem;
+    top: 0.25rem;
+    width: 0.625rem;
+    height: 0.625rem;
+    pointer-events: none;
+    content: "";
+    border-block-end: 1px solid var(--border);
+    border-inline-start: 1px solid var(--border);
+    border-end-start-radius: 0.625rem;
+  }
+
+  .assistant-tool-row:last-child::before {
+    bottom: auto;
+    height: 0.5rem;
+  }
+
+  .assistant-tool-name {
+    padding: 0.0625rem 0.25rem;
+    letter-spacing: 0.025em;
+    background: var(--wash-raised);
+    border-radius: var(--radius-sm);
+  }
+
+  .assistant-surface pre {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .assistant-result {
+    font-size: 0.8125rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-dock,
+    .assistant-dock-body {
+      transition: none;
+    }
+  }
+
+  /* Datasets landing: the composer over the star field, the dataset list as a sheet below. */
+  .assistant-stage {
+    --assistant-inset: 1rem;
+    --assistant-sheet-top: 350px;
+    margin: calc(-1 * var(--assistant-inset));
+  }
+
+  @media (min-width: 640px) {
+    .assistant-stage {
+      --assistant-sheet-top: clamp(350px, 56dvh, 560px);
+    }
+  }
+
+  @media (min-width: 768px) {
+    .assistant-stage {
+      --assistant-inset: 1.5rem;
+    }
+  }
+
+  .assistant-hero-content {
+    height: var(--assistant-sheet-top);
+  }
+
+  .assistant-datasets {
+    top: var(--assistant-sheet-top);
+    transition: top 560ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .assistant-datasets[data-expanded="true"] {
+    top: 0;
+  }
+
+  .assistant-dataset-handle {
+    top: 0;
+    border-bottom: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    transform: translate(-50%, -100%);
+    transition:
+      transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 150ms;
+  }
+
+  .assistant-datasets[data-expanded="true"] .assistant-dataset-handle {
+    border: 0;
+    transform: translate(-50%, 0);
+  }
+
+  .assistant-cursor {
+    width: 0.24em;
+    height: 0.8em;
+    animation: blink 1.1s step-end infinite;
+  }
+
+  .assistant-composer .assistant-prompt-mark {
+    top: 1rem;
+    left: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .assistant-composer .assistant-chat-input {
+    padding: 1rem 1rem 1rem 2rem;
+  }
+
+  .assistant-attachments {
+    scrollbar-width: thin;
+  }
+
+  .assistant-attachment {
+    animation: assistant-attachment-in 220ms ease-out both;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .assistant-attachment-remove {
+      opacity: 0;
+    }
+    .assistant-attachment:hover .assistant-attachment-remove,
+    .assistant-attachment:focus-within .assistant-attachment-remove {
+      opacity: 1;
+    }
+  }
+
+  @keyframes assistant-attachment-in {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-attachment {
+      animation: none;
+    }
+  }
+
+  .assistant-composer {
+    transition: border-color 150ms;
+  }
+
+  .assistant-composer:focus-within {
+    border-color: var(--input);
+  }
+
+  /* The landing composer becomes the canvas dock across the navigation. */
+  .assistant-surface {
+    view-transition-name: assistant-chat;
+  }
+
+  ::view-transition-group(assistant-chat) {
+    overflow: clip;
+    border-radius: var(--radius-md);
+    animation-duration: 700ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  ::view-transition-old(assistant-chat),
+  ::view-transition-new(assistant-chat) {
+    height: 100%;
+    object-fit: none;
+    object-position: bottom;
+    animation-duration: 350ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-datasets,
+    .assistant-dataset-handle {
+      transition: none;
+    }
+    .assistant-cursor {
+      animation: none;
+    }
+    ::view-transition-group(assistant-chat),
+    ::view-transition-old(assistant-chat),
+    ::view-transition-new(assistant-chat) {
+      animation-duration: 1ms;
+    }
+  }
+}

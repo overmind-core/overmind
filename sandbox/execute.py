@@ -247,6 +247,15 @@ class Slot:
     limit: int
 
 
+# Holders of memory that can give it back: asked when work waits for room.
+_yielders: list = []
+
+
+def on_pressure(give_way) -> None:
+    """Register ``give_way() -> bool``: free some reserved memory, true when it did."""
+    _yielders.append(give_way)
+
+
 def reserve(need: int, budget: int) -> Slot:
     token = uuid.uuid4().hex
     deadline = time.monotonic() + RESERVE_WAIT_SECONDS
@@ -263,9 +272,18 @@ def reserve(need: int, budget: int) -> Slot:
                         "since": time.time(),
                     }
                     return Slot(token, uid, int(need * _GROWTH))
+        if any(give_way() for give_way in _yielders):
+            continue
         if time.monotonic() > deadline:
             raise BusyError
         time.sleep(0.5)
+
+
+def renew(slot: Slot) -> None:
+    """A reservation expires after ``RESERVATION_SECONDS``; a live session outlasts that."""
+    with _ledger() as ledger:
+        if slot.token in ledger["runs"]:
+            ledger["runs"][slot.token]["since"] = time.time()
 
 
 def release(slot: Slot) -> None:
@@ -365,6 +383,19 @@ def _take_back(scratch: Path, uid: int | None) -> None:
                     continue
 
 
+def footprint(scratch: Path, leader: int, uid: int | None) -> int:
+    """Resident memory plus tmpfs files of one live child."""
+    members = _members(leader, uid)
+    return sum(rss for _, rss in members) + _files_bytes(
+        scratch, uid, [pid for pid, _ in members], []
+    )
+
+
+def end(scratch: Path, leader: int, uid: int | None) -> None:
+    _stop(leader, uid)
+    _take_back(scratch, uid)
+
+
 def claim(path: Path, max_bytes: int | None = None) -> BinaryIO | None:
     """Open a file the run wrote. The run controls the name: it can be a symlink to
     another run's data, a FIFO that blocks ``open`` for ever, or a hard link."""
@@ -389,6 +420,28 @@ def _tail(fh: BinaryIO, chars: int) -> str:
     return fh.read().decode("utf-8", "replace")[-chars:]
 
 
+def confinement(home: Path, uid: int | None, extra: dict[str, str] | None = None) -> dict:
+    """``Popen`` arguments every untrusted child shares: its own uid, a bare environment
+    and a home it owns."""
+    return {
+        "cwd": home,
+        "env": {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONNOUSERSITE": "1",
+            "OMP_NUM_THREADS": "2",
+            "MALLOC_ARENA_MAX": "2",
+            "HOME": str(home),
+            "TMPDIR": str(home),
+            "TIKTOKEN_CACHE_DIR": "/opt/sandbox/tiktoken",
+            **(extra or {}),
+        },
+        "umask": 0o077,
+        "start_new_session": True,
+        **({} if uid is None else {"user": uid, "group": uid, "extra_groups": []}),
+    }
+
+
 @dataclass
 class Child:
     argv: list[str]
@@ -410,31 +463,15 @@ def spawn(
         0 if uid is None else PROCESSES,
         FILE_DESCRIPTORS,
     ]
-    env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONNOUSERSITE": "1",
-        "OMP_NUM_THREADS": "2",
-        "MALLOC_ARENA_MAX": "2",
-        "HOME": str(scratch),
-        "TMPDIR": str(scratch),
-        "TIKTOKEN_CACHE_DIR": "/opt/sandbox/tiktoken",
-        **(child.env or {}),
-    }
-    identity = {} if uid is None else {"user": uid, "group": uid, "extra_groups": []}
     started = time.monotonic()
     stopped = ""
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
             proc = subprocess.Popen(
                 [sys.executable, "-I", *child.argv[:1], json.dumps(rlimits), *child.argv[1:]],
-                cwd=scratch,
-                env=env,
                 stdout=out,
                 stderr=err,
-                umask=0o077,
-                start_new_session=True,
-                **identity,
+                **confinement(scratch, uid, child.env),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return Outcome(error=f"The runner could not start: {exc}")

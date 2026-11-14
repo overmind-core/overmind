@@ -234,6 +234,34 @@ COVERAGE_MAP: dict[str, Entry] = {
         "A pipeline step runs from its retained package with its pinned runtime and no "
         "network; a failed exit never reports success.",
     ),
+    "assistant-loop": Entry(
+        S2,
+        INVARIANT,
+        "An assistant thread advances one saved step at a time: a step that lost its lease "
+        "writes nothing and is never resent to the model, a stop ends the run, a queued "
+        "message waits for the run unless the user sends it now, and paid work starts once "
+        "per approval of that exact call.",
+    ),
+    "assistant-api": Entry(
+        S1,
+        CONTRACT,
+        "Only a project member reaches a thread; the stream resumes after a cursor without "
+        "repeating an event; a guest cannot send.",
+    ),
+    "assistant-results": Entry(
+        S3,
+        CONTRACT,
+        "A presented result holds the rows and images the kernel computed; a file that is "
+        "missing or not a table or image refuses the document, and only a project member "
+        "reads an image.",
+    ),
+    "sandbox-sessions": Entry(
+        S3,
+        CONTRACT,
+        "Every session provider keeps kernel state between executions, never runs one "
+        "execution id twice, moves files both ways, reports a lost session as gone and keeps "
+        "a session from the processes and network of any other.",
+    ),
     "metrics-math": Entry(
         S3,
         LOGIC,

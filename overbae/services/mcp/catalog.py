@@ -364,6 +364,10 @@ from overbae.services.mcp.tools_signals import register_signal_tools  # noqa: E4
 
 register_signal_tools(CATALOG)
 
+from overbae.services.mcp.tools_handoffs import register_handoff_tools  # noqa: E402
+
+register_handoff_tools(CATALOG)
+
 from overbae.services.mcp.tools_inventory import register_inventory_tools  # noqa: E402
 
 register_inventory_tools(CATALOG)

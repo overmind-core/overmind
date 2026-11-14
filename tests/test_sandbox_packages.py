@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 
+from overbae.services.sandbox_sessions.conformance import LIBRARY_USE
 from sandbox import execute, packages
 from sandbox.protocol import HeaderReader, header_bytes
 
@@ -61,6 +62,19 @@ def test_package_runs_on_isolated_service_with_exact_rows_and_nested_modules(san
     assert json.loads(payload)["value"] == 9007199254740993
 
 
+def test_a_package_sees_no_other_process_and_opens_no_network_socket(sandbox_server):
+    code = """import os, socket
+for attempt in (lambda: os.listdir('/proc'), lambda: open('/proc/1/cmdline'), socket.socket):
+    try:
+        attempt()
+    except PermissionError:
+        continue
+    raise AssertionError('allowed')
+"""
+    _, result, _ = run_package(sandbox_server, code + COPY)
+    assert result["ok"], result
+
+
 def test_runtime_mismatch_never_executes(sandbox_server):
     status, result, _ = run_package(
         sandbox_server, "raise Exception('executed')", runtime="sha256:" + "0" * 64
@@ -71,17 +85,15 @@ def test_runtime_mismatch_never_executes(sandbox_server):
 
 @isolated
 def test_restored_libraries_and_tokenizers_work_without_network(sandbox_server):
-    code = """import importlib
-for name in ('pandas', 'numpy', 'pyarrow', 'duckdb', 'scipy', 'sklearn', 'rapidfuzz',
-             'regex', 'jsonschema', 'tiktoken', 'langdetect', 'datasketch', 'dateutil',
-             'pytz', 'yaml', 'unidecode', 'ftfy', 'simhash', 'emoji', 'langcodes',
-             'jellyfish', 'Levenshtein', 'markdownify', 'bs4', 'lxml', 'wordfreq'):
-    importlib.import_module(name)
+    code = (
+        LIBRARY_USE
+        + """
 import tiktoken
 assert tiktoken.get_encoding('cl100k_base').encode('Offline tokenization')
 assert tiktoken.get_encoding('o200k_base').encode('Offline tokenization')
 """
-    _, result, _ = run_package(sandbox_server, code + COPY, limits={"seconds": 60})
+    )
+    _, result, _ = run_package(sandbox_server, code + COPY, limits={"seconds": 120})
     assert result["ok"], result
 
 
@@ -111,8 +123,8 @@ def test_unsafe_output_is_rejected_without_blocking(sandbox_server, make):
 
 
 @isolated
-def test_child_has_no_credentials_capabilities_or_network_route(sandbox_server):
-    code = """import os,pathlib,socket
+def test_child_has_no_credentials_or_capabilities(sandbox_server):
+    code = """import os,pathlib
 assert not any(k in os.environ for k in ('SANDBOX_TOKEN','DATABASE_URL','AWS_SECRET_ACCESS_KEY','OPENROUTER_API_KEY'))
 assert not pathlib.Path('/var/run/docker.sock').exists()
 assert not pathlib.Path('/data/media').exists()
@@ -126,10 +138,6 @@ for path in ('/proc/1/environ', '/tmp/sandbox/ledger.json'):
         pass
     else:
         raise AssertionError(path)
-probe = socket.socket()
-probe.settimeout(1)
-assert probe.connect_ex(('1.1.1.1', 443)) != 0
-probe.close()
 """
     _, result, _ = run_package(sandbox_server, code + COPY)
     assert result["ok"], result
@@ -155,25 +163,18 @@ time.sleep(1)
 
 @isolated
 def test_detached_children_are_killed_before_completion(sandbox_server):
+    # A survivor would leave its mark in the one folder every run can write.
     script = """import os,time
 if os.fork() == 0:
     os.setsid()
-    time.sleep(60)
+    time.sleep(1.5)
+    open('/dev/shm/survived', 'w').close()
     os._exit(0)
 time.sleep(.3)
 """
     _, result, _ = run_package(sandbox_server, script + COPY)
     assert result["ok"], result
-    probe = """import os,pathlib
-for entry in pathlib.Path('/proc').iterdir():
-    if entry.name.isdigit():
-        try:
-            owner = entry.stat().st_uid
-            state = (entry / 'stat').read_text().rsplit(')', 1)[1].split()[0]
-        except OSError:
-            continue
-        assert not (20000 <= owner < 21000 and owner != os.getuid() and state not in ('Z','X'))
-"""
+    probe = "import os,time\ntime.sleep(2.5)\nassert not os.path.exists('/dev/shm/survived')\n"
     _, result, _ = run_package(sandbox_server, probe + COPY)
     assert result["ok"], result
 

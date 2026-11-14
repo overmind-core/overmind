@@ -18,6 +18,8 @@ x-env-common: &env-common
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  SANDBOX_SESSION_PROVIDER: ${SANDBOX_SESSION_PROVIDER:-native}
+  DAYTONA_API_KEY: ${DAYTONA_API_KEY:-}
   JEV_REQUESTS_PER_MINUTE: ${JEV_REQUESTS_PER_MINUTE:-1200}
   JEV_TOKENS_PER_SECOND: ${JEV_TOKENS_PER_SECOND:-250000}
   TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
@@ -163,6 +165,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  celery-assistant-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 --prefetch-multiplier=1 --disable-prefetch --hostname=assistant@%h -Q assistant
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Assistant steps open sandbox sessions.
+    networks: [default, sandbox_net]
 
   celery-traces-worker:
     <<: *build-common

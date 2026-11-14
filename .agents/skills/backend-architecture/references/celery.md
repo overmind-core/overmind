@@ -2,14 +2,15 @@
 
 Six workers over six queues. Workers are resource profiles; queues are fairness classes.
 
-| Worker        | Pool    | Conc | Holds                                                                               |
-| ------------- | ------- | ---- | ----------------------------------------------------------------------------------- |
-| `control`     | threads | 8    | orchestration, chord callbacks, FSM advances, reconcilers                           |
-| `io`          | threads | 24   | preparation, eval launch, serving, connector polling                                |
-| `io_traces`   | prefork | 4    | live span and trajectory scoring, signals                                           |
-| `batch`       | prefork | 6    | pipeline bindings, evaluation generation and scoring, partitions, native evaluation |
-| `landing`     | prefork | 1    | source imports                                                                      |
-| `interactive` | prefork | 4    | retained-package Workshop pipelines, runtime health                                 |
+| Worker        | Pool    | Conc | Holds                                                                                |
+| ------------- | ------- | ---- | ------------------------------------------------------------------------------------ |
+| `control`     | threads | 8    | orchestration, chord callbacks, FSM advances, reconcilers                            |
+| `io`          | threads | 24   | preparation, eval launch, serving, connector polling                                 |
+| `assistant`   | threads | 24   | assistant steps, one slot per streamed model reply; their reconciler is on `control` |
+| `io_traces`   | prefork | 4    | live span and trajectory scoring, signals                                            |
+| `batch`       | prefork | 6    | pipeline bindings, evaluation generation and scoring, partitions, native evaluation  |
+| `landing`     | prefork | 1    | source imports                                                                       |
+| `interactive` | prefork | 4    | retained-package Workshop pipelines, runtime health                                  |
 
 Each worker consumes only its own queue. Beat runs as its own `celery-beat` service; its tasks route like any other task.
 

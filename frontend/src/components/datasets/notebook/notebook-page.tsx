@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { AssistantDock } from "@/components/assistant/assistant-dock";
 import { CodingAgentIcon } from "@/components/coding-agent-icon";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
@@ -19,6 +20,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/spinner";
+import { useAssistantThread } from "@/hooks/use-assistant-thread";
 import {
   activeCellOf,
   type DatasetEvent,
@@ -44,6 +46,13 @@ import { usePersistedState } from "@/hooks/use-persisted-state";
 import { notify } from "@/lib/notify";
 import type { Cell } from "@/openapi";
 
+const PARTITIONS: Record<string, string> = {
+  calibration: "Calibration data",
+  development: "Development data",
+  final: "Final evaluation data",
+  train: "Training data",
+};
+
 export function DatasetNotebook({
   datasetId,
   projectId,
@@ -65,6 +74,9 @@ export function DatasetNotebook({
     dataset?.updatedAt?.getTime()
   );
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
+  const assistant = useAssistantThread(projectId, datasetId);
+  const assistantRuns =
+    assistant.thread?.state === "running" || assistant.thread?.state === "waiting";
   const capabilities = capabilitiesQuery.data?.results ?? [];
 
   const patch = usePatchDatasetMutation(datasetId);
@@ -213,7 +225,7 @@ export function DatasetNotebook({
         {node && (node.role || !local) && (
           <div className="mb-2 text-sm text-muted-foreground">
             <Link params={{ datasetId: owner }} search={{ projectId }} to="/datasets/$datasetId">
-              {node.role || node.datasetName}
+              {PARTITIONS[node.role] || node.role || node.datasetName}
             </Link>
           </div>
         )}
@@ -239,6 +251,7 @@ export function DatasetNotebook({
           intent={node?.intent ?? intent}
           key={cell.id}
           onSelect={() => setSelectedId(cell.id)}
+          partition={PARTITIONS[node?.role ?? ""] || node?.role}
           preparationActions={cell.id === actionCellId ? preparationControls(cell) : undefined}
           selected={cell.id === selectedId}
           sourceDetails={
@@ -257,7 +270,7 @@ export function DatasetNotebook({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div className="pointer-events-none absolute right-12 bottom-3 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
+      <div className="assistant-notices pointer-events-none absolute right-12 bottom-16 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
         <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
           {busy && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
@@ -272,7 +285,7 @@ export function DatasetNotebook({
               </Button>
             </div>
           )}
-          {!busy && preparing && (
+          {!busy && preparing && !assistantRuns && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
               <span className="inline-flex items-center gap-1.5">
                 {preparing.actorKind ? <CodingAgentIcon kind={preparing.actorKind} /> : null}
@@ -349,6 +362,14 @@ export function DatasetNotebook({
             storageKey={`workshop-flow:layers:${projectId}:${datasetId}`}
           />
         )}
+        <AssistantDock
+          assistant={assistant}
+          cells={cells}
+          datasetId={datasetId}
+          onSelectCell={scrollTo}
+          projectId={projectId}
+          selectedCell={selectedId}
+        />
       </div>
     </div>
   );
