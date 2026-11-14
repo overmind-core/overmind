@@ -73,6 +73,14 @@ CATALOG: tuple[Model, ...] = (
         "Typed decisions over supplied evidence; not a chat or training model.",
     ),
     Model(
+        "gpt-6.1-sol",
+        Vendor.OPENAI,
+        "openai/gpt-6.1-sol",
+        Tier.FLAGSHIP,
+        "OpenAI's flagship for long agentic work with tools.",
+        EFFORT,
+    ),
+    Model(
         "gpt-5.6-sol",
         Vendor.OPENAI,
         "openai/gpt-5.6-sol",
@@ -348,7 +356,7 @@ class Role(StrEnum):
 
 ROLE_CHAINS: dict[Role, tuple[str, ...]] = {
     Role.FAST: ("gpt-5.6-luna", "claude-sonnet-5", "gemini-3.8-flash"),
-    Role.AGENT: ("gpt-5.6-terra", "claude-sonnet-5", "gemini-3.1-pro-preview"),
+    Role.AGENT: ("gpt-6.1-sol", "claude-sonnet-5", "gemini-3.1-pro-preview"),
     Role.EXPLAIN: ("gpt-5-mini", "claude-haiku-4-5", "gemini-3.8-flash"),
 }
 
