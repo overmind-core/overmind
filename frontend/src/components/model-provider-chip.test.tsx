@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Identify providers without coupling assertions to vendor SVG paths.
-vi.mock("@lobehub/icons/es/Ai2/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Ai2/components/Color", () => ({
   default: () => <svg data-testid="logo-ai2" />,
 }));
 vi.mock("@lobehub/icons/es/Ai21/components/Mono", () => ({
@@ -13,31 +13,31 @@ vi.mock("@lobehub/icons/es/Ai21/components/Mono", () => ({
 vi.mock("@lobehub/icons/es/Anthropic/components/Mono", () => ({
   default: () => <svg data-testid="logo-anthropic" />,
 }));
-vi.mock("@lobehub/icons/es/Aws/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Aws/components/Color", () => ({
   default: () => <svg data-testid="logo-amazon" />,
 }));
-vi.mock("@lobehub/icons/es/Baichuan/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Baichuan/components/Color", () => ({
   default: () => <svg data-testid="logo-baichuan" />,
 }));
-vi.mock("@lobehub/icons/es/Baidu/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Baidu/components/Color", () => ({
   default: () => <svg data-testid="logo-baidu" />,
 }));
-vi.mock("@lobehub/icons/es/ByteDance/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/ByteDance/components/Color", () => ({
   default: () => <svg data-testid="logo-bytedance" />,
 }));
-vi.mock("@lobehub/icons/es/Claude/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Claude/components/Color", () => ({
   default: () => <svg data-testid="logo-claude" />,
 }));
-vi.mock("@lobehub/icons/es/Cohere/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Cohere/components/Color", () => ({
   default: () => <svg data-testid="logo-cohere" />,
 }));
 vi.mock("@lobehub/icons/es/Cursor/components/Mono", () => ({
   default: () => <svg data-testid="logo-cursor" />,
 }));
-vi.mock("@lobehub/icons/es/DeepSeek/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/DeepSeek/components/Color", () => ({
   default: () => <svg data-testid="logo-deepseek" />,
 }));
-vi.mock("@lobehub/icons/es/Gemini/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Gemini/components/Color", () => ({
   default: () => <svg data-testid="logo-google" />,
 }));
 vi.mock("@lobehub/icons/es/Inception/components/Mono", () => ({
@@ -46,28 +46,28 @@ vi.mock("@lobehub/icons/es/Inception/components/Mono", () => ({
 vi.mock("@lobehub/icons/es/Inflection/components/Mono", () => ({
   default: () => <svg data-testid="logo-inflection" />,
 }));
-vi.mock("@lobehub/icons/es/Kimi/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Kimi/components/Color", () => ({
   default: () => <svg data-testid="logo-kimi" />,
 }));
 vi.mock("@lobehub/icons/es/Liquid/components/Mono", () => ({
   default: () => <svg data-testid="logo-liquid" />,
 }));
-vi.mock("@lobehub/icons/es/Meta/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Meta/components/Color", () => ({
   default: () => <svg data-testid="logo-meta" />,
 }));
-vi.mock("@lobehub/icons/es/Microsoft/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Microsoft/components/Color", () => ({
   default: () => <svg data-testid="logo-microsoft" />,
 }));
-vi.mock("@lobehub/icons/es/Minimax/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Minimax/components/Color", () => ({
   default: () => <svg data-testid="logo-minimax" />,
 }));
-vi.mock("@lobehub/icons/es/Mistral/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Mistral/components/Color", () => ({
   default: () => <svg data-testid="logo-mistral" />,
 }));
 vi.mock("@lobehub/icons/es/NousResearch/components/Mono", () => ({
   default: () => <svg data-testid="logo-nous" />,
 }));
-vi.mock("@lobehub/icons/es/Nvidia/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Nvidia/components/Color", () => ({
   default: () => <svg data-testid="logo-nvidia" />,
 }));
 vi.mock("@lobehub/icons/es/OpenAI/components/Mono", () => ({
@@ -76,19 +76,19 @@ vi.mock("@lobehub/icons/es/OpenAI/components/Mono", () => ({
 vi.mock("@lobehub/icons/es/OpenRouter/components/Mono", () => ({
   default: () => <svg data-testid="logo-openrouter" />,
 }));
-vi.mock("@lobehub/icons/es/Perplexity/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Perplexity/components/Color", () => ({
   default: () => <svg data-testid="logo-perplexity" />,
 }));
-vi.mock("@lobehub/icons/es/Qwen/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Qwen/components/Color", () => ({
   default: () => <svg data-testid="logo-qwen" />,
 }));
-vi.mock("@lobehub/icons/es/Stepfun/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Stepfun/components/Color", () => ({
   default: () => <svg data-testid="logo-stepfun" />,
 }));
-vi.mock("@lobehub/icons/es/Tencent/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Tencent/components/Color", () => ({
   default: () => <svg data-testid="logo-tencent" />,
 }));
-vi.mock("@lobehub/icons/es/Upstage/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Upstage/components/Color", () => ({
   default: () => <svg data-testid="logo-upstage" />,
 }));
 vi.mock("@lobehub/icons/es/XAI/components/Mono", () => ({
@@ -97,10 +97,10 @@ vi.mock("@lobehub/icons/es/XAI/components/Mono", () => ({
 vi.mock("@lobehub/icons/es/XiaomiMiMo/components/Mono", () => ({
   default: () => <svg data-testid="logo-xiaomi" />,
 }));
-vi.mock("@lobehub/icons/es/Yi/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Yi/components/Color", () => ({
   default: () => <svg data-testid="logo-yi" />,
 }));
-vi.mock("@lobehub/icons/es/Zhipu/components/Mono", () => ({
+vi.mock("@lobehub/icons/es/Zhipu/components/Color", () => ({
   default: () => <svg data-testid="logo-zhipu" />,
 }));
 

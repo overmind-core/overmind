@@ -492,6 +492,7 @@ export function NotebookCell({
   capabilityName,
   capabilities,
   active,
+  partition,
   editable,
   selected,
   onSelect,
@@ -505,6 +506,8 @@ export function NotebookCell({
   capabilityName: string;
   capabilities: CapabilityChoice[];
   active: boolean;
+  /** The cell's part of a training split, named for the reader. */
+  partition?: string;
   editable: boolean;
   selected: boolean;
   onSelect: () => void;
@@ -578,7 +581,7 @@ export function NotebookCell({
               >
                 {version}
               </button>
-              {source ? <span>Source</span> : <span>{cell.title}</span>}
+              <span>{partition || (source ? "Source" : cell.title)}</span>
             </span>
             <span
               aria-label={`${cell.title} cell`}

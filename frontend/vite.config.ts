@@ -15,12 +15,12 @@ const config = defineConfig({
     // Optimize Dep" → "Failed to fetch dynamically imported module".
     include: [
       "@lobehub/icons/es/Anthropic/components/Mono",
-      "@lobehub/icons/es/Cohere/components/Mono",
-      "@lobehub/icons/es/Gemini/components/Mono",
-      "@lobehub/icons/es/Meta/components/Mono",
-      "@lobehub/icons/es/Mistral/components/Mono",
+      "@lobehub/icons/es/Cohere/components/Color",
+      "@lobehub/icons/es/Gemini/components/Color",
+      "@lobehub/icons/es/Meta/components/Color",
+      "@lobehub/icons/es/Mistral/components/Color",
       "@lobehub/icons/es/OpenAI/components/Mono",
-      "@lobehub/icons/es/Qwen/components/Mono",
+      "@lobehub/icons/es/Qwen/components/Color",
       "@lobehub/icons/es/XAI/components/Mono",
     ],
   },
