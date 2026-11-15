@@ -27,8 +27,6 @@ EXPECTED_TOOL_NAMES = {
     "inspect_jobs",
     "list_objects",
     "get_project_overview",
-    "start_dataset_preparation",
-    "update_dataset_preparation",
     "report_onboarding_progress",
     "save_training_plan",
     "deploy_finetune",

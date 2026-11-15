@@ -45,7 +45,7 @@ def test_data(
 
     read_a_scanned_document_once_per_page(workshop, cli, sample_agent, worker)
     publish_version_bound_analytics(workshop, cli, sample_agent, rest, worker, tmp_path)
-    keep_one_preparation_until_the_agent_finishes(
+    a_failed_preparation_is_repaired_from_the_console(
         console, workshop, cli, sample_agent, project, worker, tmp_path
     )
 
@@ -519,7 +519,7 @@ def publish_version_bound_analytics(workshop, cli, sample_agent, rest, worker, t
     assert rest_cell["analytics"] == report
 
 
-def keep_one_preparation_until_the_agent_finishes(
+def a_failed_preparation_is_repaired_from_the_console(
     console, workshop, cli, sample_agent, project, worker, tmp_path
 ):
     dataset = workshop.call(
@@ -528,20 +528,6 @@ def keep_one_preparation_until_the_agent_finishes(
     )["dataset"]["id"]
     console.goto(f"/datasets?projectId={project}")
     console.sees("Continuous preparation")
-    args = {"dataset": dataset, "request_key": "continuous-preparation"}
-    started = workshop.call("start_dataset_preparation", args)["preparation_workflow"]
-    assert (
-        workshop.call("start_dataset_preparation", args)["preparation_workflow"]["id"]
-        == started["id"]
-    )
-    console.sees("Preparing")
-    workflow = {"dataset": dataset, "preparation_id": started["id"]}
-    assert workshop.call_result(
-        "update_dataset_preparation", {**workflow, "state": "completed"}
-    ).isError
-    assert workshop.call_result(
-        "start_dataset_preparation", {**args, "request_key": "another"}
-    ).isError
     upload(cli, sample_agent, tickets(tmp_path), "--dataset", dataset)
     drain(worker)
     source = workshop.call("inspect_dataset", {"dataset": dataset})["active"]
@@ -625,27 +611,4 @@ def keep_one_preparation_until_the_agent_finishes(
     )
     console.save_evidence("dataset-preparation-repaired")
     console.goto(f"/datasets?projectId={project}")
-    console.sees("Preparing")
-    current = workshop.call("inspect_dataset_workbench", {"dataset": dataset})
-    assert current["preparation_workflow"]["state"] == "preparing"
-    events = workshop.read("overmind://activity")["results"]
-    preparation_events = [e for e in events if e["kind"] == "dataset_preparation"]
-    assert len(preparation_events) == 1
-    event_id = preparation_events[0]["id"]
-    assert not [e for e in events if e["task_id"] == result["job"]["id"]]
-    workshop.call("update_dataset_preparation", {**workflow, "state": "paused"})
-    console.sees("Preparation paused")
-    workshop.call("update_dataset_preparation", {**workflow, "state": "preparing"})
-    console.sees("Preparing")
-    output = workshop.call("inspect_dataset", {"dataset": dataset})["active"]["id"]
-    completion = {**workflow, "state": "completed", "outputs": [output]}
-    workshop.call("update_dataset_preparation", completion)
-    workshop.call("update_dataset_preparation", completion)
-    console.press("unread notification")
-    console.wait_until(
-        f"() => document.querySelector('[data-activity-id=\"{event_id}\"]')?.dataset.activityStatus === 'completed'"
-    )
     console.sees("Ready")
-    assert workshop.call_result(
-        "update_dataset_preparation", {**workflow, "state": "preparing"}
-    ).isError

@@ -103,6 +103,19 @@ def test_page_sorts_filters_and_indexes(table):
         store.page(table, filters=[{"field": "score", "op": "regex", "value": "x"}])
 
 
+def test_a_searched_page_keeps_file_positions_and_the_whole_total(tmp_path):
+    path = tmp_path / "many.parquet"
+    store.write_rows(
+        path, [{"text": "match" if i % 3 == 0 else "other", "n": i} for i in range(10)]
+    )
+    pages = [store.page(path, search="MATCH", limit=2, offset=offset) for offset in (0, 2, 9)]
+    assert [page["total"] for page in pages] == [4, 4, 4]
+    assert [[row["_index"] for row in page["rows"]] for page in pages] == [[0, 3], [6, 9], []]
+    assert (
+        store.page(path, search="MATCH", sort="n", direction="desc", limit=1)["rows"][0]["n"] == 9
+    )
+
+
 def test_column_stats_and_rows_by_index(table):
     stats = {c["name"]: c for c in store.column_stats(table)}
     assert stats["expected_output"]["null_rate"] == pytest.approx(1 / 3)

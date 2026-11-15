@@ -490,12 +490,10 @@ def page(
     kinds = {spec["name"]: spec["type"] for spec in manifest}
     names = set(kinds)
     where, params = _filter_sql(filters or [], names)
-    if search:
-        columns = " || ' ' || ".join(
-            f"COALESCE(CAST({quote_identifier(n)} AS VARCHAR), '')" for n in kinds
-        )
-        where = f"({where}) AND ({columns}) ILIKE ?"
-        params.append(f"%{search}%")
+    if search and kinds:
+        anywhere = " OR ".join(f"CAST({quote_identifier(n)} AS VARCHAR) ILIKE ?" for n in kinds)
+        where = f"({where}) AND ({anywhere})"
+        params.extend([f"%{search}%"] * len(kinds))
     order = '"_index" ASC'
     if sort:
         if sort not in names and sort != "_index":
@@ -507,12 +505,16 @@ def page(
             order = f"{quote_identifier(sort)} {way} NULLS LAST"
         else:
             order = f"CAST({quote_identifier(sort)} AS VARCHAR) {way} NULLS LAST"
-    con = connect(t=path)
+    con = connect()
     try:
-        base = 'SELECT (row_number() OVER ()) - 1 AS "_index", * FROM "t"'
-        total = con.execute(f"SELECT count(*) FROM ({base}) WHERE {where}", params).fetchone()[0]
+        # The file's own row number keeps the scan parallel; a window function serialises it.
+        literal = str(path).replace("'", "''")
+        con.execute(
+            'CREATE VIEW "t" AS SELECT file_row_number AS "_index", * EXCLUDE (file_row_number) '
+            f"FROM read_parquet('{literal}', file_row_number = true)"
+        )
         cur = con.execute(
-            f"SELECT * FROM ({base}) WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
+            f'SELECT * FROM "t" WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?',
             [*params, int(limit), int(offset)],
         )
         rows = [
@@ -522,6 +524,10 @@ def page(
             }
             for row in _records(cur)
         ]
+        if len(rows) < limit and (rows or not offset):
+            total = offset + len(rows)
+        else:
+            total = con.execute(f'SELECT count(*) FROM "t" WHERE {where}', params).fetchone()[0]
     finally:
         con.close()
     return {"rows": rows, "total": int(total), "columns": manifest}

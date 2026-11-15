@@ -1,7 +1,7 @@
 from asgiref.sync import sync_to_async
 
-from overbae.models import Capability, DatasetPreparation
-from overbae.services.datasets import lifecycle, pipeline_bindings, preparation_workflow, workbench
+from overbae.models import Capability
+from overbae.services.datasets import lifecycle, pipeline_bindings, workbench
 from overbae.services.mcp.contracts.common import ResourceLinkContract
 from overbae.services.mcp.contracts.workbench import (
     BindingInput,
@@ -13,9 +13,7 @@ from overbae.services.mcp.contracts.workbench import (
     RunInput,
     SaveBindingInput,
     SaveInput,
-    StartPreparationInput,
     UpdateInput,
-    UpdatePreparationInput,
     ValidateInput,
     compact_run,
 )
@@ -30,22 +28,6 @@ def invoke(name, payload, context):
     try:
         if name == "inspect_dataset_workbench":
             result = workbench.describe(dataset, project=context.project, **args)
-            latest = (
-                DatasetPreparation.objects.filter(dataset=dataset).order_by("-created_at").first()
-                if dataset
-                else None
-            )
-            result["preparation_workflow"] = (
-                preparation_workflow.describe(latest) if latest else None
-            )
-        elif name == "start_dataset_preparation":
-            result["preparation_workflow"] = preparation_workflow.describe(
-                preparation_workflow.start(dataset, context, **args)
-            )
-        elif name == "update_dataset_preparation":
-            result["preparation_workflow"] = preparation_workflow.describe(
-                preparation_workflow.update(dataset, outputs=args.pop("outputs", []), **args)
-            )
         elif name == "save_dataset_pipeline":
             result["pipeline"] = workbench.pipeline_record(
                 workbench.save_pipeline(context.project, context.user, dataset=dataset, **args)
@@ -181,22 +163,10 @@ def register_workbench_tools(catalog):
 
     definitions = [
         (
-            "start_dataset_preparation",
-            StartPreparationInput,
-            False,
-            "Begin agent work; retry request_key unchanged. Keeps Preparing between jobs. Inspect to resume; explicitly finish.",
-        ),
-        (
-            "update_dataset_preparation",
-            UpdatePreparationInput,
-            False,
-            "Overall state: preparing resumes, paused waits, cancelled abandons. Complete after all work/jobs/uploads finish with published output UUIDs. Terminal states immutable.",
-        ),
-        (
             "inspect_dataset_workbench",
             InspectInput,
             True,
-            "Read recipes/runs/bindings/preparation_workflow. pipeline selects revision/family history; dataset filters runs/bindings. Code in resources; no execution.",
+            "Read recipes/runs/bindings. pipeline selects revision/family history; dataset filters runs/bindings. Code in resources; no execution.",
         ),
         (
             "save_dataset_pipeline",

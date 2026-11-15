@@ -10,9 +10,7 @@ from rest_framework.test import APIClient
 
 from overbae.models import (
     Activity,
-    Cell,
     Dataset,
-    DatasetPipelineRun,
     FinetuningJob,
     ProjectMembership,
 )
@@ -182,53 +180,6 @@ def test_reported_onboarding_uses_current_roadmap_without_notification_noise():
             "report_onboarding_progress", {"run_id": run_id, "completed_steps": count}, context
         )
         assert rejected.isError
-
-
-def test_preparation_completion_rejects_foreign_outputs_and_unfinished_jobs():
-    context = mcp_context(permission=["read", "write"], client_name="codex")
-    peer = mcp_context(permission=["read", "write"])
-    dataset = Dataset.objects.create(project=context.project, name="Preparing", state="idle")
-    foreign = Dataset.objects.create(project=peer.project, name="Foreign", state="idle")
-    source = Cell.objects.create(dataset=dataset, position=0, state="ok", fingerprint="a" * 64)
-    foreign_cell = Cell.objects.create(
-        dataset=foreign, position=0, state="ok", fingerprint="b" * 64
-    )
-    workflow = call(
-        context, "start_dataset_preparation", dataset=str(dataset.pk), request_key="prepare"
-    )["preparation_workflow"]
-    assert workflow["actor_kind"] == "codex"
-    assert workflow["actor_name"] == "Codex"
-    args = {
-        "dataset": str(dataset.pk),
-        "preparation_id": workflow["id"],
-        "state": "completed",
-        "outputs": [str(foreign_cell.pk)],
-    }
-    assert call_tool("update_dataset_preparation", args, context).isError
-    args["outputs"] = [str(source.pk)]
-    DatasetPipelineRun.objects.create(
-        dataset=dataset,
-        source=source,
-        source_fingerprint=source.fingerprint,
-        request_key="pending",
-        state="queued",
-    )
-    assert call_tool("update_dataset_preparation", args, context).isError
-    assert call_tool("update_dataset_preparation", args, peer).isError
-    assert (
-        call(context, "inspect_dataset_workbench", dataset=str(dataset.pk))["preparation_workflow"][
-            "state"
-        ]
-        == "preparing"
-    )
-    call(
-        context,
-        "update_dataset_preparation",
-        dataset=str(dataset.pk),
-        preparation_id=workflow["id"],
-        state="cancelled",
-    )
-    assert call_tool("update_dataset_preparation", args, context).isError
 
 
 @pytest.mark.parametrize(

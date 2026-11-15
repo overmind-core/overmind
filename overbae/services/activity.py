@@ -14,7 +14,6 @@ from overbae.models import (
     ActivityRead,
     Capability,
     DatasetPipelineRun,
-    DatasetPreparation,
     FinetuningJob,
 )
 from overbae.services.datasets import events
@@ -27,6 +26,7 @@ AGENTS = (
     (re.compile(r"^cursor\b"), "cursor", "Cursor"),
     (re.compile(r"^gemini[- ]cli\b"), "gemini", "Gemini CLI"),
     (re.compile(r"^opencode\b"), "opencode", "OpenCode"),
+    (re.compile(r"^overmind assistant$"), "overmind", "Overmind assistant"),
 )
 
 
@@ -54,7 +54,8 @@ def connection_actor(context):
 
 
 def connected(context):
-    if context.client_name == "overmind-transfer":
+    # The platform's own clients connect nothing: no agent was set up.
+    if context.client_name in ("overmind-transfer", "overmind assistant"):
         return
     actor_kind, actor_name = connection_actor(context)
     ActivityClient.objects.get_or_create(
@@ -175,20 +176,9 @@ def record(
     task_id="",
     status="completed",
 ):
-    preparation = None
-    if (
-        task_kind == "dataset_pipeline"
-        or kind in {"source_uploaded", "source_ready", "preparation_published"}
-        or action in {"Saved a transformation for", "Saved dataset pipeline"}
-    ):
-        dataset_ids = [item["id"] for item in assets if item["kind"] == "dataset"]
-        preparation = DatasetPreparation.objects.filter(
-            project_id=project_id, dataset_id__in=dataset_ids, state__in=["preparing", "paused"]
-        ).first()
     event, created = Activity.objects.get_or_create(
         key=key,
         defaults={
-            "preparation": preparation,
             "project_id": project_id,
             "user_id": user_id,
             "kind": kind,
@@ -201,10 +191,6 @@ def record(
             "status": status,
         },
     )
-    if created and preparation:
-        Activity.objects.filter(key=f"preparation:{preparation.pk}").update(
-            updated_at=timezone.now()
-        )
     relabelled = (
         event.actor_kind == "overmind"
         and actor_kind != "overmind"
@@ -268,13 +254,8 @@ def update_task(project_id, kind, identity, status):
         .values("pk")[:1]
     )
     rows = Activity.objects.filter(pk__in=latest).exclude(status=normalized)
-    preparation_ids = list(rows.exclude(preparation=None).values_list("preparation_id", flat=True))
     if rows.update(status=normalized, updated_at=timezone.now()):
         changed(project_id)
-    if preparation_ids:
-        Activity.objects.filter(
-            key__in=[f"preparation:{identity}" for identity in preparation_ids]
-        ).update(updated_at=timezone.now())
 
 
 def mcp_succeeded(name, definition, output, context):
@@ -289,8 +270,6 @@ def mcp_succeeded(name, definition, output, context):
         ).exists()
     ):
         connected(context)
-    if name in {"start_dataset_preparation", "update_dataset_preparation"}:
-        return
     if not context.project or definition.read_only:
         return
     if name.partition("_")[0] not in ACTION_VERBS:
@@ -532,7 +511,7 @@ def source_ready(dataset, cell_id, user=None):
 
 def feed(query, *, offset=0, limit=25):
     observed_at = timezone.now()
-    query = query.filter(updated_at__lte=observed_at, preparation__isnull=True).exclude(
+    query = query.filter(updated_at__lte=observed_at).exclude(
         kind__startswith="onboarding_progress_"
     )
     count = query.count()

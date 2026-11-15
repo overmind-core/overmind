@@ -305,6 +305,7 @@ def submit(
         from overbae.tasks.datasets import execute_pipeline
 
         transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
+        transaction.on_commit(lambda: events.publish(locked.pk, {"type": "dataset_changed"}))
     run.refresh_from_db()
     return run
 

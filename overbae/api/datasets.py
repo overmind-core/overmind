@@ -38,7 +38,6 @@ from overbae.services.datasets import (
     lifecycle,
     paths,
     preparation,
-    preparation_workflow,
     selection,
     store,
     workbench,
@@ -49,6 +48,15 @@ from overbae.services.datasets.versions import resolve_cell
 logger = logging.getLogger(__name__)
 
 _ROW_PAGE_MAX = 500
+
+
+def _stamp(dataset_id):
+    """When the dataset last changed, on a connection that does not stay open with the
+    stream that asks."""
+    try:
+        return Dataset.objects.filter(pk=dataset_id).values_list("updated_at", flat=True).first()
+    finally:
+        connections.close_all()
 
 
 class ServerSentEventRenderer(JSONRenderer):
@@ -235,16 +243,6 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         except lifecycle.DatasetError as exc:
             return _error(exc)
         return Response(DatasetSerializer(dataset).data, status=202)
-
-    @extend_schema(request=None, responses={200: DatasetSerializer})
-    @action(detail=True, methods=["post"], url_path="end-preparation")
-    def end_preparation(self, request, id=None):
-        dataset = self.get_object()
-        try:
-            preparation_workflow.end(dataset)
-        except lifecycle.DatasetError as exc:
-            return _error(exc)
-        return Response(DatasetSerializer(Dataset.objects.get(pk=dataset.pk)).data)
 
     @extend_schema(responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
     @action(detail=True, methods=["get"], url_path=r"sources/(?P<artifact_id>[0-9a-f]{64})")
@@ -464,7 +462,9 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
             return [JSONRenderer(), ServerSentEventRenderer()]
         return super().get_renderers()
 
-    @extend_schema(summary="Dataset event stream (SSE): landing, cells, runs and chat")
+    @extend_schema(
+        summary="Dataset event stream (SSE): what changed in the dataset and its conversation"
+    )
     @action(detail=True, methods=["get"], url_path="events")
     def events(self, request, id=None):
         from asgiref.sync import sync_to_async
@@ -482,12 +482,12 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
             r = aredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
             pubsub = r.pubsub()
             try:
+                # Subscribed first: a change after the page's reads reaches it.
                 await pubsub.subscribe(ch)
-                replayed_through = 0
-                for evt in await sync_to_async(events.replay)(dataset.id):
-                    replayed_through = max(replayed_through, int(evt.get("seq") or 0))
-                    yield f"data: {json.dumps(evt, default=str)}\n\n"
-                yield 'data: {"type": "replay.done"}\n\n'
+                # A page whose dataset changed before this point reads it again.
+                stamp = await sync_to_async(_stamp)(dataset.pk)
+                connected = {"type": "connected", "updated_at": stamp and stamp.isoformat()}
+                yield f"data: {json.dumps(connected, default=str)}\n\n"
                 idle = 0.0
                 while True:
                     message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
@@ -498,14 +498,7 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
                             yield ": ping\n\n"
                         continue
                     idle = 0.0
-                    data = message["data"]
-                    try:
-                        seq = int(json.loads(data).get("seq") or 0)
-                    except (ValueError, AttributeError):
-                        seq = 0
-                    if seq and seq <= replayed_through:
-                        continue
-                    yield f"data: {data}\n\n"
+                    yield f"data: {message['data']}\n\n"
             finally:
                 try:
                     await pubsub.unsubscribe(ch)
