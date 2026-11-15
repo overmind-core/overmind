@@ -392,9 +392,10 @@ _OWN = {"run_python": _run_python, "run_pipeline": _run_pipeline, "present": _pr
 
 
 def _compact(value):
-    """MCP results carry every optional field; the empty ones only cost the model tokens."""
+    """MCP results carry every optional field; the empty ones only cost the model tokens.
+    Rows are data: a null or empty value in one is a measured value and stays."""
     if isinstance(value, dict):
-        kept = {key: _compact(item) for key, item in value.items()}
+        kept = {key: item if key == "rows" else _compact(item) for key, item in value.items()}
         return {key: item for key, item in kept.items() if item not in (None, [], {})}
     if isinstance(value, list):
         return [_compact(item) for item in value]

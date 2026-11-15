@@ -73,7 +73,7 @@ export function AssistantQueue({
                   }
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
-                    if (editing.text.trim()) {
+                    if (!disabled && editing.text.trim()) {
                       change(message, "edit", {
                         revision: editing.revision,
                         text: editing.text.trim(),
@@ -95,7 +95,7 @@ export function AssistantQueue({
                   Cancel edit
                 </Button>
                 <Button
-                  disabled={!editing.text.trim()}
+                  disabled={disabled || !editing.text.trim()}
                   onClick={() => {
                     change(message, "edit", {
                       revision: editing.revision,

@@ -3,6 +3,7 @@ from conftest import frozen_dataset
 from factories import auth_client, make_member, make_project, make_user
 
 from overbae.models import AssistantThread
+from overbae.services import workspaces
 from overbae.services.assistant import log
 from overbae.tasks.assistant import run_turn, stop_kernel
 
@@ -98,7 +99,17 @@ def test_stop_during_a_turn_ends_the_kernel_at_once(
     with django_capture_on_commit_callbacks(execute=True):
         stopped = auth_client(user).post(f"/api/assistant-threads/{thread.pk}/stop/")
     assert stopped.status_code == 202 and stopped.data["stop_requested"]
-    assert ended == [(str(project.pk), thread.pk.hex)]
+    assert ended == [(str(project.pk), str(thread.pk), thread.turn)]
+
+    # A stop that arrives after a later turn began leaves that turn's kernel alone.
+    provider, conversation = workspaces.provider(), thread.pk.hex
+    try:
+        assert provider.run(str(project.pk), conversation, "x = 1", 60).ok
+        AssistantThread.objects.filter(pk=thread.pk).update(turn=thread.turn + 1)
+        stop_kernel(*ended[0])
+        assert provider.run(str(project.pk), conversation, "x", 60).ok
+    finally:
+        provider.remove(str(project.pk))
 
 
 def test_another_project_and_a_guest_cannot_use_a_conversation(woken):

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -753,36 +754,56 @@ def stream_llm_tools(
     text, calls, usage, served, finish = "", {}, None, None, None
     reasoning: dict[tuple, dict] = {}
     started = time.monotonic()
+    expired = threading.Event()
     try:
         with _stream_client().chat.completions.create(**completion_kwargs) as stream:
-            for chunk in stream:
-                if time.monotonic() - started > deadline:
+            # A provider can keep the stream open with keep-alive comments and no chunk:
+            # the deadline closes it from outside the wait.
+            timer = threading.Timer(deadline, lambda: (expired.set(), stream.close()))
+            timer.daemon = True
+            timer.start()
+            try:
+                for chunk in stream:
+                    usage, served = chunk.usage or usage, chunk.model or served
+                    for choice in chunk.choices:
+                        finish = choice.finish_reason or finish
+                        text += choice.delta.content or ""
+                        for part in _extra(choice.delta).get("reasoning_details") or []:
+                            # Fragments of one record share its index; records without one
+                            # stay apart by their id.
+                            position = part.get("index")
+                            identity = position if position is not None else part.get("id")
+                            detail = reasoning.setdefault((identity, part.get("type")), {})
+                            for key, value in part.items():
+                                streamed = key in _REASONING_TEXT and isinstance(value, str)
+                                detail[key] = detail.get(key, "") + value if streamed else value
+                        for piece in choice.delta.tool_calls or []:
+                            call = calls.setdefault(
+                                piece.index,
+                                {
+                                    "id": "",
+                                    "type": "function",
+                                    "function": {"name": "", "arguments": ""},
+                                },
+                            )
+                            call["id"] = piece.id or call["id"]
+                            if piece.function is not None:
+                                call["function"]["name"] += piece.function.name or ""
+                                call["function"]["arguments"] += piece.function.arguments or ""
+                        if on_progress is not None:
+                            on_progress(text, [calls[index] for index in sorted(calls)])
+                if expired.is_set():
                     raise CompletionDeadlineExceededError(
                         f"Completion deadline exceeded after {deadline:g}s"
                     )
-                usage, served = chunk.usage or usage, chunk.model or served
-                for choice in chunk.choices:
-                    finish = choice.finish_reason or finish
-                    text += choice.delta.content or ""
-                    for part in _extra(choice.delta).get("reasoning_details") or []:
-                        detail = reasoning.setdefault((part.get("index"), part.get("type")), {})
-                        for key, value in part.items():
-                            streamed = key in _REASONING_TEXT and isinstance(value, str)
-                            detail[key] = detail.get(key, "") + value if streamed else value
-                    for piece in choice.delta.tool_calls or []:
-                        call = calls.setdefault(
-                            piece.index,
-                            {
-                                "id": "",
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""},
-                            },
-                        )
-                        call["id"] = piece.id or call["id"]
-                        call["function"]["name"] += piece.function.name or ""
-                        call["function"]["arguments"] += piece.function.arguments or ""
-                    if on_progress is not None:
-                        on_progress(text, [calls[index] for index in sorted(calls)])
+            except Exception:
+                if expired.is_set():
+                    raise CompletionDeadlineExceededError(
+                        f"Completion deadline exceeded after {deadline:g}s"
+                    ) from None
+                raise
+            finally:
+                timer.cancel()
     except openai.OpenAIError as exc:
         raise RuntimeError(f"Error calling LLM: {exc}") from exc
     text, tool_calls = text.strip(), [calls[index] for index in sorted(calls)]

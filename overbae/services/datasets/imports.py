@@ -765,8 +765,13 @@ def execute(task_id, inputs):
         # Lazy: the assistant reaches the MCP catalog, which imports this module.
         from overbae.services.assistant.turn import wake_dataset
 
-        for target_id in _target_ids(run):
-            operations.finished(target_id, task_id=str(run.pk))
-            # A message sent with the upload waited for its source, landed or failed.
-            wake_dataset(target_id)
-        shutil.rmtree(stage, ignore_errors=True)
+        try:
+            for target_id in _target_ids(run):
+                operations.finished(target_id, task_id=str(run.pk))
+                # A message sent with the upload waited for its source, landed or failed.
+                try:
+                    wake_dataset(target_id)
+                except Exception:  # noqa: BLE001 - the next message wakes the conversation
+                    logger.exception("assistant not woken for dataset %s", target_id)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)

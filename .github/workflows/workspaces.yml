@@ -25,13 +25,37 @@ jobs:
   daytona:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: overbae
+          POSTGRES_USER: overbae
+          POSTGRES_PASSWORD: overbae
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U overbae"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DJANGO_DEBUG: "True"
+      POSTGRES_HOST: localhost
       WORKSPACE_PROVIDER: daytona
       DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
-      # Required by settings; this job never calls the native sandbox.
+      # Required by settings; this job reaches only Daytona and Postgres.
       SANDBOX_URL: http://unused
       SANDBOX_TOKEN: unused
+      OPENROUTER_API_KEY: unused
+      MODAL_TOKEN_ID: unused
+      MODAL_TOKEN_SECRET: unused
+      INFERENCE_API_URL: http://unused
+      INFERENCE_API_KEY: unused
+      AWS_ACCESS_KEY_ID: unused
+      AWS_SECRET_ACCESS_KEY: unused
+      AWS_BUCKET_NAME: unused
+      HF_TOKEN: unused
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

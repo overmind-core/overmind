@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from celery import shared_task
 
 
@@ -10,12 +12,14 @@ def run_turn(thread_id):
 
 
 @shared_task(name="overbae.tasks.assistant.stop_kernel")
-def stop_kernel(project_id, conversation):
-    """End a conversation's kernel, also during a cell: the turn that waits for the cell
-    gets its answer and sees the stop."""
+def stop_kernel(project_id, thread_id, turn):
+    """End the kernel of the turn that was stopped, also during a cell: that turn gets its
+    answer and sees the stop. A later turn's kernel is left alone."""
+    from overbae.models import AssistantThread
     from overbae.services import workspaces
 
-    workspaces.provider().stop(project_id, conversation)
+    if AssistantThread.objects.filter(pk=thread_id, turn=turn, state="running").exists():
+        workspaces.provider().stop(project_id, UUID(thread_id).hex)
 
 
 @shared_task(

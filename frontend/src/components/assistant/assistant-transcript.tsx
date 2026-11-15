@@ -151,7 +151,9 @@ function ToolRow({ step }: { step: Step }) {
   const code = python ? String(args.code ?? "") : JSON.stringify(args, null, 2);
   const output = python ? String((result?.content as { output?: string })?.output ?? "") : "";
   const failure = errorOf(result);
-  const hasDetails = call.name !== "present" && code.trim() !== "{}";
+  // A presented result shows itself; a failed one shows only why.
+  const showCode = call.name !== "present" && code.trim() !== "{}";
+  const hasDetails = showCode || !!failure;
   const Trigger = hasDetails ? CollapsibleTrigger : "div";
   return (
     <Collapsible className="assistant-tool-row group/tool">
@@ -182,7 +184,7 @@ function ToolRow({ step }: { step: Step }) {
       </Trigger>
       {hasDetails && (
         <CollapsibleContent className="flex flex-col gap-2 pt-1 pb-2 ps-6">
-          <ScriptCode kind={python ? "python" : "shell"} source={code} />
+          {showCode && <ScriptCode kind={python ? "python" : "shell"} source={code} />}
           {output && (
             <pre className="max-h-64 overflow-auto rounded-sm bg-wash-raised p-2 text-xs leading-relaxed">
               {output}

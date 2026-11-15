@@ -65,8 +65,12 @@ export function useAssistantThread(datasetId: string) {
         after: held.at(-1)?.sequence ?? 0,
         id: threadId!,
       })) as unknown as AssistantEvent[];
-      // A reply or a status ends the text being written.
-      if (added.some((event) => event.kind === "assistant" || event.kind === "status"))
+      // A reply or a status ends the text being written. A first read holds the earlier
+      // replies too; the thread's own state settles the reply in progress then.
+      if (
+        held.length &&
+        added.some((event) => event.kind === "assistant" || event.kind === "status")
+      )
         qc.setQueryData(draftKey(threadId), null);
       return mergeEvents(qc.getQueryData<AssistantEvent[]>(eventsKey(threadId)) ?? held, added);
     },
@@ -96,7 +100,11 @@ export function useAssistantThread(datasetId: string) {
     (event: DatasetEvent) => {
       if (event.type === "assistant" || event.type === "connected") {
         void qc.invalidateQueries({ queryKey: threadKey(datasetId) });
-        if (threadId) void qc.refetchQueries({ queryKey: eventsKey(threadId) });
+        // A read in flight may have missed the change: start another after the newest held.
+        if (threadId)
+          void qc
+            .cancelQueries({ queryKey: eventsKey(threadId) })
+            .then(() => qc.refetchQueries({ queryKey: eventsKey(threadId) }));
       } else if (event.type === "assistant.draft" && threadId) {
         // A gain names its position: one the text already holds changes nothing.
         qc.setQueryData<Draft | null>(draftKey(threadId), (old) => ({

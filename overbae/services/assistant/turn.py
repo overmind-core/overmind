@@ -225,6 +225,8 @@ def _deliver(thread, message) -> bool:
         ),
         None,
     )
+    # Saving a recipe updates the row, not the dataset this turn loaded.
+    thread.dataset.refresh_from_db(fields=["preparation_pipeline"])
     now = threads.brief(thread)
     with transaction.atomic():
         # The user may have edited or removed it since this turn read the queue.
@@ -487,7 +489,9 @@ def stop(thread: AssistantThread) -> None:
         if held.state == State.RUNNING:
             held.stop_requested = True
             held.save(update_fields=["stop_requested"])
-            transaction.on_commit(lambda: stop_kernel.delay(str(held.project_id), held.pk.hex))
+            transaction.on_commit(
+                lambda: stop_kernel.delay(str(held.project_id), str(held.pk), held.turn)
+            )
         elif held.inputs.filter(state=Queued).exists():
             # Messages that wait for the dataset's source to land.
             log.append(held, Kind.STATUS, {"state": "stopped", "detail": "Stopped."})

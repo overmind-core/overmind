@@ -100,6 +100,8 @@ def change(message_id, thread, user, *, revision, action, text=None, before=None
     user saw, so a change to a message a turn already read is refused. A message's words
     are its sender's: only they edit or remove it; any member orders the queue."""
     with transaction.atomic():
+        # The thread first, as ``send`` does: two moves then cannot lock each other's rows.
+        AssistantThread.objects.select_for_update().get(pk=thread.pk)
         message = (
             AssistantInput.objects.select_for_update().filter(pk=message_id, thread=thread).first()
         )

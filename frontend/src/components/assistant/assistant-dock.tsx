@@ -254,12 +254,10 @@ export function AssistantDock({
       <div className="assistant-composer-stack flex min-w-0 shrink-0 flex-col gap-1">
         {expanded && (
           <AssistantQueue
-            disabled={stopping}
-            messages={queue}
             // A change in flight holds the revision the next one needs.
-            onChange={guard((change) => {
-              if (!assistant.changeQueued.isPending) assistant.changeQueued.mutate(change);
-            })}
+            disabled={stopping || assistant.changeQueued.isPending}
+            messages={queue}
+            onChange={guard((change) => assistant.changeQueued.mutate(change))}
             teammates={teammates}
           />
         )}

@@ -251,6 +251,19 @@ def test_a_reply_with_tool_calls_returns_its_reasoning_to_the_model(fake_llm, us
     assert replayed[0]["reasoning_details"]
 
 
+def test_distinct_reasoning_records_without_an_index_stay_apart(fake_llm):
+    records = [
+        {"type": "reasoning.encrypted", "id": "first", "data": "a"},
+        {"type": "reasoning.encrypted", "id": "second", "data": "b"},
+    ]
+    fake_llm.on(
+        lambda r: bool(r.body.get("stream")),
+        lambda _r: {"content": "Done.", "usage": {"cost": 0.01}, "reasoning_details": records},
+    )
+    _text, _calls, stats = stream_llm_tools([{"role": "user", "content": "Go."}], [])
+    assert stats["reasoning_details"] == records
+
+
 def test_a_streamed_reply_reports_progress_where_the_database_is_usable(fake_llm, thread):
     fake_llm.stream_rounds([([], "Done.")])
     seen = []
