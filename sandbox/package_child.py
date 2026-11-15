@@ -21,6 +21,12 @@ def main():
         os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[: request["cpus"]])
     root = Path.cwd()
     entrypoint = root / "package" / request["entrypoint"]
+    # Python's isolated mode leaves this file's folder off the import path.
+    sys.path.insert(0, str(Path(__file__).parent))
+    from kernel import confine
+
+    del sys.path[0]
+    confine(str(root))
     sys.path.insert(0, str(entrypoint.parent))
     sys.path.insert(0, str(root / "package"))
     sys.argv = [
