@@ -5,11 +5,7 @@ description: Data Workshop internals — source landing and OCR, immutable datas
 
 # Data Workshop
 
-The native coding agent owns interpretation, code and semantic work. The platform stores evidence and runs explicit, deterministic operations. Landing never diagnoses, starts a chat turn, generates examples or starts preparation. There is no platform chat, mutable cell or replay endpoint; old conversations and provider receipts are archived in `DatasetHistory`, and historical cell scripts, reviews and frames stay readable.
-
-## Preparation lifecycle
-
-`DatasetPreparation` (`services/datasets/preparation_workflow.py`) groups a coding agent's preparation work under one evolving notification. MCP `start_dataset_preparation` and `update_dataset_preparation` open and close it. The Console's End preparation (`POST /api/datasets/{id}/end-preparation/`) and the dataset reaper (24 h without activity) cancel it. An open preparation labels the dataset; it never locks editing.
+A customer's coding agent over MCP and the Console assistant own interpretation, code and semantic work (backend-architecture `references/assistant.md`). The platform stores evidence and runs explicit, deterministic operations. Landing never diagnoses, generates examples or starts preparation; a message that waits for the source starts its turn when landing ends. There is no mutable cell or replay endpoint; old conversations and provider receipts are archived in `DatasetHistory`, and historical cell scripts, reviews and frames stay readable.
 
 ## Map
 
@@ -47,7 +43,7 @@ The native coding agent owns interpretation, code and semantic work. The platfor
 
 - New revisions need a retained Python package with agent-authored stages; inline operations are rejected (`pipeline_package_required`). Package-free historical revisions are read-only.
 - Revisions are immutable and numbered per project family; `derived_from` starts a separate attributed family. Revision keys are project-scoped; run keys are per dataset.
-- Packages run only in the isolated sandbox through interactive workers: separate UIDs, no network, credentials, media mounts or Docker socket, measured memory admission. Registration and validation never execute code. Process exit status, not a script-written file, establishes completion.
+- Packages run only in the isolated sandbox through interactive workers: separate UIDs, no network, credentials, media mounts or Docker socket, measured memory admission. Each run also confines itself (`sandbox/kernel.py:confine`): a script reads only its own scratch folder and the libraries, sees no other run's processes and opens no network socket. Registration and validation never execute code. Process exit status, not a script-written file, establishes completion.
 - Steps declare `id` and `input`; `inputs` concatenates disjoint earlier branches in order and rejects overlapping `source_row` identities. It is not a relational join. `flow` (`pipeline_graph.py`) returns `nodes`, `edges` (each with its `condition`), `terminal_steps` and `unconsumed_steps`. Script conditions cite `expression` and `line` and never execute as expressions.
 - A successful run publishes all step cells atomically. Preview publishes nothing. `min_rows`/`max_rows` apply at publication and show as deferred in previews; row preservation, schema and lineage checks apply in both. Run receipts expose queue age, a polling interval, terminal time and structured failed checks. Runner heartbeats continue through validation and publication without advancing measured progress.
 - Cells carry receipt-backed `transformation` attribution (run, revision, package checksum, entrypoint). External imports and unrecorded history never claim platform execution. Every retained package file is inspectable with checksum-verified pagination.
@@ -83,7 +79,7 @@ External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-sco
 
 ## Console canvas
 
-The landing page is a project dataset table; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. There is no chat, funding control, cell search or cell-selector strip.
+The landing page opens on the assistant composer (`components/assistant/assistant-composer.tsx`): files or attached datasets plus one sentence start a thread on the working dataset. The project dataset table is a sheet below it; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. The assistant chat is a bar at the bottom of the canvas that opens into a resizable left panel (`components/assistant/`). There is no funding control, cell search or cell-selector strip.
 
 The dataset inventory exposes current work from retained pipeline and transfer receipts.
 Uploads attached to a dataset report measured bytes; transformations and previews stay
