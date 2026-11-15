@@ -8,7 +8,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from overbae.models import Capability, Cell, Dataset
+from overbae.models import AssistantThread, Capability, Cell, Dataset
 from overbae.services.datasets import measure, paths
 
 
@@ -154,5 +154,16 @@ def delete_dataset(dataset: Dataset) -> None:
     if reason:
         raise DatasetError(reason, code="dataset_referenced")
     directory = paths.dataset_dir(dataset.id)
+    project = str(dataset.project_id)
+    copies = [f"{cell}.parquet" for cell in dataset.cells.values_list("pk", flat=True)]
+    conversations = [
+        pk.hex
+        for pk in AssistantThread.objects.filter(dataset=dataset).values_list("pk", flat=True)
+    ]
     dataset.delete()
     shutil.rmtree(directory, ignore_errors=True)
+    # Lazy: the tasks package imports this module.
+    from overbae.tasks.assistant import forget_workspace_data
+
+    # The assistant's workspace holds copies of the dataset's versions.
+    transaction.on_commit(lambda: forget_workspace_data.delay(project, copies, conversations))

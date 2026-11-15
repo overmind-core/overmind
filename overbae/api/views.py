@@ -2,6 +2,7 @@ import logging
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import (
     Avg,
     Count,
@@ -147,6 +148,7 @@ from overbae.services.training_preparation import (
 from overbae.services.training_preparation import (
     retry_for_job as retry_training_preparation,
 )
+from overbae.tasks.assistant import remove_workspace
 from overbae.tasks.training_preparation import inspect_preparation
 
 logger = logging.getLogger(__name__)
@@ -191,7 +193,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         ProjectMembership.objects.create(user=self.request.user, project=project)
 
     def perform_destroy(self, instance):
+        project = str(instance.pk)
         instance.delete()
+        # The assistant's workspace holds copies of the project's data.
+        transaction.on_commit(lambda: remove_workspace.delay(project))
 
 
 @extend_schema_view(

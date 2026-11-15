@@ -1,4 +1,9 @@
 from .activity import Activity, ActivityClient, ActivityRead
+from .assistant import (
+    AssistantEvent,
+    AssistantInput,
+    AssistantThread,
+)
 from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
 from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
@@ -11,7 +16,6 @@ from .dataset_pipeline import (
     DatasetPipelineRun,
     DatasetPipelineRunner,
 )
-from .dataset_preparation import DatasetPreparation
 from .dataset_transfer import DatasetTransfer
 from .datasets import (
     Cell,
@@ -76,6 +80,9 @@ from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
 
 __all__ = [
+    "AssistantEvent",
+    "AssistantInput",
+    "AssistantThread",
     "MCPMutation",
     "EvalMatrixRevision",
     "Activity",
@@ -118,7 +125,6 @@ __all__ = [
     "ConnectorSyncRun",
     "Dataset",
     "DatasetPipeline",
-    "DatasetPreparation",
     "DatasetPipelineRun",
     "DatasetPipelineBinding",
     "DatasetPipelinePackage",

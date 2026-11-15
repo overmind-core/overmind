@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.routers import DefaultRouter
 
 from overbae.api.activity import ActivityViewSet
+from overbae.api.assistant import AssistantThreadViewSet
 from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APITokenListCreateView
 from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
@@ -83,6 +84,7 @@ from overbae.api.workbench import (
 )
 
 router = DefaultRouter()
+router.register("assistant-threads", AssistantThreadViewSet, basename="assistant-thread")
 router.register("dataset-transfers", DatasetTransferViewSet, basename="dataset-transfer")
 router.register(
     "dataset-pipeline-packages", DatasetPipelinePackageViewSet, basename="dataset-pipeline-package"

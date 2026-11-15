@@ -17,11 +17,14 @@ from datetime import timedelta
 import pytest
 from django.db import close_old_connections, connection
 from django.utils import timezone
+from factories import make_user
 
 from overbae.models import Cell, Dataset, DatasetImport, DatasetPipelineRun, Project
+from overbae.services.assistant import threads
 from overbae.services.datasets import dispatch, files, imports, workbench
 from overbae.services.datasets.lifecycle import DatasetError
 from overbae.tasks import datasets as dataset_tasks
+from overbae.tasks.assistant import run_turn
 from overbae.tasks.cleanup_tmp import cleanup_uploads
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("work-once")]
@@ -163,10 +166,16 @@ def test_an_import_whose_worker_died_is_requeued_and_its_old_owner_fenced(import
     assert imports.claim(run.pk) is not None
 
 
-def test_an_import_that_keeps_losing_its_worker_is_blocked_with_its_source(imported_source):
+def test_an_import_that_keeps_losing_its_worker_is_blocked_with_its_source(
+    imported_source, monkeypatch
+):
     from overbae.services.datasets import imports
 
     dataset, run = create_import(imported_source)
+    started = []
+    monkeypatch.setattr(run_turn, "delay", started.append)
+    conversation = threads.open_thread(dataset)
+    threads.send(conversation, make_user(), request_key="sent", text="Prepare it.")
     for _ in range(imports.MAX_ATTEMPTS):
         assert imports.claim(run.pk) is not None
         DatasetImport.objects.filter(pk=run.pk).update(
@@ -178,6 +187,8 @@ def test_an_import_that_keeps_losing_its_worker_is_blocked_with_its_source(impor
     assert run.state == "blocked" and run.failure_code == "worker_timeout"
     assert dataset.state == "error"
     assert files.upload_data_path(imported_source[1]).exists()
+    # The message sent with the upload no longer waits for a source that will not land.
+    assert started == [str(conversation.pk)]
 
 
 def test_stale_import_cannot_write_or_publish_landing_progress(imported_source, monkeypatch):

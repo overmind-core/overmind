@@ -237,12 +237,17 @@ def _block(run, code, error):
     Dataset.objects.filter(pk__in=_target_ids(run), state=Dataset.State.LANDING).update(
         state=Dataset.State.ERROR, error=run.error, updated_at=timezone.now()
     )
+    # Lazy: the assistant reaches the MCP catalog, which imports this module.
+    from overbae.services.assistant.turn import wake_dataset
+
     for dataset_id in _target_ids(run):
         transaction.on_commit(
             lambda dataset_id=dataset_id: events.publish(
                 dataset_id, {"dataset_id": str(dataset_id), "type": "land_failed", "error": error}
             )
         )
+        # A message sent with the upload waited for this source.
+        wake_dataset(dataset_id)
 
 
 @transaction.atomic
@@ -756,6 +761,11 @@ def execute(task_id, inputs):
         return {"status": "failed", "error": str(exc)}
     finally:
         beat.set()
+        # Lazy: the assistant reaches the MCP catalog, which imports this module.
+        from overbae.services.assistant.turn import wake_dataset
+
         for target_id in _target_ids(run):
             operations.finished(target_id, task_id=str(run.pk))
+            # A message sent with the upload waited for its source, landed or failed.
+            wake_dataset(target_id)
         shutil.rmtree(stage, ignore_errors=True)

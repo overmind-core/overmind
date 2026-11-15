@@ -66,6 +66,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "overbae.api.compression.CompressionMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -96,9 +97,12 @@ def show_debug_toolbar(request):
 
 if DEBUG and not TESTING:
     INSTALLED_APPS = [*INSTALLED_APPS, "debug_toolbar"]
+    # The toolbar edits the HTML, so it sits inside compression.
+    after = MIDDLEWARE.index("overbae.api.compression.CompressionMiddleware") + 1
     MIDDLEWARE = [
+        *MIDDLEWARE[:after],
         "debug_toolbar.middleware.DebugToolbarMiddleware",
-        *MIDDLEWARE,
+        *MIDDLEWARE[after:],
     ]
     INTERNAL_IPS = ["127.0.0.1", "::1"]
     DEBUG_TOOLBAR_CONFIG = {
@@ -433,6 +437,12 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.native_evaluation.advance_plan": {"queue": "batch"},
     "overbae.tasks.native_evaluation.refresh_monitor": {"queue": "batch"},
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
+    # A streamed model reply holds a worker slot for its whole length, so steps have their
+    # own queue. The reconciler only reads and enqueues: it must run when that queue is full.
+    "overbae.tasks.assistant.run_turn": {"queue": "assistant"},
+    "overbae.tasks.assistant.stop_kernel": {"queue": "assistant"},
+    "overbae.tasks.assistant.forget_workspace_data": {"queue": "assistant"},
+    "overbae.tasks.assistant.remove_workspace": {"queue": "assistant"},
     "overbae.tasks.innermind.generate_row": {"queue": "batch"},
     "overbae.tasks.innermind.score_eval_run": {"queue": "batch"},
     # Model warm-up blocks for minutes; control stays free for reconcilers and metrics.
@@ -741,6 +751,11 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
+# Where the assistant runs Python: native (the sandbox service) or daytona.
+WORKSPACE_PROVIDER = os.environ.get("WORKSPACE_PROVIDER", "native")
+DAYTONA_API_KEY = os.environ.get("DAYTONA_API_KEY", "")
+# Prompt tokens of one assistant reply above which the older conversation is summarized.
+ASSISTANT_COMPACT_TOKENS = int(os.environ.get("ASSISTANT_COMPACT_TOKENS", "120000"))
 
 _REQUIRED_KEYS = {
     "SANDBOX_URL": "the isolated Workshop sandbox",

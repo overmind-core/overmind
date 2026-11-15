@@ -96,6 +96,15 @@ def test_packages_use_independently_scalable_interactive_capacity():
     assert "workshop-runner" not in services
 
 
+def test_assistant_turns_reach_the_sandbox():
+    from overbae.tasks.assistant import run_turn, stop_kernel
+
+    queues = {settings.CELERY_TASK_ROUTES[task.name]["queue"] for task in (run_turn, stop_kernel)}
+    workers = [name for name, held in _compose_worker_queues().items() if queues <= held]
+    services = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())["services"]
+    assert workers and all("sandbox_net" in services[name]["networks"] for name in workers)
+
+
 def test_fresh_worker_registers_every_routed_and_scheduled_task():
     # Test collection imports task modules that a fresh worker may never discover.
     result = subprocess.run(
@@ -239,6 +248,16 @@ def test_services_roll_together_after_migrate():
     assert any(
         step.get("env", {}).get("SERVICE") == "celery-landing-worker" for step in landing_steps
     )
+
+
+def test_a_release_rolls_every_service_of_the_topology():
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/deploy-api.yml").read_text())
+    rolled = set()
+    for job in workflow["jobs"].values():
+        rolled.update(job.get("strategy", {}).get("matrix", {}).get("service", []))
+        rolled.update(step.get("env", {}).get("SERVICE") for step in job.get("steps", []))
+    topology = json.loads((REPO_ROOT / "docker/worker-topology.json").read_text())
+    assert set(topology) <= rolled
 
 
 def _deployed_commands() -> dict[str, str]:
