@@ -24,6 +24,7 @@ import { Icon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthContext } from "@/contexts/auth-context";
 import { WorkshopSidebarContext } from "@/contexts/workshop-sidebar-context";
+import { datasetDetailQuery } from "@/hooks/use-datasets";
 import { useFinetuningRunJobsQuery } from "@/hooks/use-finetuning";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useOnboardingStatus } from "@/hooks/use-query";
@@ -107,9 +108,8 @@ function useCachedName(
   });
 
   const datasetNameQuery = useQuery({
+    ...datasetDetailQuery(slug ?? ""),
     enabled: kind === "datasets" && !!slug,
-    queryFn: () => apiClient.datasets.datasetsRetrieve({ id: slug ?? "" }),
-    queryKey: ["dataset", slug],
     select: (dataset) => dataset.name?.trim() || `Dataset ${dataset.id.slice(0, 8)}`,
   });
 

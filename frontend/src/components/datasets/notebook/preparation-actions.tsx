@@ -20,11 +20,7 @@ export function PreparationActions({
   const [errorOpen, setErrorOpen] = useState(false);
   const failed = run?.state === "failed";
   const error = dataset.error || (failed ? run.error || "Preparation failed." : "");
-  const title = error
-    ? "Fix with coding agent"
-    : dataset.work?.status === "paused"
-      ? "Continue with coding agent"
-      : "Prepare with coding agent";
+  const title = error ? "Fix with coding agent" : "Prepare with coding agent";
   const prompt = [
     `${error ? "Diagnose and repair" : "Prepare"} this existing Overmind dataset in your native coding environment.`,
     `Use the connection at ${config.apiUrl.replace(/\/$/, "")}/api/mcp/. Verify the endpoint with list_projects and pass project_id=${dataset.project} on every project operation. Stop if the endpoint differs. Setup instructions: ${window.location.origin}/setup.md.`,

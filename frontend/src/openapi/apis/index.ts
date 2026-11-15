@@ -2,6 +2,7 @@
 /* eslint-disable */
 export * from './ActivityApi';
 export * from './AgentApi';
+export * from './AssistantThreadsApi';
 export * from './AuthApi';
 export * from './BillingApi';
 export * from './CapabilitiesApi';

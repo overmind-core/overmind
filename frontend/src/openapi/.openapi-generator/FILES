@@ -1,5 +1,6 @@
 apis/ActivityApi.ts
 apis/AgentApi.ts
+apis/AssistantThreadsApi.ts
 apis/AuthApi.ts
 apis/BillingApi.ts
 apis/CapabilitiesApi.ts
@@ -55,6 +56,11 @@ models/ActivitySeenRequest.ts
 models/ActivitySeenResult.ts
 models/AgentGraph.ts
 models/ApiVersionEnum.ts
+models/AssistantEvent.ts
+models/AssistantEventKindEnum.ts
+models/AssistantInput.ts
+models/AssistantThread.ts
+models/AssistantThreadStateEnum.ts
 models/AuthTokensResponse.ts
 models/BackendEnum.ts
 models/BeginUploadRequest.ts
@@ -87,6 +93,8 @@ models/CatalogModel.ts
 models/Cell.ts
 models/CellStateEnum.ts
 models/CellTransformation.ts
+models/ChangeEnum.ts
+models/ChangeMessageRequest.ts
 models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts
@@ -253,6 +261,8 @@ models/InferenceReceipt.ts
 models/InspectUploadRequest.ts
 models/IntegrationTypeEnum.ts
 models/IntentEnum.ts
+models/Interaction.ts
+models/InteractionRequest.ts
 models/JudgeModelEnum.ts
 models/Kind703Enum.ts
 models/LocalSessionRequest.ts
@@ -279,6 +289,7 @@ models/NativeMonitor.ts
 models/NativeSample.ts
 models/NativeSamplePrediction.ts
 models/OnboardingMilestone.ts
+models/OpenThreadRequest.ts
 models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
 models/OptimizerCandidate.ts
@@ -331,6 +342,7 @@ models/PaginatedSignalEventList.ts
 models/PaginatedSignalSubscriptionList.ts
 models/PaginatedTrainingExperimentList.ts
 models/PaginatedTrainingPlanList.ts
+models/Participant.ts
 models/PartitionMember.ts
 models/PartitionPlan.ts
 models/PartitionRequestRequest.ts
@@ -389,6 +401,7 @@ models/RunPipelineRequest.ts
 models/SaveBindingRequest.ts
 models/SavePipelineRequest.ts
 models/ScopeEnum.ts
+models/SendMessageRequest.ts
 models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts

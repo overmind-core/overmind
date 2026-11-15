@@ -8,8 +8,6 @@
 }
 
 .art {
-  position: fixed;
-  inset: 0;
   overflow: hidden;
   pointer-events: none;
   mix-blend-mode: lighten;
@@ -31,8 +29,9 @@
 }
 
 .scanlines {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  pointer-events: none;
   background: repeating-linear-gradient(
     transparent 0 3px,
     color-mix(in srgb, var(--auth-text) 4%, transparent) 3px 4px

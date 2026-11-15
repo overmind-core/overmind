@@ -67,8 +67,9 @@ function DatasetNavigation({ projectId, enabled }: { projectId?: string; enabled
         { signal }
       ),
     queryKey: ["datasets", "list", projectId, "navigation", debouncedSearch],
+    // Progress counters move while a dataset is busy; other changes arrive as activity.
     refetchInterval: (query) =>
-      query.state.data?.pages.some((page) => page.results.some(isBusy)) ? 3000 : 15000,
+      query.state.data?.pages.some((page) => page.results.some(isBusy)) ? 3000 : false,
   });
   const datasets = [
     ...new Map(

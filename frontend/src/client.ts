@@ -23,6 +23,7 @@ import type { ModelSwapPrompt } from "./openapi";
 import {
   ActivityApi,
   AgentApi,
+  AssistantThreadsApi,
   AuthApi,
   BillingApi,
   CapabilitiesApi,
@@ -476,9 +477,11 @@ export class API {
   signalEvents: SignalEventsApi;
   signalSubscriptions: SignalSubscriptionsApi;
   activity: ActivityApi;
+  assistantThreads: AssistantThreadsApi;
 
   constructor(private cfg: Configuration) {
     this.activity = new ActivityApi(this.cfg);
+    this.assistantThreads = new AssistantThreadsApi(this.cfg);
     this.mcpOauth = new McpOauthApi(this.cfg);
     this.agent = new AgentApi(this.cfg);
     this.capabilities = new CapabilitiesApi(this.cfg);
