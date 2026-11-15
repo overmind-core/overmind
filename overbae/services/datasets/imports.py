@@ -248,7 +248,7 @@ def _block(run, code, error):
         )
         # A message sent with the upload waited for this source; it is read once the
         # source's error is committed, or a turn could still see it landing.
-        transaction.on_commit(lambda dataset_id=dataset_id: wake_dataset(dataset_id))
+        transaction.on_commit(lambda dataset_id=dataset_id: wake_dataset(dataset_id), robust=True)
 
 
 @transaction.atomic

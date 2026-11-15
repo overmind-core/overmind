@@ -284,7 +284,12 @@ export function AssistantTranscript({
     return () => resized.disconnect();
   }, [scrollToEnd]);
   // The reader's own message always brings its end into view.
-  const sent = events.reduce((last, event) => (event.kind === "user" ? event.sequence : last), 0);
+  // A teammate's message follows the reader's place like any other content.
+  const sent = events.reduce(
+    (last, event) =>
+      event.kind === "user" && !teammates.has(event.payload.user) ? event.sequence : last,
+    0
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: scrolls when a message is sent
   useEffect(() => {
     follow.current = true;

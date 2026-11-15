@@ -99,7 +99,9 @@ def system(thread: AssistantThread) -> str:
             f"Project: {thread.project.name!r}. The conversation is about the dataset "
             f"{thread.dataset.name!r} (id {thread.dataset_id}).",
             "Pipeline package contract:\n" + json.dumps(_package_contract(), indent=1),
-            "Training and evaluation row formats (the `consumer` of the final step):\n"
-            + json.dumps(CONSUMERS, indent=1),
+            "Training and evaluation row formats. A key names a format; the final step's "
+            "`consumer` takes the matching value: decision_training is decision_train, "
+            "decision_evaluation is decision_eval, sft is chat_train, model_evaluation is "
+            "model_eval.\n" + json.dumps(CONSUMERS, indent=1),
         )
     )

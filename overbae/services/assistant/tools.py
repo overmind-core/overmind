@@ -249,6 +249,9 @@ def _put_versions(turn: Turn, provider, versions) -> None:
     if cells.count() != len(set(versions)):
         raise InputValidationError("A listed dataset version is not in this project.")
     for cell in cells:
+        # A deleted project takes its thread along; a turn that lost it copies nothing
+        # into a workspace its removal already cleared.
+        turn.alive()
         with open(rows.frame_path(cell), "rb") as frame:
             provider.put_data(str(turn.thread.project_id), data_name(cell), frame)
 
@@ -262,6 +265,7 @@ def _run_python(turn: Turn, arguments) -> Outcome:
         raise InputValidationError(f"code is at most {MAX_CODE_CHARS:,} characters.")
     provider = workspaces.provider()
     _put_versions(turn, provider, arguments.get("versions") or [])
+    turn.alive()
     run = provider.run(
         str(turn.thread.project_id),
         turn.thread.pk.hex,

@@ -42,7 +42,8 @@ export interface ResultActions {
   /** The `answerKey` of every Question and Choices the user already answered. */
   answered: ReadonlySet<string>;
   sending: boolean;
-  onAnswer: (text: string, interaction: Interaction) => void;
+  /** ``onSent`` runs once the answer is queued. */
+  onAnswer: (text: string, interaction: Interaction, onSent?: () => void) => void;
   onCell: (cell: string, dataset: string) => void;
   onTrain: (dataset: string) => void;
   /** The bytes of an image this thread retained, by content name. */
@@ -360,8 +361,10 @@ function Question({ node }: { node: QuestionNode | ChoicesNode }) {
       return next;
     });
   const answer = (given: Record<string, unknown>, text: string) => {
-    sessionStorage.removeItem(draftKey);
-    actions.onAnswer(text, { call, id: node.id, values: given });
+    // The draft stays until the answer is queued: a failed send keeps it for a retry.
+    actions.onAnswer(text, { call, id: node.id, values: given }, () =>
+      sessionStorage.removeItem(draftKey)
+    );
   };
 
   if (node.type === "Choices")

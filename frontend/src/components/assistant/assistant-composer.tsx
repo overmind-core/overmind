@@ -24,10 +24,14 @@ const ACCEPT =
   ".csv,.tsv,.json,.jsonl,.ndjson,.parquet,.gz,.pdf,.docx,.md,.txt,.png,.jpg,.jpeg,.webp";
 const stripExtension = (name: string) => name.replace(/(\.[a-z0-9]+){1,2}$/i, "");
 
+// The API takes 20 dataset versions with a message.
+const MAX_REFERENCES = 20;
+
 /** The goal a user starts from: attached files or datasets, and one sentence. Sending
  *  creates the working dataset if files were attached, opens its thread and queues the
  *  message; the assistant starts when the source has landed. A retry of the same request
  *  repeats nothing; a changed request is a new one. */
+
 export function AssistantComposer({
   projectId,
   datasets,
@@ -88,17 +92,21 @@ export function AssistantComposer({
 
   const locked = start.isPending;
   const hasData = ready.length > 0 || datasets.length > 0;
+  // The message names every attached dataset but the one it works on; the API takes 20.
+  const tooMany = (ready.length > 0 ? datasets.length : datasets.length - 1) > MAX_REFERENCES;
   const sendHint = locked
     ? "Starting"
     : uploading
       ? "Uploading"
       : !hasData
         ? "No data attached"
-        : !text.trim()
-          ? "No message"
-          : "Send";
+        : tooMany
+          ? `At most ${MAX_REFERENCES + (ready.length > 0 ? 0 : 1)} datasets`
+          : !text.trim()
+            ? "No message"
+            : "Send";
   const submit = guard(() => {
-    if (locked || uploading || !hasData || !text.trim()) return;
+    if (locked || uploading || !hasData || tooMany || !text.trim()) return;
     // Called only while this page is mounted: a start that ends later moves nobody.
     start.mutate(text.trim(), { onSuccess: onStarted });
   });
@@ -253,7 +261,7 @@ export function AssistantComposer({
               <span className="inline-flex shrink-0">
                 <Button
                   className="disabled:text-muted-foreground"
-                  disabled={locked || uploading || !hasData || !text.trim()}
+                  disabled={locked || uploading || !hasData || tooMany || !text.trim()}
                   size="sm"
                   type="submit"
                   variant="secondary"

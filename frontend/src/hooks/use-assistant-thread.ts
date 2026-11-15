@@ -106,11 +106,15 @@ export function useAssistantThread(datasetId: string) {
             .cancelQueries({ queryKey: eventsKey(threadId) })
             .then(() => qc.refetchQueries({ queryKey: eventsKey(threadId) }));
       } else if (event.type === "assistant.draft" && threadId) {
-        // A gain names its position: one the text already holds changes nothing.
-        qc.setQueryData<Draft | null>(draftKey(threadId), (old) => ({
-          steps: event.steps,
-          text: (old?.text ?? "").slice(0, event.at) + event.added,
-        }));
+        // A gain names its position in code points, as the server counts: one the text
+        // already holds, as a snapshot read ahead of it may, changes nothing.
+        qc.setQueryData<Draft | null>(draftKey(threadId), (old) => {
+          const held = Array.from(old?.text ?? "");
+          const added = Array.from(event.added);
+          const covered = held.slice(event.at, event.at + added.length).join("") === event.added;
+          const text = covered ? (old?.text ?? "") : held.slice(0, event.at).join("") + event.added;
+          return { steps: event.steps, text };
+        });
       }
     },
     [qc, datasetId, threadId]

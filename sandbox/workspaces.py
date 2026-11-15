@@ -75,10 +75,13 @@ class Kernel:
     slot: execute.Slot
     work: Path
     process: subprocess.Popen
-    # The working directory, held open: the socket is reached through it.
+    # The working directory, held open: the socket is reached through it. It closes when
+    # the kernel ended and no run uses it, or its number could name another kernel's.
     directory: int
     used: float = field(default_factory=time.monotonic)
     executing: threading.Lock = field(default_factory=threading.Lock)
+    users: int = 0
+    ended: bool = False
 
     @property
     def socket_path(self) -> str:
@@ -175,19 +178,32 @@ def _ending(code: int) -> str:
     return f"exit status {code}"
 
 
+def _close_unused(kernel: Kernel) -> None:
+    """Under ``_registry``."""
+    if kernel.ended and not kernel.users and kernel.directory >= 0:
+        os.close(kernel.directory)
+        kernel.directory = -1
+
+
 def stop(project: str, conversation: str, kernel: Kernel | None = None) -> None:
     """End the conversation's kernel; with ``kernel``, only while it is still that one, so a
-    failure seen on an earlier kernel never ends the one that replaced it."""
+    failure seen on an earlier kernel never ends the one that replaced it. A start for the
+    same conversation waits until the folder is taken back."""
+    key = (project, conversation)
     with _registry:
-        held = _kernels.get((project, conversation))
-        if held is None or (kernel is not None and held is not kernel):
-            return
-        del _kernels[(project, conversation)]
-    kernel = held
-    execute.end(kernel.work, kernel.process.pid, kernel.slot.uid)
-    kernel.process.wait()
-    os.close(kernel.directory)
-    execute.release(kernel.slot)
+        starting = _starts.get(key)
+    with starting or contextlib.nullcontext():
+        with _registry:
+            held = _kernels.get(key)
+            if held is None or (kernel is not None and held is not kernel):
+                return
+            del _kernels[key]
+        execute.end(held.work, held.process.pid, held.slot.uid)
+        held.process.wait()
+        with _registry:
+            held.ended = True
+            _close_unused(held)
+        execute.release(held.slot)
 
 
 def _text(value) -> str:
@@ -229,29 +245,38 @@ def run(project: str, conversation: str, code: str, timeout: int) -> dict:
     with _registry:
         starting = _starts.setdefault(key, threading.Lock())
     with starting:
-        kernel = _kernels.get(key)
+        with _registry:
+            kernel = _kernels.get(key)
+            if kernel is not None:
+                kernel.users += 1
         if kernel is None:
             kernel, restarted = _start(project, conversation)
             with _registry:
+                kernel.users += 1
                 _kernels[key] = kernel
-    if not kernel.executing.acquire(blocking=False):
-        raise BusyError("This conversation's kernel already runs a cell.")
     try:
-        reply = _exchange(kernel, {"code": code, "timeout": timeout})
-    except (OSError, ValueError, KeyError, TypeError):
-        # The kernel's own deadline did not fire: it is stuck outside Python, or dead.
-        stop(project, conversation, kernel)
-        reply = {
-            "ok": False,
-            "output": "",
-            "error": "The kernel ended during the cell: it ran out of memory or stopped "
-            "answering. Variables are gone, files remain.",
-            "truncated": False,
-            "seconds": 0.0,
-        }
+        if not kernel.executing.acquire(blocking=False):
+            raise BusyError("This conversation's kernel already runs a cell.")
+        try:
+            reply = _exchange(kernel, {"code": code, "timeout": timeout})
+        except (OSError, ValueError, KeyError, TypeError):
+            # The kernel's own deadline did not fire: it is stuck outside Python, or dead.
+            stop(project, conversation, kernel)
+            reply = {
+                "ok": False,
+                "output": "",
+                "error": "The kernel ended during the cell: it ran out of memory or stopped "
+                "answering. Variables are gone, files remain.",
+                "truncated": False,
+                "seconds": 0.0,
+            }
+        finally:
+            kernel.used = time.monotonic()
+            kernel.executing.release()
     finally:
-        kernel.used = time.monotonic()
-        kernel.executing.release()
+        with _registry:
+            kernel.users -= 1
+            _close_unused(kernel)
     return {**reply, "restarted": restarted}
 
 
@@ -375,7 +400,11 @@ async def get_file(request: Request) -> Response:
     if opened is None:
         return JSONResponse({"error": "No readable regular file has that name."}, status_code=404)
     with opened:
-        return Response(await run_in_threadpool(opened.read), media_type="application/octet-stream")
+        # The size was checked at open; a running cell may still be writing the file.
+        content = await run_in_threadpool(opened.read, MAX_FILE_BYTES + 1)
+    if len(content) > MAX_FILE_BYTES:
+        return JSONResponse({"error": "No readable regular file has that name."}, status_code=404)
+    return Response(content, media_type="application/octet-stream")
 
 
 def forget(project: str, data: list[str], conversations: list[str]) -> None:

@@ -131,7 +131,12 @@ export function AssistantDock({
     setExpanded(false);
     textarea.current?.blur();
   };
-  const deliver = (message: string, interaction?: Interaction, restore = false) => {
+  const deliver = (
+    message: string,
+    interaction?: Interaction,
+    restore = false,
+    onSent?: () => void
+  ) => {
     const body = { cells: selected ? [selected.id] : [], interaction, text: message };
     const signature = JSON.stringify(body);
     if (request.current?.body !== signature)
@@ -143,6 +148,7 @@ export function AssistantDock({
         onError: () => restore && setText((current) => current || message),
         onSuccess: () => {
           request.current = null;
+          onSent?.();
           setPanel(true);
           setExpanded(true);
         },
@@ -178,8 +184,10 @@ export function AssistantDock({
     () => ({
       answered,
       loadImage,
-      onAnswer: (message, interaction) =>
-        handlers.current.guard(() => handlers.current.deliver(message, interaction))(),
+      onAnswer: (message, interaction, onSent) =>
+        handlers.current.guard(() =>
+          handlers.current.deliver(message, interaction, false, onSent)
+        )(),
       onCell: (cell, dataset) => {
         if (dataset === datasetId || cells.some((item) => item.id === cell)) {
           if (window.matchMedia(PHONE).matches) handlers.current.collapse();

@@ -11,6 +11,14 @@ GRACE_SECONDS = 60
 TRANSFER_SECONDS = 300
 
 
+# Failures after the request left: the sandbox may have acted on it.
+SENT = (httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError)
+UNKNOWN = (
+    "The sandbox stopped answering during the cell: it may have run. "
+    "Variables may be gone, files remain."
+)
+
+
 class NativeProvider:
     """Workspaces in Overmind's own ``sandbox`` service: folders on its volume, kernels as
     confined processes. It holds them in one server's memory and disk, so a deployment
@@ -20,7 +28,9 @@ class NativeProvider:
         self.url = (url or settings.SANDBOX_URL).rstrip("/") + "/v1/workspaces"
         self.headers = {"Authorization": f"Bearer {token or settings.SANDBOX_TOKEN}"}
 
-    def _request(self, method: str, path: str, *, timeout: float, **kwargs) -> httpx.Response:
+    def _request(
+        self, method: str, path: str, *, timeout: float, cell: bool = False, **kwargs
+    ) -> httpx.Response:
         try:
             response = httpx.request(
                 method,
@@ -30,6 +40,8 @@ class NativeProvider:
                 **kwargs,
             )
         except httpx.HTTPError as exc:
+            if cell and isinstance(exc, SENT):
+                raise
             raise WorkspaceUnavailableError(f"The sandbox did not answer: {exc}") from exc
         if response.status_code >= 500:
             reason = _body(response).get("error") or f"HTTP {response.status_code}"
@@ -49,12 +61,17 @@ class NativeProvider:
         ).raise_for_status()
 
     def run(self, project: str, conversation: str, code: str, timeout: int) -> Execution:
-        response = self._request(
-            "POST",
-            f"/{project}/kernels/{conversation}/run",
-            json={"code": code, "timeout": timeout},
-            timeout=timeout + GRACE_SECONDS,
-        )
+        try:
+            response = self._request(
+                "POST",
+                f"/{project}/kernels/{conversation}/run",
+                json={"code": code, "timeout": timeout},
+                timeout=timeout + GRACE_SECONDS,
+                cell=True,
+            )
+        except SENT:
+            # The cell was sent: it may have run, so it is not reported as never run.
+            return Execution(False, "", UNKNOWN, False, float(timeout))
         response.raise_for_status()
         return Execution(**response.json())
 

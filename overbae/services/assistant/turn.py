@@ -229,6 +229,13 @@ def _deliver(thread, message) -> bool:
     thread.dataset.refresh_from_db(fields=["preparation_pipeline"])
     now = threads.brief(thread)
     with transaction.atomic():
+        # The thread first, as every queue change locks it: a stop that came after the
+        # last reply is seen before the next message is taken from the queue.
+        held = AssistantThread.objects.select_for_update().get(pk=thread.pk)
+        if held.turn != thread.turn:
+            raise log.LostTurnError
+        if held.stop_requested:
+            raise _StoppedError
         # The user may have edited or removed it since this turn read the queue.
         if not AssistantInput.objects.filter(pk=message.pk, state=Queued).update(
             state=AssistantInput.State.DELIVERED

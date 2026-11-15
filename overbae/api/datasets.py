@@ -482,8 +482,10 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
             r = aredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
             pubsub = r.pubsub()
             try:
-                # Subscribed first: a change after the page's reads reaches it.
+                # Subscribed first: a change after the page's reads reaches it. Redis
+                # confirms with the first message; only from then is no change missed.
                 await pubsub.subscribe(ch)
+                await pubsub.get_message(timeout=5.0)
                 # A page whose dataset changed before this point reads it again.
                 stamp = await sync_to_async(_stamp)(dataset.pk)
                 connected = {"type": "connected", "updated_at": stamp and stamp.isoformat()}
