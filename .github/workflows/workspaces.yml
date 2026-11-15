@@ -1,0 +1,47 @@
+name: Workspaces
+
+# The Daytona adapter cannot run in the test suite: it needs the hosted service and a key.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - overbae/services/workspaces/**
+      - sandbox/kernel.py
+      - sandbox/workspaces.py
+      - uv.lock
+      - .github/workflows/workspaces.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workspaces
+  cancel-in-progress: false
+
+jobs:
+  daytona:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DJANGO_DEBUG: "True"
+      WORKSPACE_PROVIDER: daytona
+      DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+      # Required by settings; this job never calls the native sandbox.
+      SANDBOX_URL: http://unused
+      SANDBOX_TOKEN: unused
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - run: touch .env
+      - name: Build the workspace snapshot if this recipe has none
+        run: uv run python manage.py build_workspace_snapshot
+      - name: Run the workspace contract on Daytona
+        run: uv run python manage.py check_workspaces

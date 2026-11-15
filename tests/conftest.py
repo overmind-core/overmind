@@ -442,6 +442,7 @@ def sandbox_server():
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SANDBOX_TOKEN": token,
         "SANDBOX_ALLOW_SHARED_UID": "1",
+        "SANDBOX_WORKSPACES": str(Path(scratch.name) / "workspaces"),
         # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
         "TMPDIR": scratch.name,
     }
@@ -472,6 +473,8 @@ def sandbox_server():
             f"{Path(__file__).resolve().parents[1] / 'sandbox'}:/code/sandbox:ro",
             "-e",
             f"SANDBOX_TOKEN={token}",
+            "-e",
+            "SANDBOX_WORKSPACES=/tmp/workspaces",
             "--entrypoint",
             "python",
         ]
