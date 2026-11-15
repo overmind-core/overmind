@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HEALTH_CHECKED_QUEUES = {
     "celery-io-worker": "io",
+    "celery-assistant-worker": "assistant",
     "celery-traces-worker": "io_traces",
     "celery-landing-worker": "landing",
     "celery-interactive-worker": "interactive",
@@ -145,6 +146,7 @@ def preflight(cluster):
         "celery-landing-worker",
         "celery-interactive-worker",
         "celery-traces-worker",
+        "celery-assistant-worker",
     ):
         service = describe_service(cluster, name)
         family = service["taskDefinition"].rsplit("/", 1)[-1].rsplit(":", 1)[0]

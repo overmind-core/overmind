@@ -200,7 +200,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [celery-io-worker, celery-batch-worker, celery-interactive-worker]
+        service:
+          - celery-io-worker
+          - celery-assistant-worker
+          - celery-batch-worker
+          - celery-interactive-worker
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
