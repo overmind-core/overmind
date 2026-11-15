@@ -114,10 +114,11 @@ export function DatasetNotebook({
       return;
     }
     if (event.type === "connected") {
-      // A dropped connection may have missed changes; a first one only those made after
-      // the page read the dataset, which it compares once that read has arrived.
+      // The conversation reads after the events it holds, so every connection catches up
+      // on it. A dropped connection may have missed dataset changes; a first one only
+      // those made after the page read the dataset, compared once that read has arrived.
+      assistant.handle(event);
       if (event.again) {
-        assistant.handle(event);
         refresh();
       } else {
         setStamp(event.updated_at ? new Date(event.updated_at).getTime() : Number.NaN);

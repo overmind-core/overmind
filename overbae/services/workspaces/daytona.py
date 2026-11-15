@@ -93,7 +93,6 @@ SETUP = (
     "_overmind = _overmind_util.module_from_spec(_overmind_spec)\n"
     "_overmind_spec.loader.exec_module(_overmind)\n"
     "_overmind_signal.signal(_overmind_signal.SIGALRM, _overmind._interrupt)\n"
-    "_overmind_cells = 0\n"
     # The same limits as a native kernel: its own folder writable, the project's data
     # read-only, and no socket but a Unix one.
     "import os as _overmind_os, tempfile as _overmind_tempfile\n"
@@ -102,7 +101,9 @@ SETUP = (
     "_overmind_tempfile.tempdir = None\n"
     f"_overmind.confine(_overmind_os.getcwd(), readable=({WORKSPACE + '/data'!r},))\n"
     "import matplotlib\n"
-    "matplotlib.use('Agg')"
+    "matplotlib.use('Agg')\n"
+    # Last: a cell needs the counter, so a context whose setup stopped early runs nothing.
+    "_overmind_cells = 0"
 )
 LOST = (
     "The kernel ended during the cell: it ran out of memory or stopped answering. "
@@ -290,6 +291,8 @@ class DaytonaProvider:
             found = sandbox.code_interpreter.create_context(cwd=work)
             setup = sandbox.code_interpreter.run_code(SETUP, context=found, timeout=60)
             if setup.error:
+                with contextlib.suppress(DaytonaError):
+                    sandbox.code_interpreter.delete_context(found)
                 raise WorkspaceUnavailableError(f"The kernel did not start: {setup.error.value}")
         with self._lock:
             self._contexts[(project, conversation)] = found
@@ -344,7 +347,13 @@ class DaytonaProvider:
             info = sandbox.fs.get_file_info(path)
             if info.is_dir or info.size > MAX_FILE_BYTES:
                 raise FileNotFoundError(name)
-            return sandbox.fs.download_file(path)
+            # And while it is read: the cell may still write it.
+            received = bytearray()
+            for chunk in sandbox.fs.download_file_stream(path):
+                received += chunk
+                if len(received) > MAX_FILE_BYTES:
+                    raise FileNotFoundError(name)
+            return bytes(received)
         except DaytonaNotFoundError:
             raise FileNotFoundError(name) from None
         except DaytonaError as exc:

@@ -20,7 +20,10 @@ export function AssistantQueue({
   disabled: boolean;
   onChange: (change: ChangeMessageRequest) => void;
 }) {
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  // The revision the edit started from: a message that changed since refuses the edit.
+  const [editing, setEditing] = useState<{ id: string; revision: number; text: string } | null>(
+    null
+  );
   const dragged = useRef<AssistantInput | null>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
   const editingId = editing?.id;
@@ -61,7 +64,7 @@ export function AssistantQueue({
                 aria-label="Edit queued message"
                 className="min-h-16 text-xs md:text-xs"
                 maxLength={16000}
-                onChange={(event) => setEditing({ id: message.id, text: event.target.value })}
+                onChange={(event) => setEditing({ ...editing, text: event.target.value })}
                 onKeyDown={(event) => {
                   event.stopPropagation();
                   if (event.key === "Escape") {
@@ -71,7 +74,10 @@ export function AssistantQueue({
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     if (editing.text.trim()) {
-                      change(message, "edit", { text: editing.text.trim() });
+                      change(message, "edit", {
+                        revision: editing.revision,
+                        text: editing.text.trim(),
+                      });
                       setEditing(null);
                     }
                   }
@@ -91,7 +97,10 @@ export function AssistantQueue({
                 <Button
                   disabled={!editing.text.trim()}
                   onClick={() => {
-                    change(message, "edit", { text: editing.text.trim() });
+                    change(message, "edit", {
+                      revision: editing.revision,
+                      text: editing.text.trim(),
+                    });
                     setEditing(null);
                   }}
                   size="xs"
@@ -186,7 +195,13 @@ export function AssistantQueue({
                           <Button
                             aria-label={`Edit queued message ${index + 1}`}
                             disabled={disabled || !!message.interaction}
-                            onClick={() => setEditing({ id: message.id, text: message.text })}
+                            onClick={() =>
+                              setEditing({
+                                id: message.id,
+                                revision: message.revision,
+                                text: message.text,
+                              })
+                            }
                             size="icon-xs"
                             type="button"
                             variant="ghost"

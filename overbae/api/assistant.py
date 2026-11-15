@@ -6,6 +6,7 @@ from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_field
+from redis.exceptions import RedisError
 from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -104,7 +105,11 @@ class AssistantThreadSerializer(serializers.ModelSerializer):
         client = events.client()
         if client is None or thread.state != AssistantThread.State.RUNNING:
             return ""
-        return client.get(log.draft_key(thread.pk)) or ""
+        try:
+            return client.get(log.draft_key(thread.pk)) or ""
+        except RedisError:
+            # The reply so far is a convenience: the saved reply arrives without it.
+            return ""
 
 
 class AssistantEventSerializer(serializers.ModelSerializer):

@@ -37,10 +37,13 @@ def current_work(datasets):
             "total": sum(member["size"] for member in members),
             "unit": "bytes",
         }
-    # A conversation whose turn runs is preparing its dataset, even between jobs.
-    for dataset_id in AssistantThread.objects.filter(
-        dataset_id__in=ids, state=AssistantThread.State.RUNNING
-    ).values_list("dataset_id", flat=True):
+    # A conversation whose turn runs is preparing its dataset, even between jobs; a turn
+    # lost with its worker is not.
+    for dataset_id in (
+        AssistantThread.objects.moving()
+        .filter(dataset_id__in=ids)
+        .values_list("dataset_id", flat=True)
+    ):
         work.setdefault(
             str(dataset_id),
             {

@@ -246,8 +246,9 @@ def _block(run, code, error):
                 dataset_id, {"dataset_id": str(dataset_id), "type": "land_failed", "error": error}
             )
         )
-        # A message sent with the upload waited for this source.
-        wake_dataset(dataset_id)
+        # A message sent with the upload waited for this source; it is read once the
+        # source's error is committed, or a turn could still see it landing.
+        transaction.on_commit(lambda dataset_id=dataset_id: wake_dataset(dataset_id))
 
 
 @transaction.atomic

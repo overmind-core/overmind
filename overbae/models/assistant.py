@@ -1,7 +1,20 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
+
+# A running turn that has not moved for this long was lost with its worker.
+STALE = timedelta(minutes=15)
+
+
+class ThreadQuerySet(models.QuerySet):
+    def moving(self):
+        """Threads whose turn runs and still moves."""
+        return self.filter(
+            state=AssistantThread.State.RUNNING, updated_at__gt=timezone.now() - STALE
+        )
 
 
 class AssistantThread(models.Model):
@@ -14,6 +27,7 @@ class AssistantThread(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
+    objects = ThreadQuerySet.as_manager()
     dataset = models.OneToOneField(
         "overbae.Dataset", on_delete=models.CASCADE, related_name="assistant_thread"
     )

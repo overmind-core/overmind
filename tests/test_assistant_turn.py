@@ -17,7 +17,7 @@ from overbae.models import (
 )
 from overbae.services import workspaces
 from overbae.services.assistant import log, threads, turn
-from overbae.services.datasets import lifecycle
+from overbae.services.datasets import lifecycle, list_activity
 from overbae.tasks import assistant as assistant_tasks
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("assistant-turn")]
@@ -155,8 +155,11 @@ def test_a_turn_that_stopped_moving_is_interrupted_and_writes_nothing_more(
     threads.send(thread, user, request_key="k", text="Prepare it.")
     stale = timezone.now() - turn.STALE - timedelta(minutes=1)
     AssistantThread.objects.filter(pk=thread.pk).update(state="running", turn=4)
+    assert str(thread.dataset_id) in list_activity.current_work([thread.dataset])
     AssistantThread.objects.filter(pk=thread.pk).update(updated_at=stale)
     thread.refresh_from_db()
+    # The dataset list does not show a lost turn as current work.
+    assert str(thread.dataset_id) not in list_activity.current_work([thread.dataset])
 
     with django_capture_on_commit_callbacks(execute=True):
         settled = turn.settle(thread)

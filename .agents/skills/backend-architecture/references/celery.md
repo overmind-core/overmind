@@ -1,6 +1,6 @@
 # Celery topology
 
-Six workers over six queues. Workers are resource profiles; queues are fairness classes.
+Seven workers over seven queues. Workers are resource profiles; queues are fairness classes.
 
 | Worker        | Pool    | Conc | Holds                                                                               |
 | ------------- | ------- | ---- | ----------------------------------------------------------------------------------- |

@@ -115,6 +115,10 @@ def test_a_searched_page_keeps_file_positions_and_the_whole_total(tmp_path):
         store.page(path, search="MATCH", sort="n", direction="desc", limit=1)["rows"][0]["n"] == 9
     )
 
+    named = tmp_path / "named.parquet"
+    store.write_rows(named, [{"File_Row_Number": i, "text": "match"} for i in range(3)])
+    assert [row["_index"] for row in store.page(named, search="match")["rows"]] == [0, 1, 2]
+
 
 def test_column_stats_and_rows_by_index(table):
     stats = {c["name"]: c for c in store.column_stats(table)}

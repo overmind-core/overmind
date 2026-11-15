@@ -340,7 +340,17 @@ function Question({ node }: { node: QuestionNode | ChoicesNode }) {
   const key = answerKey(call, node.id);
   // A draft outlives a closed panel, within this browser session.
   const draftKey = `assistant-answer:${key}`;
-  const [values, setValues] = useState<Record<string, unknown>>(() => draftOf(draftKey));
+  // An unticked box is an answer: false, not a missing value.
+  const [values, setValues] = useState<Record<string, unknown>>(() => ({
+    ...(node.type === "Question"
+      ? Object.fromEntries(
+          node.fields
+            .filter((field) => field.type === "boolean")
+            .map((field) => [field.name, false])
+        )
+      : {}),
+    ...draftOf(draftKey),
+  }));
   const done = actions.answered.has(key);
   const disabled = done || actions.sending;
   const set = (name: string, value: unknown) =>
@@ -376,9 +386,13 @@ function Question({ node }: { node: QuestionNode | ChoicesNode }) {
       </div>
     );
 
-  const missing = node.fields.some(
-    (field) => field.required && (values[field.name] == null || values[field.name] === "")
-  );
+  const missing = node.fields.some((field) => {
+    const value = values[field.name];
+    return (
+      field.required &&
+      (value == null || value === "" || (Array.isArray(value) && value.length === 0))
+    );
+  });
   return (
     <form
       aria-label={node.prompt}
@@ -394,7 +408,8 @@ function Question({ node }: { node: QuestionNode | ChoicesNode }) {
       <p className="text-sm">{node.prompt}</p>
       <fieldset className="space-y-3" disabled={disabled}>
         {node.fields.map((field) => {
-          const id = `${node.id}-${field.name}`;
+          // The call is part of the id: two questions may share a field name.
+          const id = `${key}-${field.name}`;
           const value = values[field.name];
           return (
             <div className="space-y-1.5" key={field.name}>

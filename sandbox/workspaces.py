@@ -88,7 +88,9 @@ class Kernel:
 
 
 _kernels: dict[tuple[str, str], Kernel] = {}
-_starting = threading.Lock()
+_registry = threading.Lock()
+# One start at a time for each conversation: a start that waits for memory holds up no other.
+_starts: dict[tuple[str, str], threading.Lock] = {}
 
 
 def project_dir(project: str) -> Path:
@@ -173,10 +175,15 @@ def _ending(code: int) -> str:
     return f"exit status {code}"
 
 
-def stop(project: str, conversation: str) -> None:
-    kernel = _kernels.pop((project, conversation), None)
-    if kernel is None:
-        return
+def stop(project: str, conversation: str, kernel: Kernel | None = None) -> None:
+    """End the conversation's kernel; with ``kernel``, only while it is still that one, so a
+    failure seen on an earlier kernel never ends the one that replaced it."""
+    with _registry:
+        held = _kernels.get((project, conversation))
+        if held is None or (kernel is not None and held is not kernel):
+            return
+        del _kernels[(project, conversation)]
+    kernel = held
     execute.end(kernel.work, kernel.process.pid, kernel.slot.uid)
     kernel.process.wait()
     os.close(kernel.directory)
@@ -218,18 +225,22 @@ def _exchange(kernel: Kernel, request: dict) -> dict:
 def run(project: str, conversation: str, code: str, timeout: int) -> dict:
     """Run a cell in the conversation's kernel, starting one when it has none."""
     restarted = None
-    with _starting:
-        kernel = _kernels.get((project, conversation))
+    key = (project, conversation)
+    with _registry:
+        starting = _starts.setdefault(key, threading.Lock())
+    with starting:
+        kernel = _kernels.get(key)
         if kernel is None:
             kernel, restarted = _start(project, conversation)
-            _kernels[(project, conversation)] = kernel
+            with _registry:
+                _kernels[key] = kernel
     if not kernel.executing.acquire(blocking=False):
         raise BusyError("This conversation's kernel already runs a cell.")
     try:
         reply = _exchange(kernel, {"code": code, "timeout": timeout})
     except (OSError, ValueError, KeyError, TypeError):
         # The kernel's own deadline did not fire: it is stuck outside Python, or dead.
-        stop(project, conversation)
+        stop(project, conversation, kernel)
         reply = {
             "ok": False,
             "output": "",
@@ -267,7 +278,7 @@ def _check(key: tuple[str, str], kernel: Kernel, tick: int) -> None:
             used = kernel.slot.limit + 1
         ended = used > kernel.slot.limit
     if ended:
-        stop(*key)
+        stop(*key, kernel)
     elif tick % RENEW_EVERY == 0:
         execute.renew(kernel.slot)
 
@@ -377,7 +388,11 @@ def forget(project: str, data: list[str], conversations: list[str]) -> None:
 
 
 def remove(project: str) -> None:
-    for key in [key for key in _kernels if key[0] == project]:
+    with _registry:
+        keys = [key for key in _kernels if key[0] == project]
+        for key in [key for key in _starts if key[0] == project]:
+            del _starts[key]
+    for key in keys:
         stop(*key)
     shutil.rmtree(root() / project, ignore_errors=True)
 

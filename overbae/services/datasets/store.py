@@ -508,11 +508,18 @@ def page(
     con = connect()
     try:
         # The file's own row number keeps the scan parallel; a window function serialises it.
+        # DuckDB refuses that number beside a column of the same name, which a dataset may have.
         literal = str(path).replace("'", "''")
-        con.execute(
-            'CREATE VIEW "t" AS SELECT file_row_number AS "_index", * EXCLUDE (file_row_number) '
-            f"FROM read_parquet('{literal}', file_row_number = true)"
-        )
+        if "file_row_number" in {name.lower() for name in kinds}:
+            numbered = (
+                f"SELECT (row_number() OVER ()) - 1 AS \"_index\", * FROM read_parquet('{literal}')"
+            )
+        else:
+            numbered = (
+                'SELECT file_row_number AS "_index", * EXCLUDE (file_row_number) '
+                f"FROM read_parquet('{literal}', file_row_number = true)"
+            )
+        con.execute(f'CREATE VIEW "t" AS {numbered}')
         cur = con.execute(
             f'SELECT * FROM "t" WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?',
             [*params, int(limit), int(offset)],

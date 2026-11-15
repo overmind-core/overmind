@@ -10,7 +10,6 @@ import json
 import logging
 import time
 import uuid
-from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -20,6 +19,7 @@ from django.utils import timezone
 from overbae.core.llms import IncompleteCompletionError, call_llm_tools, stream_llm_tools
 from overbae.core.model_registry import TaskType, model_chain
 from overbae.models import AssistantEvent, AssistantInput, AssistantThread, BillingService, Dataset
+from overbae.models.assistant import STALE
 from overbae.services.assistant import log, prompt, threads, tools
 from overbae.services.billing_ledger import InsufficientCredits, charge_llm_usage, ensure_credits
 
@@ -28,7 +28,6 @@ Kind, State = AssistantEvent.Kind, AssistantThread.State
 Queued = AssistantInput.State.QUEUED
 
 # Longer than any one step: a model reply, a cell at its limit, or one poll of a job.
-STALE = timedelta(minutes=15)
 TURN_SECONDS = 30 * 60
 DRAFT_INTERVAL_SECONDS = 0.1
 ABANDONED = {
@@ -158,7 +157,8 @@ def _stopped(thread) -> None:
 def _turn(thread) -> None:
     deadline = time.monotonic() + TURN_SECONDS
     message = thread.inputs.filter(state=Queued).order_by("-urgent", "position").first()
-    while message is not None:
+    # Past the deadline the rest stay queued: ``run`` starts the next turn for them.
+    while message is not None and time.monotonic() < deadline:
         if _deliver(thread, message):
             _answer(thread, deadline)
         message = thread.inputs.filter(state=Queued).order_by("-urgent", "position").first()
