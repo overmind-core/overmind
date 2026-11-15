@@ -438,13 +438,16 @@ def sandbox_server():
         port = probe.getsockname()[1]
     url, token = f"http://127.0.0.1:{port}", secrets.token_hex(16)
     scratch = tempfile.TemporaryDirectory(prefix="sandbox-test-")
+    # Deeper than a Unix socket path holds, as a deployment's temporary directory may be.
+    deep = Path(scratch.name) / ("deep-" * 20)
+    deep.mkdir()
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SANDBOX_TOKEN": token,
         "SANDBOX_ALLOW_SHARED_UID": "1",
-        "SANDBOX_WORKSPACES": str(Path(scratch.name) / "workspaces"),
+        "SANDBOX_WORKSPACES": str(deep / "workspaces"),
         # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
-        "TMPDIR": scratch.name,
+        "TMPDIR": str(deep),
     }
     command = [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)]
     container = None

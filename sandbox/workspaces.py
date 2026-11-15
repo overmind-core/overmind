@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -74,13 +75,16 @@ class Kernel:
     slot: execute.Slot
     work: Path
     process: subprocess.Popen
+    # The working directory, held open: the socket is reached through it.
+    directory: int
     used: float = field(default_factory=time.monotonic)
     executing: threading.Lock = field(default_factory=threading.Lock)
 
     @property
     def socket_path(self) -> str:
-        # A Unix socket path holds 107 bytes; the working directory's path can be longer.
-        return str(execute.runs_dir() / f"kernel-{self.slot.token[:16]}" / ".kernel.sock")
+        # A Unix socket path holds 107 bytes, and the working directory's path is as long
+        # as the deployment makes it: the open directory names it in a few bytes.
+        return f"/proc/self/fd/{self.directory}/.kernel.sock"
 
 
 _kernels: dict[tuple[str, str], Kernel] = {}
@@ -119,6 +123,7 @@ def _start(project: str, conversation: str) -> tuple[Kernel, str | None]:
         link.symlink_to("../../data")
     slot = execute.reserve(KERNEL_BYTES, execute.memory_budget(), MEMORY_WAIT_SECONDS)
     process = None
+    directory = os.open(work, os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
         execute.hand_over(work, slot.uid)
         limits = {
@@ -138,22 +143,34 @@ def _start(project: str, conversation: str) -> tuple[Kernel, str | None]:
                 stderr=stderr,
                 **execute.confinement(work, slot.uid),
             )
-        kernel = Kernel(slot, work, process)
-        Path(kernel.socket_path).parent.symlink_to(work)
+        kernel = Kernel(slot, work, process, directory)
         deadline = time.monotonic() + START_SECONDS
         while not _answers(kernel.socket_path):
-            if process.poll() is not None or time.monotonic() > deadline:
+            code = process.poll()
+            if code is not None or time.monotonic() > deadline:
+                ended = (
+                    f"it ended with {_ending(code)}"
+                    if code is not None
+                    else f"it did not answer within {START_SECONDS} s"
+                )
                 cause = errors.read_text(errors="replace").strip()[-400:]
-                raise StartError(f"The kernel did not start. {cause}".strip())
+                raise StartError(f"The kernel did not start: {ended}. {cause}".strip())
             time.sleep(0.02)
     except BaseException:
         if process is not None:
             execute.end(work, process.pid, slot.uid)
             process.wait()
-        (execute.runs_dir() / f"kernel-{slot.token[:16]}").unlink(missing_ok=True)
+        os.close(directory)
         execute.release(slot)
         raise
     return kernel, restarted
+
+
+def _ending(code: int) -> str:
+    if code < 0:
+        with contextlib.suppress(ValueError):
+            return signal.Signals(-code).name
+    return f"exit status {code}"
 
 
 def stop(project: str, conversation: str) -> None:
@@ -162,7 +179,7 @@ def stop(project: str, conversation: str) -> None:
         return
     execute.end(kernel.work, kernel.process.pid, kernel.slot.uid)
     kernel.process.wait()
-    Path(kernel.socket_path).parent.unlink(missing_ok=True)
+    os.close(kernel.directory)
     execute.release(kernel.slot)
 
 
