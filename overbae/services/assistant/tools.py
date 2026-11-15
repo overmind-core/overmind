@@ -242,7 +242,8 @@ def _platform(turn: Turn, name: str, arguments: dict) -> Outcome:
     return Outcome(True, content)
 
 
-def _put_versions(turn: Turn, provider, versions) -> None:
+def _put_versions(turn: Turn, provider, versions) -> bool:
+    """False when the user stopped the turn before every version was copied."""
     if not isinstance(versions, list) or not all(isinstance(v, str) for v in versions):
         raise InputValidationError("versions lists dataset version ids.")
     cells = Cell.objects.filter(dataset__project=turn.thread.project_id, pk__in=versions)
@@ -250,10 +251,12 @@ def _put_versions(turn: Turn, provider, versions) -> None:
         raise InputValidationError("A listed dataset version is not in this project.")
     for cell in cells:
         # A deleted project takes its thread along; a turn that lost it copies nothing
-        # into a workspace its removal already cleared.
-        turn.alive()
+        # into a workspace its removal already cleared. A stopped turn copies nothing more.
+        if not turn.alive():
+            return False
         with open(rows.frame_path(cell), "rb") as frame:
             provider.put_data(str(turn.thread.project_id), data_name(cell), frame)
+    return True
 
 
 def _run_python(turn: Turn, arguments) -> Outcome:
@@ -264,8 +267,9 @@ def _run_python(turn: Turn, arguments) -> Outcome:
     if len(code) > MAX_CODE_CHARS:
         raise InputValidationError(f"code is at most {MAX_CODE_CHARS:,} characters.")
     provider = workspaces.provider()
-    _put_versions(turn, provider, arguments.get("versions") or [])
-    turn.alive()
+    # A stop ends the kernel; a cell started after it would start another.
+    if not _put_versions(turn, provider, arguments.get("versions") or []) or not turn.alive():
+        return Outcome(False, {"error": "The user stopped the conversation."})
     run = provider.run(
         str(turn.thread.project_id),
         turn.thread.pk.hex,

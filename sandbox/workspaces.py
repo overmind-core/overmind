@@ -87,7 +87,13 @@ class Kernel:
     def socket_path(self) -> str:
         # A Unix socket path holds 107 bytes, and the working directory's path is as long
         # as the deployment makes it: the open directory names it in a few bytes.
-        return f"/proc/self/fd/{self.directory}/.kernel.sock"
+        return f"/proc/self/fd/{self.directory}/{socket_name(self.slot)}"
+
+
+def socket_name(slot: execute.Slot) -> str:
+    # Each kernel its own name: a run still holding a stopped kernel's directory reaches no
+    # kernel that replaced it in the same folder.
+    return f".kernel-{slot.token[:16]}.sock"
 
 
 _kernels: dict[tuple[str, str], Kernel] = {}
@@ -120,8 +126,9 @@ def _start(project: str, conversation: str) -> tuple[Kernel, str | None]:
     work = data.parent / "conversations" / conversation
     restarted = RESTARTED if work.exists() else None
     work.mkdir(mode=0o700, exist_ok=True)
-    # An earlier kernel's socket would refuse this one's.
-    (work / ".kernel.sock").unlink(missing_ok=True)
+    # Earlier kernels leave their sockets behind.
+    for stale in work.glob(".kernel-*.sock"):
+        stale.unlink(missing_ok=True)
     link = work / "data"
     if not link.is_symlink():
         link.unlink(missing_ok=True)
@@ -143,7 +150,7 @@ def _start(project: str, conversation: str) -> tuple[Kernel, str | None]:
         errors = work.parent / f".{conversation}.err"
         with open(errors, "wb") as stderr:
             process = subprocess.Popen(
-                [sys.executable, "-I", str(KERNEL), "serve", ".kernel.sock", json.dumps(limits)],
+                [sys.executable, "-I", str(KERNEL), "serve", socket_name(slot), json.dumps(limits)],
                 stdout=subprocess.DEVNULL,
                 stderr=stderr,
                 **execute.confinement(work, slot.uid),

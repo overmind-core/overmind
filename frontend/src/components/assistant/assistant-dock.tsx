@@ -96,6 +96,7 @@ export function AssistantDock({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [sent, setSent] = useState(0);
   const [panel, setPanel] = useState(false);
   const [keptWidth, keepWidth] = usePersistedState("assistant:panelWidth", PANEL_WIDTH.default);
   const [draggedWidth, setDraggedWidth] = useState<number | null>(null);
@@ -148,6 +149,7 @@ export function AssistantDock({
         onError: () => restore && setText((current) => current || message),
         onSuccess: () => {
           request.current = null;
+          setSent((count) => count + 1);
           onSent?.();
           setPanel(true);
           setExpanded(true);
@@ -251,6 +253,7 @@ export function AssistantDock({
             if (window.matchMedia(PHONE).matches) collapse();
             onSelectCell(id);
           }}
+          sent={sent}
           teammates={teammates}
         />
       )}

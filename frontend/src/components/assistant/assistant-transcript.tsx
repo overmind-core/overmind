@@ -241,6 +241,7 @@ const STATUS_NOTE = {
 export function AssistantTranscript({
   events,
   draft,
+  sent,
   active,
   activity,
   cells,
@@ -252,6 +253,9 @@ export function AssistantTranscript({
   /** Other members who wrote here, by user id. */
   teammates: ReadonlyMap<number, string>;
   draft: Draft | null;
+  /** How many messages this reader sent from this page: each brings the end into view. A
+   *  teammate's message follows the reader's place like any other content. */
+  sent: number;
   active: boolean;
   /** Shown while the run works and nothing else on screen says so. */
   activity?: string;
@@ -283,13 +287,7 @@ export function AssistantTranscript({
     for (const child of node.children) resized.observe(child);
     return () => resized.disconnect();
   }, [scrollToEnd]);
-  // The reader's own message always brings its end into view.
-  // A teammate's message follows the reader's place like any other content.
-  const sent = events.reduce(
-    (last, event) =>
-      event.kind === "user" && !teammates.has(event.payload.user) ? event.sequence : last,
-    0
-  );
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: scrolls when a message is sent
   useEffect(() => {
     follow.current = true;
