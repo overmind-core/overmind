@@ -114,6 +114,7 @@ LOST = (
 # Marks the runner's reply in the context's output, which a cell can also write to directly.
 REPLY = "__overmind_reply__:"
 UNREAD = "The cell ran, but its result did not come back. Variables remain."
+REPLY_KEYS = {"ok", "output", "error", "truncated", "seconds"}
 
 
 @cache
@@ -472,7 +473,7 @@ def _reply(stdout: str) -> dict | None:
             except ValueError:
                 start = line.find(REPLY, start + 1)
                 continue
-            if isinstance(reply, dict):
+            if isinstance(reply, dict) and reply.keys() == REPLY_KEYS:
                 return reply
             start = line.find(REPLY, start + 1)
     return None
