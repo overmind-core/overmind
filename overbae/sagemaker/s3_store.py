@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
-from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
 
 from overbae.core.aws import boto3_client
+from overbae.sagemaker import s3_io
+
+
+def _s3():
+    return boto3_client("s3")
 
 
 def sft_bucket() -> str:
@@ -25,114 +28,54 @@ def archive_bucket() -> str:
 def put_bytes(
     bucket: str, key: str, data: bytes, *, content_type: str = "application/octet-stream"
 ) -> None:
-    boto3_client("s3").put_object(
-        Bucket=bucket,
-        Key=key.lstrip("/"),
-        Body=data,
-        ContentType=content_type,
-    )
+    s3_io.put_bytes(bucket, key, data, client=_s3(), content_type=content_type)
 
 
 def put_json(bucket: str, key: str, payload: Any) -> None:
-    put_bytes(
-        bucket,
-        key,
-        (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
-        content_type="application/json",
-    )
+    s3_io.put_json(bucket, key, payload, client=_s3())
 
 
 def upload_file(bucket: str, key: str, path: Path | str) -> None:
-    put_bytes(bucket, key, Path(path).read_bytes())
+    s3_io.upload_file(bucket, key, path, client=_s3())
 
 
 def get_bytes(bucket: str, key: str) -> bytes | None:
-    try:
-        resp = boto3_client("s3").get_object(Bucket=bucket, Key=key.lstrip("/"))
-    except (BotoCoreError, ClientError, KeyError):
-        return None
-    body = resp.get("Body")
-    if hasattr(body, "read"):
-        return body.read()
-    if isinstance(body, (bytes, bytearray)):
-        return bytes(body)
-    return None
+    return s3_io.get_bytes(bucket, key, client=_s3())
 
 
 def get_json(bucket: str, key: str) -> Any | None:
-    raw = get_bytes(bucket, key)
-    if raw is None:
-        return None
-    try:
-        return json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
-        return None
+    return s3_io.get_json(bucket, key, client=_s3())
 
 
 def get_jsonl(bucket: str, key: str) -> list[dict[str, Any]]:
-    raw = get_bytes(bucket, key)
-    if not raw:
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in raw.decode("utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-            if isinstance(item, dict):
-                rows.append(item)
-        except ValueError:
-            continue
-    return rows
+    return s3_io.get_jsonl(bucket, key, client=_s3())
 
 
 def object_exists(bucket: str, key: str) -> bool:
-    try:
-        boto3_client("s3").head_object(Bucket=bucket, Key=key.lstrip("/"))
-        return True
-    except (BotoCoreError, ClientError, KeyError):
-        return False
+    return s3_io.object_exists(bucket, key, client=_s3())
 
 
 def list_keys(bucket: str, prefix: str) -> list[str]:
-    try:
-        resp = boto3_client("s3").list_objects_v2(Bucket=bucket, Prefix=prefix.lstrip("/"))
-    except (BotoCoreError, ClientError):
-        return []
-    return [str(obj["Key"]) for obj in (resp.get("Contents") or []) if "Key" in obj]
+    return s3_io.list_keys(bucket, prefix, client=_s3())
+
+
+def delete_run(run_id: str, *, keep_final: bool = False) -> None:
+    """Drop one training prefix. ``final/`` stays until deploy has archived it."""
+    bucket = sft_bucket()
+    run_id = (run_id or "").strip()
+    if not bucket or not run_id or "/" in run_id:
+        return
+    prefix = f"runs/{run_id}/"
+    keys = s3_io.list_keys(bucket, prefix, client=_s3())
+    if keep_final:
+        final = f"{prefix}final/"
+        keys = [key for key in keys if not key.startswith(final)]
+    s3_io.delete_keys(bucket, keys, client=_s3())
 
 
 def sync_directory_to_s3(local_dir: Path, bucket: str, prefix: str) -> list[str]:
-    uploaded: list[str] = []
-    base = prefix.strip("/")
-    for file_path in sorted(local_dir.rglob("*")):
-        if not file_path.is_file():
-            continue
-        rel = file_path.relative_to(local_dir).as_posix()
-        key = f"{base}/{rel}" if base else rel
-        upload_file(bucket, key, file_path)
-        uploaded.append(key)
-    return uploaded
+    return s3_io.sync_directory_to_s3(local_dir, bucket, prefix, client=_s3())
 
 
 def sync_s3_to_directory(bucket: str, prefix: str, local_dir: Path) -> list[Path]:
-    local_dir.mkdir(parents=True, exist_ok=True)
-    base = prefix.strip("/")
-    prefix_with_slash = f"{base}/" if base else ""
-    downloaded: list[Path] = []
-    for key in list_keys(bucket, prefix_with_slash):
-        rel = (
-            key[len(prefix_with_slash) :]
-            if prefix_with_slash and key.startswith(prefix_with_slash)
-            else key
-        )
-        if not rel or rel.endswith("/"):
-            continue
-        raw = get_bytes(bucket, key)
-        if raw is None:
-            continue
-        target = local_dir / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(raw)
-        downloaded.append(target)
-    return downloaded
+    return s3_io.sync_s3_to_directory(bucket, prefix, local_dir, client=_s3())

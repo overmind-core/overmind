@@ -18,7 +18,11 @@ from overbae.models import (
     Project,
     User,
 )
-from overbae.sagemaker.instance_map import gpu_from_instance_type, sagemaker_instance_type
+from overbae.sagemaker.instance_map import (
+    cuda_visible_devices,
+    gpu_from_instance_type,
+    sagemaker_instance_type,
+)
 from overbae.services import (
     dedicated,
     deployment,
@@ -67,6 +71,31 @@ def test_aws_session_and_iam_fallback(monkeypatch, settings):
     assert session.region_name == "eu-west-1"
 
 
+def test_training_container_modules_do_not_import_django():
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    for rel in ("overbae/sagemaker/s3_io.py", "overbae/sagemaker/sft_entrypoint.py"):
+        tree = ast.parse((root / rel).read_text())
+        modules: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules.append(node.module)
+        assert modules
+        assert all(not name.startswith("django") and "s3_store" not in name for name in modules)
+
+
+def test_ensure_base_model_leaves_the_weights_bucket_empty(aws_env):
+    from overbae.sagemaker.deployment_ops import ensure_base_model
+
+    found = ensure_base_model("Qwen/Qwen3-0.6B")
+    assert found["cached"] is False
+    assert found["base_model_path"].endswith("/.base_models/Qwen--Qwen3-0.6B")
+    assert aws_env.s3.buckets["test-weights-bucket"] == {}
+
+
 def test_instance_map_covers_all_tiers():
     assert sagemaker_instance_type("A10", 1) == "ml.g5.2xlarge"
     assert sagemaker_instance_type("L4", 1) == "ml.g6.2xlarge"
@@ -78,6 +107,9 @@ def test_instance_map_covers_all_tiers():
     assert sagemaker_instance_type("H200", 1) == "ml.p5e.48xlarge"
     assert gpu_from_instance_type("ml.p5.4xlarge") == ("H100", 1)
     assert gpu_from_instance_type("ml.p5e.48xlarge") == ("H200", 8)
+    assert cuda_visible_devices("H100", 1) is None
+    assert cuda_visible_devices("H200", 1) == "0"
+    assert cuda_visible_devices("H100", 4) == "0,1,2,3"
 
 
 def test_bedrock_llm_completion_tools_schema_and_embeddings(aws_env):
@@ -213,6 +245,13 @@ def test_sagemaker_preparation_training_reconcile_and_deployment(aws_env, tmp_pa
 
     training_submission.claim(job)
     sub = runner.submit(job, str(train_file), len(TRAIN_ROWS))
+    run_id = sub.remote_id.split(":", 1)[0]
+    created = aws_env.sagemaker.training_jobs[run_id]
+    assert created["ResourceConfig"]["InstanceType"] == "ml.p5.4xlarge"
+    assert "CUDA_VISIBLE_DEVICES" not in created["Environment"]
+    assert created["kwargs"]["AlgorithmSpecification"]["TrainingImage"].endswith(
+        "train-u2026_10_7:latest"
+    )
     training_submission.acknowledge(job, sub.remote_id)
     job.remote_job_id = sub.remote_id
     job.status = FinetuningJob.Status.RUNNING
@@ -226,7 +265,6 @@ def test_sagemaker_preparation_training_reconcile_and_deployment(aws_env, tmp_pa
     assert snap.output_model_name.startswith("sagemaker/ft-")
 
     # Test submission recovery when remote_job_id is missing
-    run_id = sub.remote_id.split(":", 1)[0]
     job.remote_job_id = ""
     job.status = FinetuningJob.Status.SUBMISSION_UNKNOWN
     job.provider_submission = {"state": "unknown", "run_id": run_id}
@@ -255,6 +293,10 @@ def test_sagemaker_preparation_training_reconcile_and_deployment(aws_env, tmp_pa
     assert deployed.status == DeployedModel.Status.READY
     assert deployed.inference_url.startswith("sagemaker://om-ep-")
     assert job.status == FinetuningJob.Status.SUCCEEDED
+    assert (
+        aws_env.s3.list_objects_v2(Bucket="test-sft-bucket", Prefix=f"runs/{run_id}/")["KeyCount"]
+        == 0
+    )
 
     # Checkpoint download URL works with SAGEMAKER provider and FakeS3
     dl = finetuning_checkpoints.get_checkpoint_download_url(job)
@@ -276,6 +318,44 @@ def test_sagemaker_preparation_training_reconcile_and_deployment(aws_env, tmp_pa
         req.refresh_from_db()
     assert req.state == "succeeded"
     assert req.result["content"] == "SageMaker endpoint reply."
+
+
+def test_failed_sagemaker_run_drops_its_prefix(aws_env):
+    from overbae.tasks.finetuning import observe_finetuning_job
+
+    user = User.objects.create_user(email="fail@example.test", password="pw")
+    project = Project.objects.create(name="Failed AWS", slug="failed-aws")
+    dataset = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=dataset,
+        base_model="Qwen/Qwen3-8B",
+        status=FinetuningJob.Status.RUNNING,
+        provider=FinetuningJob.Provider.SAGEMAKER,
+        remote_job_id="ft-fail:arn:aws:sagemaker:eu-west-1:123:training-job/ft-fail",
+        hyperparameters={},
+        triggered_by=user,
+    )
+    aws_env.sagemaker.training_jobs["ft-fail"] = {
+        "TrainingJobName": "ft-fail",
+        "TrainingJobStatus": "Failed",
+        "FailureReason": "algorithm exited",
+    }
+    aws_env.s3.put_object(Bucket="test-sft-bucket", Key="runs/ft-fail/data.jsonl", Body=b"{}\n")
+    aws_env.s3.put_object(
+        Bucket="test-sft-bucket",
+        Key="runs/ft-fail/meta.json",
+        Body=b'{"status": "failed", "error": "algorithm exited"}\n',
+    )
+
+    observe_finetuning_job(job)
+
+    job.refresh_from_db()
+    assert job.status == FinetuningJob.Status.FAILED
+    assert (
+        aws_env.s3.list_objects_v2(Bucket="test-sft-bucket", Prefix="runs/ft-fail/")["KeyCount"]
+        == 0
+    )
 
 
 def test_sagemaker_dedicated_serving_and_pricing(aws_env):

@@ -39,27 +39,19 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push SFT Training image (u2026_10_7)
+      - name: Build and push training images
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -f docker/Dockerfile.train --target u2026_10_7 \
-            -t "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:$IMAGE_TAG" \
-            -t "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:latest" .
-          docker push "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:$IMAGE_TAG"
-          docker push "$REGISTRY/$ECR_PREFIX-train-u2026_10_7:latest"
-
-      - name: Build and push Decision Training image
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -f docker/Dockerfile.train --target decision \
-            -t "$REGISTRY/$ECR_PREFIX-train-decision:$IMAGE_TAG" \
-            -t "$REGISTRY/$ECR_PREFIX-train-decision:latest" .
-          docker push "$REGISTRY/$ECR_PREFIX-train-decision:$IMAGE_TAG"
-          docker push "$REGISTRY/$ECR_PREFIX-train-decision:latest"
+          stacks="u2026_7 u2026_8_tf510 u2026_8_tf515 u2026_8_gptoss u2026_8_18 u2026_9_2 u2026_10_7 u2026_10_3_decision"
+          for stack in $stacks; do
+            docker build -f docker/Dockerfile.train --build-arg "STACK=$stack" \
+              -t "$REGISTRY/$ECR_PREFIX-train-$stack:$IMAGE_TAG" \
+              -t "$REGISTRY/$ECR_PREFIX-train-$stack:latest" .
+            docker push "$REGISTRY/$ECR_PREFIX-train-$stack:$IMAGE_TAG"
+            docker push "$REGISTRY/$ECR_PREFIX-train-$stack:latest"
+          done
 
       - name: Build and push vLLM Serving image
         env:

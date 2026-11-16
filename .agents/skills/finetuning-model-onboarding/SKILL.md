@@ -5,7 +5,7 @@ description: Rules for adding a new model or model family to the finetuning pipe
 
 # Finetuning model onboarding
 
-All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_unsloth.py`). Every chat model and family goes through the same engine — the rules below exist to keep it that way. Decision families (Clef, D3, D1) run `sft_assets/decision_engine.py` instead.
+Chat finetuning runs Unsloth (`overbae/services/sft_assets/engine_unsloth.py`) in the image defined by `docker/Dockerfile.train`. Modal builds that file with `Image.from_dockerfile` (`ARG STACK` picks the stage) and SageMaker pushes the same build to ECR. Every chat model and family goes through the same engine — the rules below exist to keep it that way. Decision families (Clef, D3, D1) run `sft_assets/decision_engine.py` instead.
 
 ## 1. Never branch on model/family in the shared script
 
@@ -42,7 +42,7 @@ How to fix — do **not** branch in `engine_unsloth.py` / `pretok.py`:
 1. Copy it to `*_training.jinja` and wrap only assistant-generated spans in `{% generation %}` / `{% endgeneration %}`. `{% generation %}` is a real Jinja block: it cannot open inside `{% if %}` and close after `{% endif %}`, and `{% if %}`/`{% else %}`/`{% endif %}` must sit wholly inside or wholly outside it. The training file must render **byte-identical** text to the base; markers are invisible in the rendered string. Qwen3's twins omit the empty `<think>` block the base inserts on a final assistant turn: that block is not prefix-preserving, and serving keeps thinking off. Compile every twin (see `test_every_training_template_compiles`).
 1. Register `(base, training)` in `KNOWN_TEMPLATE_PATCHES` in `overbae/services/sft_assets/training_chat_template.py`. `pretok.py` calls `patch_known_training_template` — that is the only dispatch table.
 1. Add a pair assertion in `tests/test_sft_training_chat_template.py` (or rely on `test_every_patch_pair_exists_and_training_has_markers`).
-1. `sft_assets` is baked into the train image (`add_local_dir`). A pretok/jinja change does nothing until `modal deploy` of `overbae/modal/modal_sft_worker.py`. Re-run the LoRA probe after deploy.
+1. `sft_assets` is baked into the train image (`add_local_dir` on Modal, `COPY` in `docker/Dockerfile.train` for SageMaker). A pretok/jinja change does nothing until `modal deploy` of `overbae/modal/modal_sft_worker.py`, and the SageMaker image has to be rebuilt and pushed. Re-run the LoRA probe after deploy.
 
 ## 3. If a model fails on its assigned environment, re-derive the GPU, don't patch around it
 

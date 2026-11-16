@@ -57,3 +57,17 @@ def sagemaker_instance_type(gpu_type: str, gpu_count: int = 1) -> str:
 
 def gpu_from_instance_type(instance_type: str) -> tuple[str, int]:
     return INSTANCE_GPU_SPECS.get(instance_type, ("H100", 1))
+
+
+def cuda_visible_devices(gpu_type: str, gpu_count: int = 1) -> str | None:
+    """Hide extra GPUs when the SageMaker box is larger than the Modal request.
+
+    ml.p5.4xlarge is 1×H100. There is no 1×H200: ml.p5e.48xlarge is 8×H200,
+    and ml.p5.48xlarge is 8×H100. train.py sizes device_map from
+    torch.cuda.device_count(), which honors this list.
+    """
+    _kind, present = gpu_from_instance_type(sagemaker_instance_type(gpu_type, gpu_count))
+    requested = max(1, int(gpu_count or 1))
+    if present <= requested:
+        return None
+    return ",".join(str(i) for i in range(requested))

@@ -65,6 +65,16 @@ class FakeS3:
         ]
         return {"Contents": contents, "KeyCount": len(contents)}
 
+    def delete_objects(self, **kwargs: Any) -> dict[str, Any]:
+        store = self.buckets.get(kwargs["Bucket"], {})
+        deleted = []
+        for obj in (kwargs.get("Delete") or {}).get("Objects") or []:
+            key = str(obj.get("Key", "")).lstrip("/")
+            if key in store:
+                del store[key]
+                deleted.append({"Key": key})
+        return {"Deleted": deleted}
+
     def generate_presigned_url(self, client_method: str, **kwargs: Any) -> str:
         _ = client_method
         params = kwargs["Params"]

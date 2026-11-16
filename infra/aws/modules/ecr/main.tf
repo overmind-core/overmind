@@ -2,13 +2,20 @@ variable "project_name" { type = string }
 variable "environment" { type = string }
 
 locals {
-  repositories = toset([
-    "${var.project_name}-app",
-    "${var.project_name}-train-u2026_10_7",
-    "${var.project_name}-train-decision",
-    "${var.project_name}-serve-vllm",
-    "${var.project_name}-serve-sglang",
+  train_stacks = toset([
+    "u2026_7",
+    "u2026_8_tf510",
+    "u2026_8_tf515",
+    "u2026_8_gptoss",
+    "u2026_8_18",
+    "u2026_9_2",
+    "u2026_10_7",
+    "u2026_10_3_decision",
   ])
+  repositories = toset(concat(
+    ["${var.project_name}-app", "${var.project_name}-serve-vllm", "${var.project_name}-serve-sglang"],
+    [for stack in local.train_stacks : "${var.project_name}-train-${stack}"],
+  ))
 }
 
 resource "aws_ecr_repository" "repos" {

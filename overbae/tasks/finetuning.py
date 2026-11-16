@@ -388,6 +388,20 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
         )
 
 
+def _drop_sagemaker_run(job, *, keep_final: bool) -> None:
+    if getattr(job, "provider", "") != "sagemaker":
+        return
+    run_id = (getattr(job, "remote_job_id", "") or "").split(":", 1)[0]
+    if not run_id:
+        return
+    from overbae.sagemaker.s3_store import delete_run
+
+    try:
+        delete_run(run_id, keep_final=keep_final)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not delete SageMaker run prefix %s", run_id)
+
+
 def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     from overbae.models import FinetuningJob
 
@@ -454,6 +468,7 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         logger.exception("Failed to queue inference deployment for job %s — continuing", job.id)
     _enqueue_baseten_cost_sync(job)
+    _drop_sagemaker_run(job, keep_final=True)
     return {"status": "deploying", "job_id": remote}
 
 
@@ -777,6 +792,7 @@ def observe_finetuning_job(job) -> dict[str, Any]:
         if job.status != FinetuningJob.Status.CANCELLED:
             _transition(job, FinetuningJob.Status.CANCELLED, message="Fine-tuning cancelled")
             _enqueue_baseten_cost_sync(job)
+        _drop_sagemaker_run(job, keep_final=False)
         return {"status": "cancelled", "job_id": remote}
 
     job.refresh_from_db(fields=["status", "progress"])
@@ -813,4 +829,5 @@ def _handle_failure(job, error: str) -> None:
         return
 
     _transition(job, FinetuningJob.Status.FAILED, error=error)
+    _drop_sagemaker_run(job, keep_final=False)
     _enqueue_baseten_cost_sync(job)

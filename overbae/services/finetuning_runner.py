@@ -2297,7 +2297,7 @@ class SageMakerRunner(ModalRunner):
         from overbae.core.aws import boto3_client
         from overbae.modal.training_type import training_context_length
         from overbae.models import FinetuningJob as _FTJob
-        from overbae.sagemaker.instance_map import sagemaker_instance_type
+        from overbae.sagemaker.instance_map import cuda_visible_devices, sagemaker_instance_type
         from overbae.sagemaker.preparation_ops import training_image_uri
         from overbae.sagemaker.s3_store import put_json, sft_bucket
         from overbae.services import training_submission
@@ -2409,7 +2409,7 @@ class SageMakerRunner(ModalRunner):
         training_submission.record_pre_dispatch_stage(
             job,
             "preparing_base_model",
-            "Checking base model weights and downloading missing files",
+            "Checking whether the base snapshot is already in the weights bucket",
         )
         self._await_base_model(env["MODEL_ID"])
         training_submission.record_pre_dispatch_stage(
@@ -2432,8 +2432,14 @@ class SageMakerRunner(ModalRunner):
             "AWS_SFT_BUCKET_NAME": bucket,
             "AWS_WEIGHTS_BUCKET_NAME": getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", ""),
         }
+        visible = cuda_visible_devices(gpu_type, gpu_count)
+        if visible:
+            full_env["CUDA_VISIBLE_DEVICES"] = visible
         put_json(bucket, f"runs/{run_id}/env.json", full_env)
         sm_env = {k: str(v) for k, v in full_env.items() if len(str(v)) <= 250}
+        hf_token = (getattr(settings, "HF_TOKEN", "") or "").strip()
+        if hf_token:
+            sm_env["HF_TOKEN"] = hf_token
         resp = boto3_client("sagemaker").create_training_job(
             TrainingJobName=run_id,
             RoleArn=role_arn,

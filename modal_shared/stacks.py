@@ -2,8 +2,9 @@
 
 Add a model:
   1. Existing stack works → FamilySpec patterns (+ models.json). Stop.
-  2. Need new Unsloth/torch/transformers/vLLM pins → new stack key, new Image,
-     generate Function/Cls, canary, then point only that family at it.
+  2. Need new Unsloth/torch/transformers/vLLM pins → new stage in
+     docker/Dockerfile.train, new stack key, new Image, generate Function/Cls,
+     canary, then point only that family at it.
   3. Never change pip/docker pins on an existing key. Clone → new key.
 
 Deployed Modal names equal the stack id (``sft_u2026_7``, ``L4_vllm``). One
@@ -59,17 +60,6 @@ TRAIN_STACK_ALIASES: dict[str, str] = {
 
 # Deployed Modal Function = sft_{stack}. One name per Image.
 TRAIN_FUNCTION_NAMES: dict[str, str] = {s: f"sft_{s}" for s in TRAIN_STACKS}
-
-TRAIN_STACK_PINS: dict[str, str] = {
-    TRAIN_DECISION: "unsloth==2026.10.3 / unsloth_zoo==2026.10.3 / torch==2.10.0 / transformers==5.17.0 / trl==1.13.0",
-    TRAIN_U2026_7: "unsloth[cu128-torch270]==2026.7.5 / torch==2.7.0 / transformers>=5.2 / trl v1.10.0",
-    TRAIN_U2026_8_TF510: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
-    TRAIN_U2026_8_TF515: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.15 / trl v1.10.0",
-    TRAIN_U2026_8_GPOS: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / Unsloth transformers pin / kernels>=0.12,<0.15 / trl v1.10.0",
-    TRAIN_U2026_8_18: "unsloth[cu128-torch2100]==2026.8.18 / unsloth_zoo==2026.8.12 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
-    TRAIN_U2026_9_2: "unsloth[cu128-torch2100]==2026.9.2 / unsloth_zoo==2026.9.1 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
-    TRAIN_U2026_10_7: "unsloth[cu128-torch2100]==2026.10.7 / unsloth_zoo==2026.10.7 / torch==2.10.0 / transformers==5.17.0 / trl v1.10.0",
-}
 
 
 def normalize_train_stack(key: str | None) -> str:

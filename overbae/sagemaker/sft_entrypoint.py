@@ -20,7 +20,7 @@ from modal_shared.preparation import run_preparation_process
 from modal_shared.serving.artifacts import atomic_json
 from modal_shared.training_failure import failure_receipt
 from modal_shared.training_telemetry import record_heartbeat, record_stage
-from overbae.sagemaker.s3_store import (
+from overbae.sagemaker.s3_io import (
     get_json,
     put_json,
     sync_directory_to_s3,
@@ -48,6 +48,40 @@ def _sync_run_telemetry(run_dir: Path, bucket: str, run_id: str) -> None:
         p = run_dir / name
         if p.is_file():
             upload_file(bucket, f"runs/{run_id}/{name}", p)
+
+
+def _snapshot_usable(path: Path) -> bool:
+    if not (path / "config.json").is_file():
+        return False
+    weights = False
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            if name.endswith(".incomplete"):
+                return False
+            if name.endswith(".safetensors") and os.path.getsize(os.path.join(root, name)) > 0:
+                weights = True
+    return weights
+
+
+def _ensure_base_snapshot(model_id: str, bucket: str, dest: Path) -> None:
+    if _snapshot_usable(dest):
+        return
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(
+        repo_id=model_id,
+        local_dir=str(dest),
+        ignore_patterns=["*.bin", "original/*", "*.pt"],
+        token=os.environ.get("HF_TOKEN") or None,
+        max_workers=16,
+    )
+    if not _snapshot_usable(dest):
+        raise RuntimeError(f"Base snapshot for {model_id} is incomplete at {dest}")
+    if bucket:
+        sync_directory_to_s3(dest, bucket, f".base_models/{model_id.replace('/', '--')}")
 
 
 def run_prepare() -> int:
@@ -93,10 +127,12 @@ def run_train() -> int:
         for k, v in env_from_s3.items():
             os.environ.setdefault(str(k), str(v))
     model_id = os.environ.get("MODEL_ID", "")
-    if weights_bucket and model_id:
+    if model_id:
         slug = model_id.replace("/", "--")
         base_local = WEIGHTS_MOUNT / ".base_models" / slug
-        sync_s3_to_directory(weights_bucket, f".base_models/{slug}", base_local)
+        if weights_bucket:
+            sync_s3_to_directory(weights_bucket, f".base_models/{slug}", base_local)
+        _ensure_base_snapshot(model_id, weights_bucket, base_local)
 
     final_dir = run_dir / "final"
     candidate_dir = run_dir / "candidate"

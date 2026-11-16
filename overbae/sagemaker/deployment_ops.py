@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import io
 import json
 import zipfile
@@ -15,6 +14,7 @@ from overbae.modal.model_registry import get_hf_base, get_model_config_any_backe
 from overbae.sagemaker.instance_map import sagemaker_instance_type
 from overbae.sagemaker.s3_store import (
     archive_bucket,
+    delete_run,
     get_bytes,
     get_json,
     list_keys,
@@ -41,29 +41,25 @@ def is_sagemaker_deployment(deployed) -> bool:
 
 
 def ensure_base_model(base_model: str) -> dict[str, Any]:
+    """Report whether the weights bucket already holds a real snapshot.
+
+    The training container downloads the Hugging Face repo when it does not.
+    A config.json with no safetensors is not a snapshot.
+    """
     wbucket = weights_bucket()
     slug = base_model.replace("/", "--")
-    manifest_key = f".base_models/{slug}/.base-manifest.json"
-    existing = get_json(wbucket, manifest_key)
-    if isinstance(existing, dict) and existing.get("identity"):
-        return {
-            "base_model": base_model,
-            "base_model_path": f"/weights/.base_models/{slug}",
-            "cached": True,
-            "base_identity": existing["identity"],
-        }
-    identity = hashlib.sha256(f"base:{base_model}".encode()).hexdigest()
-    manifest = {"base_model": base_model, "identity": identity}
-    put_json(
-        wbucket,
-        f".base_models/{slug}/config.json",
-        {"model_type": "auto", "_name_or_path": base_model},
-    )
-    put_json(wbucket, manifest_key, manifest)
+    prefix = f".base_models/{slug}/"
+    keys = list_keys(wbucket, prefix)
+    weights = [
+        key for key in keys if key.endswith(".safetensors") and not key.endswith(".incomplete")
+    ]
+    cached = any(key.endswith("config.json") for key in keys) and bool(weights)
+    manifest = get_json(wbucket, f"{prefix}.base-manifest.json") if cached else None
+    identity = manifest.get("identity") if isinstance(manifest, dict) else None
     return {
         "base_model": base_model,
         "base_model_path": f"/weights/.base_models/{slug}",
-        "cached": False,
+        "cached": cached,
         "base_identity": identity,
     }
 
@@ -253,6 +249,10 @@ def spawn_operation(deployed) -> str:
     if stage == "weights":
         res = _prepare_weights(deployed)
         put_json(wbucket, f".ops/{call_id}.json", {"state": "complete", "result": res})
+        # Archive already zipped final/; this stage is the last reader of the run prefix.
+        job = deployed.finetuning_job
+        if job and job.remote_job_id:
+            delete_run(job.remote_job_id.split(":", 1)[0])
         return call_id
     if stage == "register":
         url = _register_endpoint(deployed)
