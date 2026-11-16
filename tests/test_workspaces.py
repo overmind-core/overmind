@@ -75,7 +75,7 @@ def test_a_sandbox_without_workspaces_answers_reads_without_creating_them(tmp_pa
 JSON = {"content-type": "application/json"}
 
 
-def sandbox(project):
+def sandbox(project, state="started", recoverable=False):
     return {
         "id": f"s-{project}",
         "organizationId": "o1",
@@ -91,7 +91,8 @@ def sandbox(project):
         "gpu": 0,
         "memory": 4,
         "disk": 5,
-        "state": "started",
+        "state": state,
+        "recoverable": recoverable,
         "snapshot": snapshot_name(),
         "toolboxProxyUrl": "https://proxy.app.daytona.io/toolbox",
     }
@@ -110,7 +111,10 @@ class FakeDaytona:
         scripted("https://proxy.app.daytona.io").then(self._toolbox)
 
     def _control(self, call):
-        box = self.boxes.get(call.path.rsplit("/", 1)[-1])
+        parts = call.path.rsplit("/", 2)
+        if parts[-1] == "recover":
+            self.boxes[parts[-2]]["state"] = "started"
+        box = self.boxes.get(parts[-1]) or self.boxes.get(parts[-2])
         if box is not None:
             if call.method == "DELETE":
                 box["state"] = "destroying"
@@ -188,3 +192,12 @@ def test_a_daytona_forget_that_deletes_nothing_is_reported(daytona, scripted):
     fake.exit_code = 1
     with pytest.raises(WorkspaceUnavailableError):
         daytona.forget(project, ["a.parquet"], [])
+
+
+def test_a_daytona_sandbox_that_can_recover_keeps_its_files(daytona, scripted):
+    project = uuid.uuid4().hex
+    fake = FakeDaytona(scripted, sandbox(project, "error", recoverable=True))
+    assert not daytona.has_data(project, "a.parquet")
+    methods = {(call.method, call.path.rsplit("/", 1)[-1]) for call in fake.control.calls}
+    assert ("POST", "recover") in methods
+    assert not any(method == "DELETE" for method, _ in methods)

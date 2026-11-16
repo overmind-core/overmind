@@ -236,10 +236,16 @@ class DaytonaProvider:
             if sandbox is None:
                 sandbox = self._find(project)
             if sandbox is not None and _state(sandbox) in FAILED_BUILD:
-                # Its files are lost with it: the next cells copy versions in again.
-                self.client.delete(sandbox)
-                self._forget(project)
-                sandbox = None
+                if sandbox.recoverable:
+                    if not start:
+                        return None
+                    # It comes back with its files.
+                    sandbox.recover(timeout=START_SECONDS)
+                else:
+                    # Its files are lost with it: the next cells copy versions in again.
+                    self.client.delete(sandbox)
+                    self._forget(project)
+                    sandbox = None
             if sandbox is None:
                 if not (start and create):
                     return None
@@ -455,13 +461,20 @@ def _state(sandbox) -> str:
 
 
 def _reply(stdout: str) -> dict | None:
+    """The runner's reply: the last line holding the marker followed by one JSON object.
+    The cell's own output, inside that object, may hold the marker too."""
+    decoder = json.JSONDecoder()
     for line in reversed(stdout.splitlines()):
-        start = line.rfind(REPLY)
-        if start >= 0:
+        start = line.find(REPLY)
+        while start >= 0:
             try:
-                return json.loads(line[start + len(REPLY) :])
+                reply, _ = decoder.raw_decode(line, start + len(REPLY))
             except ValueError:
-                return None
+                start = line.find(REPLY, start + 1)
+                continue
+            if isinstance(reply, dict):
+                return reply
+            start = line.find(REPLY, start + 1)
     return None
 
 

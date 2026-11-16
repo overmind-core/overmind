@@ -265,6 +265,8 @@ def output_written_past_the_runner_keeps_the_kernel(provider):
         run("kept = 5")
         run("import os, sys\nos.write(1, b'raw')\nos.write(2, b'raw')\nsys.__stdout__.write('raw')")
         assert run("kept").output == "5\n"
+        echoed = run("print('__overmind_reply__:')")
+        assert echoed.ok and echoed.output == "__overmind_reply__:\n", echoed
 
 
 CHECKS = (
