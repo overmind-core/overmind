@@ -11,6 +11,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class ModelRef(models.Model):
@@ -470,7 +471,7 @@ class SignalEvent(models.Model):
     message = models.TextField()
     details = models.JSONField(default=dict, blank=True)
     dedupe_key = models.CharField(max_length=64)
-    occurred_at = models.DateTimeField(auto_now_add=True)
+    occurred_at = models.DateTimeField(default=timezone.now)
     seen_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -489,6 +490,173 @@ class SignalEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.signal_type}: {self.message[:60]}"
+
+
+class Issue(models.Model):
+    """One failure repeating across traces. Checks raise it; the fingerprint names it, so
+    one root cause seen by several checks stays one issue. State and severity are read from
+    its traces against traffic; only what a person or a recurrence decided is stored."""
+
+    class Cause(models.TextChoices):
+        MODEL = "model"
+        SYSTEM = "system"
+        DATA = "data"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="issues")
+    capability = models.ForeignKey(
+        "overbae.Capability",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issues",
+    )
+    fingerprint = models.CharField(max_length=64)
+    # The same failure on any capability, so a shared outage reads as one thing to fix.
+    family = models.CharField(max_length=64)
+    cause = models.CharField(max_length=16, choices=Cause.choices)
+    # The check that first raised it; decides its remedy and whether one trace is enough.
+    signal_type = models.CharField(max_length=64)
+    title = models.CharField(max_length=300)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    regressed_at = models.DateTimeField(null=True, blank=True)
+    muted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "fingerprint"], name="uniq_issue_fingerprint"
+            )
+        ]
+        indexes = [models.Index(fields=["project", "-last_seen_at"])]
+
+    def __str__(self) -> str:
+        return self.title[:60]
+
+
+class IssueTrace(models.Model):
+    """A trace showing an issue, and its failing example. ``occurred_at`` is when the trace
+    started, on every issue it shows: one trace falls in one hour, so hourly distinct counts
+    sum exactly, against a denominator bucketed the same way."""
+
+    issue = models.ForeignKey(Issue, on_delete=models.CASCADE, related_name="traces")
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="+")
+    trace_id = models.CharField(max_length=32)
+    span_id = models.CharField(max_length=16)
+    conversation = models.ForeignKey(
+        "overbae.Conversation", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    signal_type = models.CharField(max_length=64)
+    reason = models.TextField(blank=True, default="")
+    occurred_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["issue", "trace_id"], name="uniq_issue_trace")
+        ]
+        indexes = [
+            models.Index(fields=["issue", "occurred_at"]),
+            models.Index(fields=["project", "occurred_at"]),
+            models.Index(fields=["project", "trace_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.issue_id}: {self.trace_id}"
+
+
+class SignalCursor(models.Model):
+    """How far checks and rollups have read each project, so every span is read once
+    however far behind they fall. Late scores move a span without changing its arrival."""
+
+    project = models.OneToOneField(
+        "overbae.Project",
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="signal_cursor",
+    )
+    spans_through = models.DateTimeField(null=True, blank=True)
+    scores_through = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.project_id}: {self.spans_through}"
+
+
+class TrafficHour(models.Model):
+    """Every root span of an hour, per capability: the denominator of every rate. Recomputed
+    from the spans, never incremented, so a re-read can't drift."""
+
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="+")
+    capability = models.ForeignKey(
+        "overbae.Capability", on_delete=models.CASCADE, null=True, blank=True, related_name="+"
+    )
+    hour = models.DateTimeField()
+    traces = models.IntegerField()
+    scored = models.IntegerField()
+    score_sum = models.FloatField()
+    errored = models.IntegerField()
+    # Distinct traces showing any issue except a data one, a model one, and any at all.
+    failing = models.IntegerField(default=0)
+    trainable = models.IntegerField(default=0)
+    flagged = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "capability", "hour"],
+                name="uniq_traffic_hour",
+                nulls_distinct=False,
+            )
+        ]
+        indexes = [models.Index(fields=["project", "hour"])]
+
+    def __str__(self) -> str:
+        return f"{self.capability_id} {self.hour}: {self.traces}"
+
+
+class IssueHour(models.Model):
+    """An issue's traces per hour, so reads don't scan ``IssueTrace`` as it grows."""
+
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="+")
+    issue = models.ForeignKey(Issue, on_delete=models.CASCADE, related_name="hours")
+    hour = models.DateTimeField()
+    traces = models.IntegerField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["issue", "hour"], name="uniq_issue_hour")]
+        indexes = [models.Index(fields=["project", "hour"])]
+
+    def __str__(self) -> str:
+        return f"{self.issue_id} {self.hour}: {self.traces}"
+
+
+class ModelHour(models.Model):
+    """LLM use of an hour, per capability and model: spend, and when a model first served."""
+
+    project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE, related_name="+")
+    capability = models.ForeignKey(
+        "overbae.Capability", on_delete=models.CASCADE, null=True, blank=True, related_name="+"
+    )
+    hour = models.DateTimeField()
+    model = models.CharField(max_length=255)
+    calls = models.IntegerField()
+    tokens = models.BigIntegerField()
+    # Null when no call in the hour reported a cost: unknown spend is not zero.
+    cost = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "capability", "hour", "model"],
+                name="uniq_model_hour",
+                nulls_distinct=False,
+            )
+        ]
+        indexes = [models.Index(fields=["project", "hour"])]
+
+    def __str__(self) -> str:
+        return f"{self.model} {self.hour}: {self.calls}"
 
 
 class LiveScoringScheduler(models.Model):

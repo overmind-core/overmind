@@ -196,6 +196,7 @@ def _trace_filter_data(payload: QueryTracesInput, context: MCPContext) -> dict[s
     direct_fields = (
         "trace_id",
         "signal_event",
+        "issue",
         "span_id",
         "name",
         "operation",

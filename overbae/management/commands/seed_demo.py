@@ -38,6 +38,8 @@ from django.utils import timezone
 from overbae.innermind import comparison
 from overbae.innermind import runs as innermind_runs
 from overbae.innermind import signals as innermind_signals
+from overbae.innermind.issues import record_occurrences
+from overbae.innermind.traffic import hour_of, rollup_hours
 from overbae.models import (
     APIToken,
     BillingService,
@@ -70,6 +72,7 @@ from overbae.models import (
     OptimizerIteration,
     Project,
     ProjectMembership,
+    SignalCursor,
     SignalEvent,
     SignalSubscription,
     Span,
@@ -2404,6 +2407,7 @@ class Command(BaseCommand):
             .order_by("-start_time_ns")[:12]
         )
         signal_events = []
+        occurrences = []
         for root in failed_roots:
             when = datetime.fromtimestamp(root.end_time_ns / 1e9, tz=UTC) + timedelta(minutes=5)
             key = innermind_signals.group_key(root)
@@ -2424,6 +2428,7 @@ class Command(BaseCommand):
                     break
             if not finding:
                 continue
+            occurrences += signal.occurrences(finding, root.capability_id, group)
             signal_events.append(
                 (
                     SignalEvent(
@@ -2441,6 +2446,20 @@ class Command(BaseCommand):
                 )
             )
         SignalEvent.objects.bulk_create([event for event, _ in signal_events])
+        record_occurrences(project.pk, occurrences)
+        rollup_hours(
+            project.pk,
+            {
+                hour_of(start)
+                for start in Span.objects.filter(project=project)
+                .order_by()
+                .values_list("start_time_ns", flat=True)
+                .distinct()
+                if start
+            },
+        )
+        # Everything is read; the signal beat starts from here.
+        SignalCursor.objects.create(project=project, spans_through=NOW, scores_through=NOW)
         for i, (event, when) in enumerate(signal_events):
             SignalEvent.objects.filter(pk=event.pk).update(
                 occurred_at=when, seen_at=when + timedelta(hours=2) if i >= 4 else None

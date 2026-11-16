@@ -68,7 +68,7 @@ function formatAttributeValue(value: unknown): string {
   return String(value);
 }
 
-function KeyValueRows({ entries }: { entries: Array<[string, unknown]> }) {
+export function KeyValueRows({ entries }: { entries: Array<[string, unknown]> }) {
   const { projectId } = useTraceData();
   if (entries.length === 0) return null;
   return (
@@ -124,7 +124,7 @@ const OVERMIND_GROUPS: Array<{ prefix: string; title: string }> = [
 
 // Mirrors the SDK attribute contract (overmind/docs/tracing-attributes.md,
 // overbae/api/overmind_attrs.py). Row = [label, ...candidate keys]; first present wins.
-const MODEL_USAGE_FIELDS: Array<[string, ...string[]]> = [
+export const MODEL_USAGE_FIELDS: Array<[string, ...string[]]> = [
   ["Model", "genai.model"],
   ["Response model", "genai.response.model"],
   ["Provider", "genai.provider"],
@@ -143,7 +143,7 @@ const MODEL_USAGE_FIELDS: Array<[string, ...string[]]> = [
   ["Elapsed (s)", "genai.elapsed_seconds"],
 ];
 
-const RETRIEVAL_FIELDS: Array<[string, ...string[]]> = [
+export const RETRIEVAL_FIELDS: Array<[string, ...string[]]> = [
   ["Query chars", "overmind.retrieval.query_chars"],
   ["Result count", "overmind.retrieval.result_count"],
 ];
@@ -167,7 +167,7 @@ function hasAttrValue(value: unknown): boolean {
   return value !== null && value !== undefined && value !== "";
 }
 
-function collectFieldEntries(
+export function collectFieldEntries(
   attributes: Record<string, unknown> | undefined,
   fields: Array<[string, ...string[]]>
 ): Array<[string, unknown]> {
@@ -180,7 +180,7 @@ function collectFieldEntries(
   return entries;
 }
 
-function groupSpanAttributes(
+export function groupSpanAttributes(
   attributes: Record<string, unknown> | undefined,
   previewKeys: ReadonlyArray<string | null>
 ): {
@@ -229,7 +229,7 @@ type ToolFunctionDef = {
   };
 };
 
-type ToolDefinition = {
+export type ToolDefinition = {
   type?: string;
   function?: ToolFunctionDef;
   // flat shape fallback (name at top level)
@@ -358,7 +358,7 @@ function AvailableToolCard({ tool }: { tool: ToolDefinition }) {
   );
 }
 
-function AvailableToolsBlock({ tools }: { tools: ToolDefinition[] }) {
+export function AvailableToolsBlock({ tools }: { tools: ToolDefinition[] }) {
   if (!tools || tools.length === 0) return null;
   return (
     <Section
@@ -672,7 +672,7 @@ function ViewToggle({ onChange, value }: { onChange: (next: JsonView) => void; v
   );
 }
 
-function JsonBlock({
+export function JsonBlock({
   badge,
   id,
   title,
@@ -791,7 +791,7 @@ function JsonBlock({
   );
 }
 
-function MetricScore({ metric }: { metric: MetricResult }) {
+export function MetricScore({ metric }: { metric: MetricResult }) {
   if (metric.error)
     return (
       <Badge size="chip" variant="error">
@@ -813,7 +813,7 @@ function MetricScore({ metric }: { metric: MetricResult }) {
   return <ScoreChip value={metric.score} />;
 }
 
-function MetricExplanation({ metric }: { metric: MetricResult }) {
+export function MetricExplanation({ metric }: { metric: MetricResult }) {
   return (
     <dl className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-3 text-xs">
       {metric.expectation && (

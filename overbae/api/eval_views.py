@@ -57,6 +57,7 @@ from overbae.services.evaluation_activity import (
     evaluation_activity,
 )
 from overbae.services.model_catalog import fetch_model_catalog
+from overbae.services.simulated_training import refuse_paid_work
 
 
 class ModelCatalogView(APIView):
@@ -230,6 +231,7 @@ class EvalRunViewSet(
     def create(self, request):
         serializer = EvalRunCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
+        refuse_paid_work(serializer.validated_data["dataset"].project)
         require_credits(request.user)
         try:
             created = serializer.save(triggered_by=request.user)

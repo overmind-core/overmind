@@ -111,6 +111,10 @@ EXPECTED_TOOL_NAMES = {
     "cancel_dataset",
     "schedule_native_evaluation",
     "list_signals",
+    "list_training_signals",
+    "list_issues",
+    "inspect_issue",
+    "update_issue",
     "set_signal_subscription",
 }
 
