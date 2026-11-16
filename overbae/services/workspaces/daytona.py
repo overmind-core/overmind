@@ -235,11 +235,8 @@ class DaytonaProvider:
                     sandbox = None
             if sandbox is None:
                 sandbox = self._find(project)
-            if sandbox is not None and (
-                _state(sandbox) in FAILED_BUILD or sandbox.snapshot not in (None, snapshot_name())
-            ):
-                # Its files are lost with it: the next cells copy versions in again. A
-                # sandbox from another recipe has another kernel than this release calls.
+            if sandbox is not None and _state(sandbox) in FAILED_BUILD:
+                # Its files are lost with it: the next cells copy versions in again.
                 self.client.delete(sandbox)
                 self._forget(project)
                 sandbox = None

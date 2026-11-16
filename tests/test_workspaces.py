@@ -75,7 +75,7 @@ def test_a_sandbox_without_workspaces_answers_reads_without_creating_them(tmp_pa
 JSON = {"content-type": "application/json"}
 
 
-def sandbox(project, snapshot=None):
+def sandbox(project):
     return {
         "id": f"s-{project}",
         "organizationId": "o1",
@@ -92,7 +92,7 @@ def sandbox(project, snapshot=None):
         "memory": 4,
         "disk": 5,
         "state": "started",
-        "snapshot": snapshot or snapshot_name(),
+        "snapshot": snapshot_name(),
         "toolboxProxyUrl": "https://proxy.app.daytona.io/toolbox",
     }
 
@@ -188,10 +188,3 @@ def test_a_daytona_forget_that_deletes_nothing_is_reported(daytona, scripted):
     fake.exit_code = 1
     with pytest.raises(WorkspaceUnavailableError):
         daytona.forget(project, ["a.parquet"], [])
-
-
-def test_a_daytona_sandbox_from_another_recipe_is_replaced(daytona, scripted):
-    project = uuid.uuid4().hex
-    fake = FakeDaytona(scripted, sandbox(project, "overmind-workspace-000000000000"))
-    assert not daytona.has_data(project, "a.parquet")
-    assert fake.boxes[f"s-{project}"]["state"] == "destroying"
