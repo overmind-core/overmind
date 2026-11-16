@@ -35,7 +35,6 @@ def build_console(shared: Path) -> Path:
                 "VITE_SELF_HOSTED": "true",
                 "VITE_CLERK_PUBLISHABLE_KEY": "",
                 "VITE_PUBLIC_POSTHOG_KEY": "",
-                "VITE_FEATURE_SIGNALS": "true",
             }
             subprocess.run(
                 ["bun", "run", "build", "--outDir", str(dist), "--emptyOutDir"],

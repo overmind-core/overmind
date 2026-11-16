@@ -28,7 +28,6 @@ import { useAllEvalRunsQuery } from "@/hooks/use-evaluations";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { useOnboardingStatus } from "@/hooks/use-query";
-import { useUnseenSignalCountQuery } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { isMac } from "@/lib/platform";
@@ -53,8 +52,7 @@ const flagOn = (flag: Flag | null): boolean => flag === null || featureFlags[fla
 
 const platformNavTree: NavLeaf[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
-  { flag: null, icon: Icon.observability, label: "Observability", to: "/observe" },
-  { flag: null, icon: Icon.history, label: "Observability (old)", to: "/observability" },
+  { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
   { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
   { flag: "finetuning", icon: Icon.training, label: "Training", to: "/training" },
@@ -95,8 +93,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const ftQuery = useFinetuningJobsQuery(projectId);
   const evalQuery = useAllEvalRunsQuery(projectId);
   const unseen = useUnseenCompletions();
-  const unseenSignals =
-    useUnseenSignalCountQuery(featureFlags.signals ? projectId : undefined).data ?? 0;
 
   const running = buildRunningJobs({
     evalRuns: evalQuery.data?.results,
@@ -125,7 +121,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
     const runningCount = runningByRoute[route] ?? 0;
     if (runningCount > 0) badges[route] = { count: runningCount, tone: "running" };
   }
-  if (unseenSignals > 0) badges["/observability"] = { count: unseenSignals, tone: "success" };
   return badges;
 }
 
@@ -158,10 +153,7 @@ function NavLink({
         <Link
           className="!py-2.5"
           onClick={handleClick}
-          search={(e) => ({
-            projectId: e.projectId,
-            ...(to === "/observability" ? { view: "sessions" } : {}),
-          })}
+          search={(e) => ({ projectId: e.projectId })}
           to={to}
         >
           <Icon className="!size-[17px]" />

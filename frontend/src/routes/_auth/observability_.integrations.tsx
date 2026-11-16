@@ -333,10 +333,7 @@ function CredentialItem({
 
             <div className="-mx-3 flex flex-wrap items-center gap-2 border-t border-border/70 px-3 pt-3">
               <Button asChild size="sm" variant="secondary">
-                <Link
-                  search={{ projectId, service_name__icontains: meta.type }}
-                  to="/observability"
-                >
+                <Link search={{ group: "trace", projectId }} to="/observability">
                   <Icon.observability />
                   View traces
                 </Link>
@@ -668,10 +665,7 @@ function IntegrationsPage() {
           cta={
             <Button asChild size="sm">
               <Link
-                search={{
-                  projectId: postSync.targetProjectId,
-                  service_name__icontains: postSync.connectorType,
-                }}
+                search={{ group: "trace", projectId: postSync.targetProjectId }}
                 to="/observability"
               >
                 <Icon.observability />

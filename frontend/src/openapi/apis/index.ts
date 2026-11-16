@@ -34,8 +34,6 @@ export * from './NativeEvaluationsApi';
 export * from './ProjectsApi';
 export * from './PublicApi';
 export * from './SessionsApi';
-export * from './SignalEventsApi';
-export * from './SignalSubscriptionsApi';
 export * from './TracesApi';
 export * from './TrainingExperimentsApi';
 export * from './TrainingPlansApi';

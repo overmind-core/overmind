@@ -472,21 +472,13 @@ class SignalEvent(models.Model):
     details = models.JSONField(default=dict, blank=True)
     dedupe_key = models.CharField(max_length=64)
     occurred_at = models.DateTimeField(default=timezone.now)
-    seen_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-occurred_at"]
         constraints = [
             models.UniqueConstraint(fields=["project", "dedupe_key"], name="uniq_signal_event")
         ]
-        indexes = [
-            models.Index(fields=["project", "-occurred_at"]),
-            models.Index(
-                fields=["project", "-occurred_at"],
-                condition=models.Q(seen_at__isnull=True),
-                name="signal_event_unseen",
-            ),
-        ]
+        indexes = [models.Index(fields=["project", "-occurred_at"])]
 
     def __str__(self) -> str:
         return f"{self.signal_type}: {self.message[:60]}"

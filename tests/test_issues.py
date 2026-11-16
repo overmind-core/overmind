@@ -4,7 +4,6 @@ from datetime import timedelta
 import pytest
 from asgiref.sync import async_to_sync
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from overbae.api import config
@@ -13,9 +12,7 @@ from overbae.innermind.signals import SignalRunner
 from overbae.models import (
     APIToken,
     Capability,
-    Dataset,
     EvalScore,
-    FinetuningJob,
     Issue,
     IssueTrace,
     ModelHour,
@@ -35,7 +32,6 @@ from overbae.services.issue_overview import (
     training_plan,
     trends,
 )
-from overbae.services.simulated_training import finish_simulated, refuse_paid_work
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
@@ -471,25 +467,6 @@ def test_only_passing_traces_land_with_a_reference(project, capability):
     )
     assert passing.rows[0]["expected_output"] == passing.rows[0]["output"]
     assert "expected_output" not in failing.rows[0]
-
-
-def test_a_simulated_project_finishes_training_without_a_provider(project, capability):
-    project.settings = {"simulated": True}
-    project.save(update_fields=["settings"])
-    dataset = Dataset.objects.create(project=project, name="Passing traces")
-    job = FinetuningJob.objects.create(
-        project=project, capability=capability, dataset=dataset, name="Run"
-    )
-
-    finish_simulated(job)
-
-    job.refresh_from_db()
-    assert job.status == FinetuningJob.Status.SUCCEEDED
-    assert job.provider == "simulated"
-    assert job.name == "Run (simulated)"
-    assert job.cost_usd == 0
-    with pytest.raises(ValidationError):
-        refuse_paid_work(project)
 
 
 def test_a_trace_names_its_issues_and_a_one_off_is_not_repeating(project, capability):

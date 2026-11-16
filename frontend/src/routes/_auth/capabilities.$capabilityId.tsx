@@ -182,12 +182,7 @@ function CapabilityDetailPage() {
             <Button
               onClick={guard(() =>
                 navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    capability: capabilityId,
-                    projectId,
-                    view: "roots",
-                  }),
+                  search: { capability: capabilityId, group: "trace", projectId },
                   to: "/observability",
                 })
               )}

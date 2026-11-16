@@ -60,7 +60,6 @@ from overbae.api.otlp import otlp_traces
 from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
 from overbae.api.robots import robots_txt
-from overbae.api.signal_views import SignalEventViewSet, SignalSubscriptionViewSet
 from overbae.api.sync import SyncView
 from overbae.api.training_experiments import TrainingExperimentViewSet
 from overbae.api.training_plans import TrainingPlanViewSet
@@ -137,8 +136,6 @@ router.register(r"eval-sets", EvalSetViewSet, basename="evalset")
 router.register(r"eval-runs", EvalRunViewSet, basename="evalrun")
 router.register(r"eval-run-rows", EvalRunRowViewSet, basename="evalrunrow")
 router.register(r"eval-scores", EvalScoreViewSet, basename="evalscore")
-router.register(r"signal-subscriptions", SignalSubscriptionViewSet, basename="signalsubscription")
-router.register(r"signal-events", SignalEventViewSet, basename="signalevent")
 router.register(r"issues", IssueViewSet, basename="issue")
 
 

@@ -13,7 +13,7 @@ import {
   resolveTimeRange,
   TimeRangeButton,
   type TimeRangePreset,
-} from "@/components/traces/traces-table-toolbar";
+} from "@/components/traces/time-range";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

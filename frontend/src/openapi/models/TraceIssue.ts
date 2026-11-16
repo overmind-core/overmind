@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SeverityAfaEnum } from './SeverityAfaEnum';
+import type { SeverityEnum } from './SeverityEnum';
 import {
-    SeverityAfaEnumFromJSON,
-    SeverityAfaEnumFromJSONTyped,
-    SeverityAfaEnumToJSON,
-    SeverityAfaEnumToJSONTyped,
-} from './SeverityAfaEnum';
+    SeverityEnumFromJSON,
+    SeverityEnumFromJSONTyped,
+    SeverityEnumToJSON,
+    SeverityEnumToJSONTyped,
+} from './SeverityEnum';
 import type { StateFf6Enum } from './StateFf6Enum';
 import {
     StateFf6EnumFromJSON,
@@ -67,10 +67,10 @@ export interface TraceIssue {
     signalType: string;
     /**
      *
-     * @type {SeverityAfaEnum}
+     * @type {SeverityEnum}
      * @memberof TraceIssue
      */
-    severity: SeverityAfaEnum;
+    severity: SeverityEnum;
     /**
      *
      * @type {StateFf6Enum}
@@ -192,7 +192,7 @@ export function TraceIssueFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'title': json['title'],
         'cause': CauseEnumFromJSON(json['cause']),
         'signalType': json['signal_type'],
-        'severity': SeverityAfaEnumFromJSON(json['severity']),
+        'severity': SeverityEnumFromJSON(json['severity']),
         'state': StateFf6EnumFromJSON(json['state']),
         'capability': json['capability'],
         'capabilityName': json['capability_name'],
@@ -224,7 +224,7 @@ export function TraceIssueToJSONTyped(value?: TraceIssue | null, ignoreDiscrimin
         'title': value['title'],
         'cause': CauseEnumToJSON(value['cause']),
         'signal_type': value['signalType'],
-        'severity': SeverityAfaEnumToJSON(value['severity']),
+        'severity': SeverityEnumToJSON(value['severity']),
         'state': StateFf6EnumToJSON(value['state']),
         'capability': value['capability'],
         'capability_name': value['capabilityName'],

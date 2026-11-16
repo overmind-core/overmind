@@ -39,7 +39,6 @@ class SignalCatalogEntryContract(MCPModel):
 class ListSignalsOutput(MCPModel):
     summary: str = Field(min_length=1, max_length=240)
     signals: list[SignalCatalogEntryContract] = Field(max_length=MAX_SIGNALS)
-    unseen_events: int = Field(ge=0)
     resource_links: list[ResourceLinkContract] = Field(max_length=1)
 
 

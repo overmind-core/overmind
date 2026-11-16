@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 type ClientLogo = React.ComponentType<{ className?: string; size?: number | string }>;
 
-export const mcpClientLogo = (client: McpClient): ClientLogo => {
+const mcpClientLogo = (client: McpClient): ClientLogo => {
   if (client === "cursor") return getProviderIcon("cursor") ?? Icon.terminal;
   if (client === "claude") return getProviderIcon("claude") ?? Icon.terminal;
   if (client === "codex") return getProviderIcon("openai") ?? Icon.terminal;

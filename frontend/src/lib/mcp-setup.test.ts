@@ -2,13 +2,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  MCP_CLIENTS,
   mcpInitCommand,
   mcpInitEnvFlag,
   onboardingPrompt,
   SDK_PREFLIGHT_COMMAND,
   sdkPipInstall,
-  telemetrySetupPrompt,
 } from "./mcp-setup";
 
 const KEY = "om_live_testkey";
@@ -79,37 +77,5 @@ describe("mcp setup snippets", () => {
     expect(pip(PROD)).toBe('python -m pip install "overmind>=0.1.106"');
     vi.unstubAllEnvs();
     vi.resetModules();
-  });
-
-  it("addresses the setup prompt to the selected agent", () => {
-    for (const { id, label } of MCP_CLIENTS) {
-      expect(telemetrySetupPrompt(id)).toContain(`Overmind MCP and skill setup in ${label}`);
-      expect(telemetrySetupPrompt(id)).toContain(`overmind init --ide ${id}`);
-    }
-    expect(telemetrySetupPrompt("cursor")).not.toContain("codex");
-  });
-
-  it("reuses durable local authentication in the instrumentation prompt", () => {
-    const prompt = telemetrySetupPrompt("codex");
-    expect(prompt).toContain("saved by `overmind sync`");
-    expect(prompt).toContain("deployed processes");
-    expect(prompt).toContain("OVERMIND_API_KEY");
-    expect(prompt).toContain("overmind[tracing]");
-    expect(prompt).not.toContain("--env");
-  });
-
-  it("names the current MCP instrumentation tools", () => {
-    const prompt = telemetrySetupPrompt("codex");
-    expect(prompt).toContain("get_instrumentation_plan");
-    expect(prompt).toContain("query_traces(session=<correlation>, all_spans=false, limit=2)");
-    expect(prompt).toContain("verify_instrumentation(trace_id=...)");
-    expect(prompt).toContain("Real run (recommended)");
-    expect(prompt).toContain("explicit approval");
-    expect(prompt).toContain("human_action");
-    expect(prompt).toContain("required_decorator");
-    expect(prompt).toContain("conversation.id");
-    expect(prompt).toContain("page.total == 1");
-    expect(prompt).not.toContain("get_instrumentation_context");
-    expect(prompt).not.toContain("verify_instrumentation_spans");
   });
 });

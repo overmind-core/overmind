@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { SeverityAfaEnum } from './SeverityAfaEnum';
+import type { SeverityEnum } from './SeverityEnum';
 import {
-    SeverityAfaEnumFromJSON,
-    SeverityAfaEnumFromJSONTyped,
-    SeverityAfaEnumToJSON,
-    SeverityAfaEnumToJSONTyped,
-} from './SeverityAfaEnum';
+    SeverityEnumFromJSON,
+    SeverityEnumFromJSONTyped,
+    SeverityEnumToJSON,
+    SeverityEnumToJSONTyped,
+} from './SeverityEnum';
 import type { StateFf6Enum } from './StateFf6Enum';
 import {
     StateFf6EnumFromJSON,
@@ -67,10 +67,10 @@ export interface SystemIssue {
     signalType: string;
     /**
      *
-     * @type {SeverityAfaEnum}
+     * @type {SeverityEnum}
      * @memberof SystemIssue
      */
-    severity: SeverityAfaEnum;
+    severity: SeverityEnum;
     /**
      *
      * @type {StateFf6Enum}
@@ -178,7 +178,7 @@ export function SystemIssueFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'title': json['title'],
         'cause': CauseEnumFromJSON(json['cause']),
         'signalType': json['signal_type'],
-        'severity': SeverityAfaEnumFromJSON(json['severity']),
+        'severity': SeverityEnumFromJSON(json['severity']),
         'state': StateFf6EnumFromJSON(json['state']),
         'capability': json['capability'],
         'capabilityName': json['capability_name'],
@@ -208,7 +208,7 @@ export function SystemIssueToJSONTyped(value?: SystemIssue | null, ignoreDiscrim
         'title': value['title'],
         'cause': CauseEnumToJSON(value['cause']),
         'signal_type': value['signalType'],
-        'severity': SeverityAfaEnumToJSON(value['severity']),
+        'severity': SeverityEnumToJSON(value['severity']),
         'state': StateFf6EnumToJSON(value['state']),
         'capability': value['capability'],
         'capability_name': value['capabilityName'],

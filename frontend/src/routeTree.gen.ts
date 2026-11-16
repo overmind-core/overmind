@@ -17,7 +17,6 @@ import { Route as AuthIndexRouteImport } from './routes/_auth/index'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as AuthTrainingRouteImport } from './routes/_auth/training'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
-import { Route as AuthObserveRouteImport } from './routes/_auth/observe'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
 import { Route as AuthInferenceRouteImport } from './routes/_auth/inference'
 import { Route as AuthProjectsIndexRouteImport } from './routes/_auth/projects.index'
@@ -25,7 +24,6 @@ import { Route as AuthEvaluationsIndexRouteImport } from './routes/_auth/evaluat
 import { Route as AuthDatasetsIndexRouteImport } from './routes/_auth/datasets.index'
 import { Route as AuthCapabilitiesIndexRouteImport } from './routes/_auth/capabilities.index'
 import { Route as AuthObservabilityIntegrationsRouteImport } from './routes/_auth/observability_.integrations'
-import { Route as AuthObservabilityTraceIdRouteImport } from './routes/_auth/observability.$traceId'
 import { Route as AuthInferenceModelIdRouteImport } from './routes/_auth/inference_.$modelId'
 import { Route as AuthCapabilitiesCapabilityIdRouteImport } from './routes/_auth/capabilities.$capabilityId'
 import { Route as AuthProjectsProjectIdIndexRouteImport } from './routes/_auth/projects.$projectId.index'
@@ -71,11 +69,6 @@ const AuthSettingsRoute = AuthSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthObserveRoute = AuthObserveRouteImport.update({
-  id: '/observe',
-  path: '/observe',
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthObservabilityRoute = AuthObservabilityRouteImport.update({
   id: '/observability',
   path: '/observability',
@@ -111,12 +104,6 @@ const AuthObservabilityIntegrationsRoute =
     id: '/observability_/integrations',
     path: '/observability/integrations',
     getParentRoute: () => AuthRoute,
-  } as any)
-const AuthObservabilityTraceIdRoute =
-  AuthObservabilityTraceIdRouteImport.update({
-    id: '/$traceId',
-    path: '/$traceId',
-    getParentRoute: () => AuthObservabilityRoute,
   } as any)
 const AuthInferenceModelIdRoute = AuthInferenceModelIdRouteImport.update({
   id: '/inference_/$modelId',
@@ -154,14 +141,12 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/inference': typeof AuthInferenceRoute
-  '/observability': typeof AuthObservabilityRouteWithChildren
-  '/observe': typeof AuthObserveRoute
+  '/observability': typeof AuthObservabilityRoute
   '/settings': typeof AuthSettingsRoute
   '/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
-  '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
   '/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/datasets/': typeof AuthDatasetsIndexRoute
@@ -176,15 +161,13 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/inference': typeof AuthInferenceRoute
-  '/observability': typeof AuthObservabilityRouteWithChildren
-  '/observe': typeof AuthObserveRoute
+  '/observability': typeof AuthObservabilityRoute
   '/settings': typeof AuthSettingsRoute
   '/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/': typeof AuthIndexRoute
   '/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
-  '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
   '/capabilities': typeof AuthCapabilitiesIndexRoute
   '/datasets': typeof AuthDatasetsIndexRoute
@@ -201,15 +184,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/_auth/inference': typeof AuthInferenceRoute
-  '/_auth/observability': typeof AuthObservabilityRouteWithChildren
-  '/_auth/observe': typeof AuthObserveRoute
+  '/_auth/observability': typeof AuthObservabilityRoute
   '/_auth/settings': typeof AuthSettingsRoute
   '/_auth/training': typeof AuthTrainingRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_auth/': typeof AuthIndexRoute
   '/_auth/capabilities/$capabilityId': typeof AuthCapabilitiesCapabilityIdRoute
   '/_auth/inference_/$modelId': typeof AuthInferenceModelIdRoute
-  '/_auth/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/_auth/observability_/integrations': typeof AuthObservabilityIntegrationsRoute
   '/_auth/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/_auth/datasets/': typeof AuthDatasetsIndexRoute
@@ -228,13 +209,11 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/inference'
     | '/observability'
-    | '/observe'
     | '/settings'
     | '/training'
     | '/oauth/authorize'
     | '/capabilities/$capabilityId'
     | '/inference/$modelId'
-    | '/observability/$traceId'
     | '/observability/integrations'
     | '/capabilities/'
     | '/datasets/'
@@ -250,14 +229,12 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/inference'
     | '/observability'
-    | '/observe'
     | '/settings'
     | '/training'
     | '/oauth/authorize'
     | '/'
     | '/capabilities/$capabilityId'
     | '/inference/$modelId'
-    | '/observability/$traceId'
     | '/observability/integrations'
     | '/capabilities'
     | '/datasets'
@@ -274,14 +251,12 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/_auth/inference'
     | '/_auth/observability'
-    | '/_auth/observe'
     | '/_auth/settings'
     | '/_auth/training'
     | '/oauth/authorize'
     | '/_auth/'
     | '/_auth/capabilities/$capabilityId'
     | '/_auth/inference_/$modelId'
-    | '/_auth/observability/$traceId'
     | '/_auth/observability_/integrations'
     | '/_auth/capabilities/'
     | '/_auth/datasets/'
@@ -358,13 +333,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/observe': {
-      id: '/_auth/observe'
-      path: '/observe'
-      fullPath: '/observe'
-      preLoaderRoute: typeof AuthObserveRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/_auth/observability': {
       id: '/_auth/observability'
       path: '/observability'
@@ -414,13 +382,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthObservabilityIntegrationsRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/observability/$traceId': {
-      id: '/_auth/observability/$traceId'
-      path: '/$traceId'
-      fullPath: '/observability/$traceId'
-      preLoaderRoute: typeof AuthObservabilityTraceIdRouteImport
-      parentRoute: typeof AuthObservabilityRoute
-    }
     '/_auth/inference_/$modelId': {
       id: '/_auth/inference_/$modelId'
       path: '/inference/$modelId'
@@ -459,21 +420,9 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthObservabilityRouteChildren {
-  AuthObservabilityTraceIdRoute: typeof AuthObservabilityTraceIdRoute
-}
-
-const AuthObservabilityRouteChildren: AuthObservabilityRouteChildren = {
-  AuthObservabilityTraceIdRoute: AuthObservabilityTraceIdRoute,
-}
-
-const AuthObservabilityRouteWithChildren =
-  AuthObservabilityRoute._addFileChildren(AuthObservabilityRouteChildren)
-
 interface AuthRouteChildren {
   AuthInferenceRoute: typeof AuthInferenceRoute
-  AuthObservabilityRoute: typeof AuthObservabilityRouteWithChildren
-  AuthObserveRoute: typeof AuthObserveRoute
+  AuthObservabilityRoute: typeof AuthObservabilityRoute
   AuthSettingsRoute: typeof AuthSettingsRoute
   AuthTrainingRoute: typeof AuthTrainingRoute
   AuthIndexRoute: typeof AuthIndexRoute
@@ -491,8 +440,7 @@ interface AuthRouteChildren {
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthInferenceRoute: AuthInferenceRoute,
-  AuthObservabilityRoute: AuthObservabilityRouteWithChildren,
-  AuthObserveRoute: AuthObserveRoute,
+  AuthObservabilityRoute: AuthObservabilityRoute,
   AuthSettingsRoute: AuthSettingsRoute,
   AuthTrainingRoute: AuthTrainingRoute,
   AuthIndexRoute: AuthIndexRoute,

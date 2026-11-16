@@ -210,24 +210,16 @@ export function ActivityTable({
     pageSize,
     project_id: scope.projectId,
   });
-  const filters = useMemo(() => {
-    const since = Date.now() - RANGE_MS[search.range];
-    const next: Record<string, string> = {
-      all_spans: "false",
-      start_time_ns__gte: String(since * 1e6),
-    };
-    if (scope.capability) next.capability = scope.capability;
-    if (issueFilter) next.issue = issueFilter;
-    if (session) next.session = session;
-    return next;
-  }, [issueFilter, scope.capability, search.range, session]);
+  const startTimeNsGte = useMemo(() => (Date.now() - RANGE_MS[search.range]) * 1e6, [search.range]);
   const traces = useTracesList({
+    capability: scope.capability,
     enabled: group === "trace",
-    filters,
-    ordering: "-start_time_ns",
+    issue: issueFilter,
     page,
     pageSize,
-    project_id: scope.projectId,
+    projectId: scope.projectId,
+    session,
+    startTimeNsGte,
   });
 
   const tabs = (
@@ -335,7 +327,7 @@ export function ActivityTable({
       {group === "trace" && (
         <DataTable<TraceRow>
           {...shared}
-          columns={tracesColumns.filter((column) => column.id !== "select")}
+          columns={tracesColumns}
           data={traces.data}
           error={traces.error}
           getRowId={(row) => row.spanId || row.traceId}

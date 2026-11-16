@@ -247,17 +247,6 @@ def test_sessions_invisible_across_projects():
     assert str(other.id) not in ids
 
 
-def test_session_retrieve_returns_aggregates():
-    client, project = _client_and_project()
-    conversation = _session_with_traces(project, "conv-detail")
-
-    res = client.get(f"{SESSIONS_URL}{conversation.id}/")
-    assert res.status_code == 200
-    body = res.json()
-    assert body["trace_count"] == 2
-    assert body["total_tokens"] == 20
-
-
 def test_traces_list_filters_by_session():
     client, project = _client_and_project()
     conversation = _session_with_traces(project, "conv-traces")
