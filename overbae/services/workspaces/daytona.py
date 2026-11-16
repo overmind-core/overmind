@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import tomllib
+import uuid
 from functools import cache
 from pathlib import Path
 from typing import BinaryIO
@@ -69,6 +70,7 @@ LIBRARIES = (
     "wordfreq",
 )
 FAILED_BUILD = ("error", "build_failed")
+GONE = ("destroying", "destroyed")
 PYTHON = "3.13"
 TOKENIZER_ENCODINGS = ("cl100k_base", "o200k_base")
 KERNEL_PATH = "/opt/overmind/kernel.py"
@@ -109,6 +111,9 @@ LOST = (
     "The kernel ended during the cell: it ran out of memory or stopped answering. "
     "Variables are gone, files remain."
 )
+# Marks the runner's reply in the context's output, which a cell can also write to directly.
+REPLY = "__overmind_reply__:"
+UNREAD = "The cell ran, but its result did not come back. Variables remain."
 
 
 @cache
@@ -167,7 +172,7 @@ def _cell(code: str, timeout: int) -> str:
     deadline and its reply are the same as in the native sandbox."""
     return (
         "_overmind_cells += 1\n"
-        "print(_overmind_json.dumps(_overmind.run("
+        f"print({REPLY!r} + _overmind_json.dumps(_overmind.run("
         f"{code!r}, globals(), {timeout}, f'<cell {{_overmind_cells}}>')))"
     )
 
@@ -189,9 +194,9 @@ class DaytonaProvider:
         # One sandbox for each project, whichever worker asks first.
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [f"workspace:{project}"])
-            found = list(self.client.list(ListSandboxesQuery(labels=_labels(project))))
-            if found:
-                return self.client.get(found[0].id)
+            found = self._find(project)
+            if found is not None:
+                return found
             return self.client.create(
                 CreateSandboxFromSnapshotParams(
                     snapshot=snapshot_name(),
@@ -206,31 +211,48 @@ class DaytonaProvider:
                 timeout=START_SECONDS,
             )
 
-    def _sandbox(self, project: str, *, start: bool = True) -> Sandbox | None:
+    def _find(self, project: str) -> Sandbox | None:
+        found = self.client.list(ListSandboxesQuery(labels=_labels(project)))
+        live = next((item for item in found if _state(item) not in GONE), None)
+        return None if live is None else self.client.get(live.id)
+
+    def _sandbox(self, project: str, *, start: bool = True, create: bool = True) -> Sandbox | None:
+        """The project's started sandbox. Without ``create`` a project that has none gets
+        none; without ``start`` one that is not running is not started either."""
         with self._lock:
             known = self._sandboxes.get(project)
+        if known is not None and time.monotonic() - known[1] < FRESH_SECONDS:
+            return known[0]
         try:
-            if known is None:
-                found = list(self.client.list(ListSandboxesQuery(labels=_labels(project))))
-                if not found and not start:
+            sandbox = None
+            if known is not None:
+                sandbox = known[0]
+                try:
+                    sandbox.refresh_data()
+                except DaytonaNotFoundError:
+                    # Deleted since: by its project's removal, or unused for a week.
+                    self._forget(project)
+                    sandbox = None
+            if sandbox is None:
+                sandbox = self._find(project)
+            if sandbox is not None and (
+                _state(sandbox) in FAILED_BUILD or sandbox.snapshot not in (None, snapshot_name())
+            ):
+                # Its files are lost with it: the next cells copy versions in again. A
+                # sandbox from another recipe has another kernel than this release calls.
+                self.client.delete(sandbox)
+                self._forget(project)
+                sandbox = None
+            if sandbox is None:
+                if not (start and create):
                     return None
-                sandbox = self.client.get(found[0].id) if found else self._create(project)
-            else:
-                sandbox, read_at = known
-                if time.monotonic() - read_at < FRESH_SECONDS:
-                    return sandbox
-                sandbox.refresh_data()
-            state = str(getattr(sandbox.state, "value", sandbox.state))
-            if state != "started":
+                sandbox = self._create(project)
+            elif _state(sandbox) != "started":
                 if not start:
                     return None
-                if state in ("error", "build_failed"):
-                    # Its files are lost with it: the next cells copy versions in again.
-                    self.client.delete(sandbox)
-                    sandbox = self._create(project)
-                else:
-                    sandbox.start(timeout=START_SECONDS)
+                sandbox.start(timeout=START_SECONDS)
         except DaytonaError as exc:
+            self._forget(project)
             logger.warning("Daytona workspace for %s is not available: %s", project, exc)
             raise WorkspaceUnavailableError("The workspace provider has no room now.") from exc
         with self._lock:
@@ -244,7 +266,9 @@ class DaytonaProvider:
                 del self._contexts[key]
 
     def has_data(self, project: str, name: str) -> bool:
-        sandbox = self._sandbox(project)
+        sandbox = self._sandbox(project, create=False)
+        if sandbox is None:
+            return False
         try:
             sandbox.fs.get_file_info(f"{WORKSPACE}/data/{name}")
         except DaytonaNotFoundError:
@@ -260,15 +284,20 @@ class DaytonaProvider:
             return
         sandbox = self._sandbox(project)
         path = f"{WORKSPACE}/data/{name}"
+        # Under its name only when whole: has_data takes a name that is there as copied.
+        partial = f"{WORKSPACE}/data/.{uuid.uuid4().hex}"
         with tempfile.NamedTemporaryFile() as local:
             shutil.copyfileobj(source, local)
             local.flush()
             try:
                 sandbox.fs.create_folder(f"{WORKSPACE}/data", "755")
-                sandbox.fs.upload_file(local.name, path)
-                sandbox.fs.set_file_permissions(path, mode="444")
+                sandbox.fs.upload_file(local.name, partial)
+                sandbox.fs.set_file_permissions(partial, mode="444")
+                sandbox.fs.move_files(partial, path)
             except DaytonaError as exc:
                 self._forget(project)
+                with contextlib.suppress(DaytonaError):
+                    sandbox.fs.delete_file(partial)
                 raise WorkspaceUnavailableError(str(exc)) from exc
 
     def _context(self, project: str, conversation: str, sandbox: Sandbox):
@@ -333,23 +362,31 @@ class DaytonaProvider:
                 return Execution(
                     False, "", f"{result.error.name}: {result.error.value}", False, 0.0
                 )
-            reply = json.loads(result.stdout.strip().splitlines()[-1])
+            reply = _reply(result.stdout)
+            if reply is None:
+                return Execution(False, "", UNREAD, False, 0.0, restarted)
             return Execution(**reply, restarted=restarted)
         raise WorkspaceUnavailableError("The workspace did not answer.")
 
     def read_file(self, project: str, conversation: str, name: str) -> bytes:
         if not NAME.fullmatch(name):
             raise FileNotFoundError(name)
-        sandbox = self._sandbox(project)
-        path = f"{WORKSPACE}/conversations/{conversation}/{name}"
+        sandbox = self._sandbox(project, create=False)
+        if sandbox is None:
+            raise FileNotFoundError(name)
+        # The kernel controls the name: it can be a link out of its folder, which the
+        # sandbox's own process would follow. A copy that does not follow it is read.
+        copy = f"/tmp/overmind-read-{uuid.uuid4().hex}"
         try:
-            # Its size first: the sandbox's disk holds more than a worker's memory.
-            info = sandbox.fs.get_file_info(path)
-            if info.is_dir or info.size > MAX_FILE_BYTES:
+            checked = sandbox.process.exec(
+                _copy_command(f"{WORKSPACE}/conversations/{conversation}/{name}", copy),
+                timeout=60,
+            )
+            if checked.exit_code != 0:
                 raise FileNotFoundError(name)
             # And while it is read: the cell may still write it.
             received = bytearray()
-            for chunk in sandbox.fs.download_file_stream(path):
+            for chunk in sandbox.fs.download_file_stream(copy):
                 received += chunk
                 if len(received) > MAX_FILE_BYTES:
                     raise FileNotFoundError(name)
@@ -358,19 +395,24 @@ class DaytonaProvider:
             raise FileNotFoundError(name) from None
         except DaytonaError as exc:
             raise WorkspaceUnavailableError(str(exc)) from exc
+        finally:
+            with contextlib.suppress(DaytonaError):
+                sandbox.process.exec(f"rm -f {copy}", timeout=30)
 
     def forget(self, project: str, data: list[str], conversations: list[str]) -> None:
         command = _forget_command(data, conversations)
         # A stopped or archived workspace still holds the files: it starts to delete them.
-        sandbox = self._sandbox(project, start=bool(command)) if command else None
+        sandbox = self._sandbox(project, create=False) if command else None
         if sandbox is None:
             return
         for conversation in conversations:
             self.stop(project, conversation)
         try:
-            sandbox.process.exec(command, timeout=60)
+            deleted = sandbox.process.exec(command, timeout=60)
         except DaytonaError as exc:
             raise WorkspaceUnavailableError(str(exc)) from exc
+        if deleted.exit_code != 0:
+            raise WorkspaceUnavailableError(f"The files were not deleted: {deleted.result}")
 
     def remove(self, project: str) -> None:
         self._forget(project)
@@ -378,15 +420,15 @@ class DaytonaProvider:
             for found in self.client.list(ListSandboxesQuery(labels=_labels(project))):
                 with contextlib.suppress(DaytonaNotFoundError):
                     self.client.delete(self.client.get(found.id))
-            # Deletion ends a moment later; until then the sandbox holds its share of the
-            # account's limits.
-            deadline = time.monotonic() + START_SECONDS
-            while time.monotonic() < deadline and any(
-                True for _ in self.client.list(ListSandboxesQuery(labels=_labels(project)))
-            ):
+            for _ in range(START_SECONDS // 2):
+                if not any(
+                    True for _ in self.client.list(ListSandboxesQuery(labels=_labels(project)))
+                ):
+                    return
                 time.sleep(2)
         except DaytonaError as exc:
             raise WorkspaceUnavailableError(str(exc)) from exc
+        raise WorkspaceUnavailableError("The workspace is not deleted yet.")
 
     def stop(self, project: str, conversation: str) -> None:
         sandbox = self._sandbox(project, start=False)
@@ -409,3 +451,28 @@ def _forget_command(data: list[str], conversations: list[str]) -> str:
 
 def _labels(project: str) -> dict[str, str]:
     return {"overmind": "workspace", "project": project}
+
+
+def _state(sandbox) -> str:
+    return str(getattr(sandbox.state, "value", sandbox.state))
+
+
+def _reply(stdout: str) -> dict | None:
+    for line in reversed(stdout.splitlines()):
+        start = line.rfind(REPLY)
+        if start >= 0:
+            try:
+                return json.loads(line[start + len(REPLY) :])
+            except ValueError:
+                return None
+    return None
+
+
+def _copy_command(path: str, copy: str) -> str:
+    """Copies a regular file with one link and at most MAX_FILE_BYTES, never a link's
+    target: ``cp -P`` opens the source without following it."""
+    return (
+        f'[ ! -L {path} ] && [ -f {path} ] && [ "$(stat -c %h {path})" = 1 ] '
+        f'&& [ "$(stat -c %s {path})" -le {MAX_FILE_BYTES} ] '
+        f"&& cp -P {path} {copy} && [ ! -L {copy} ] && [ -f {copy} ]"
+    )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 import threading
@@ -8,10 +9,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from unittest import mock
 
 import httpx
 import responses
 import respx
+import urllib3
 
 LOCAL = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?/")
 OUTSIDE = re.compile(r"^(?!https?://(127\.0\.0\.1|localhost)(:\d+)?/).*")
@@ -383,6 +386,11 @@ class Network:
         self.vendors: list[Any] = []
         self._respx = respx.mock(assert_all_called=False, assert_all_mocked=True)
         self._responses = responses.RequestsMock(assert_all_requests_are_fired=False)
+        # Vendor SDKs generated from OpenAPI (Daytona) send through urllib3 directly.
+        self._urllib3 = [
+            mock.patch.object(manager, "urlopen", self._pool(manager.urlopen))
+            for manager in (urllib3.PoolManager, urllib3.ProxyManager)
+        ]
 
     def _httpx(self, request: httpx.Request) -> httpx.Response:
         status, headers, body = self._route(
@@ -392,6 +400,24 @@ class Network:
 
     def _requests(self, request) -> tuple[int, dict, bytes]:
         return self._route(request.method, request.url, request.body, dict(request.headers))
+
+    def _pool(self, urlopen):
+        def answer(manager, method, url, *args, **kwargs):
+            if LOCAL.match(url):
+                return urlopen(manager, method, url, *args, **kwargs)
+            status, headers, body = self._route(
+                method, url, kwargs.get("body"), dict(kwargs.get("headers") or {})
+            )
+            return urllib3.HTTPResponse(
+                body=io.BytesIO(body),
+                headers=headers,
+                status=status,
+                preload_content=kwargs.get("preload_content", True),
+                request_method=method,
+                request_url=url,
+            )
+
+        return answer
 
     def _route(self, method: str, url: str, body, headers: dict) -> tuple[int, dict, bytes]:
         for vendor in self.vendors:
@@ -411,8 +437,12 @@ class Network:
         self._responses.add_passthru(LOCAL)
         for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
             self._responses.add_callback(method, OUTSIDE, callback=self._requests)
+        for patch in self._urllib3:
+            patch.start()
         return self
 
     def __exit__(self, *exc) -> None:
+        for patch in reversed(self._urllib3):
+            patch.stop()
         self._responses.__exit__(*exc)
         self._respx.__exit__(*exc)

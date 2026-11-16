@@ -241,6 +241,32 @@ def the_kernel_holds_no_secret_and_tokenizes_offline(provider):
         assert result.ok and result.output == "1\n", result
 
 
+def a_file_read_back_is_one_the_kernel_wrote(provider):
+    with _kernel(provider) as run:
+        made = run(
+            "import os\n"
+            "open('own.txt', 'w').write('own')\n"
+            "os.symlink('/etc/hostname', 'host')\n"
+            "os.symlink('/proc/1/environ', 'environ')\n"
+            "os.symlink('own.txt', 'near')"
+        )
+        assert made.ok, made
+        assert provider.read_file(run.project, run.conversation, "own.txt") == b"own"
+        for name in ("host", "environ", "near"):
+            try:
+                provider.read_file(run.project, run.conversation, name)
+            except FileNotFoundError:
+                continue
+            raise AssertionError(f"The link {name} was followed.")
+
+
+def output_written_past_the_runner_keeps_the_kernel(provider):
+    with _kernel(provider) as run:
+        run("kept = 5")
+        run("import os, sys\nos.write(1, b'raw')\nos.write(2, b'raw')\nsys.__stdout__.write('raw')")
+        assert run("kept").output == "5\n"
+
+
 CHECKS = (
     variables_persist_and_the_last_expression_is_shown,
     an_exception_returns_its_traceback_and_keeps_the_variables,
@@ -254,5 +280,7 @@ CHECKS = (
     a_project_sees_no_data_or_process_of_another,
     a_kernel_reaches_no_network,
     deleted_data_leaves_the_workspace,
+    a_file_read_back_is_one_the_kernel_wrote,
+    output_written_past_the_runner_keeps_the_kernel,
 )
 ISOLATED_CHECKS = (the_kernel_holds_no_secret_and_tokenizes_offline,)
