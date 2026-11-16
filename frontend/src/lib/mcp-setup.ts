@@ -93,16 +93,3 @@ export function onboardingPrompt(
   if (url !== HOSTED_API_URL) return `${subject}\n\nusing the API at ${url}: ${guide}`;
   return data ? `${subject}\n\n${guide}` : `${subject} ${guide}`;
 }
-
-/** Instruction handed to the coding agent, addressed to the agent the user picked. */
-export function telemetrySetupPrompt(client: McpClient): string {
-  const meta = mcpClientMeta(client);
-  return [
-    `Instrument this repository using the Overmind MCP and skill setup in ${meta.label}. Do not rerun \`overmind init\` for an already configured client. If ${meta.label} has no Overmind MCP entry and onboarding sync has completed, run \`overmind init --ide ${client}\` once. If MCP authentication is pending, stop and ask the user to complete the sign-in step \`overmind init\` printed.`,
-    "Install `overmind[tracing]` if tracing is not already importable, with the installer the project already uses.",
-    "For local runs, the tracing SDK reuses the credential saved by `overmind sync`; deployed processes still require `OVERMIND_API_KEY` in their runtime secret configuration.",
-    "Follow the “Instrumentation” section of the installed overmind-observability skill. Call `get_instrumentation_plan` with no capability for project-wide work or the supplied capability for scoped work. If it returns `human_action` or no placements, report the instruction and stop this attempt.",
-    "Apply each placement's `required_decorator` verbatim at `target.qualname` in `target.file`, keeping `capability_id` exact. Expectations that describe one span go on `@overmind.observe(expectations=[...])`; capability-wide expectations belong in the eval matrix, not the code. When delegating, give each file one owner so two workers never edit the same file.",
-    "After applying the placements, report the changed files and checks, generate a unique verification correlation, and ask the user to choose Real run (recommended) or Smoke run. Present the exact command or input, capability, environment, provider/model, expected side effects, correlation value, and approved attempt count; mark unknown fields as needing user input. Do not run either mode before explicit approval. Stamp the approved correlation as `conversation.id` with the application's existing mechanism or `overmind.set_conversation_id`, run only the approved input, flush, and poll `query_traces(session=<correlation>, all_spans=false, limit=2)` within a fixed bound. Require `page.total == 1` and pass that row's `trace_id` to `verify_instrumentation(trace_id=...)`; the server grades the ingested spans. Real-run retries require fresh approval unless an exact input and bounded attempt count were approved. Report application outcome separately from instrumentation status.",
-  ].join(" ");
-}

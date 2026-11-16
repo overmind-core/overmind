@@ -435,7 +435,7 @@ class SignalSubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(SignalEvent)
 class SignalEventAdmin(admin.ModelAdmin):
-    list_display = ["signal_type", "project", "trace_id", "occurred_at", "seen_at"]
+    list_display = ["signal_type", "project", "trace_id", "occurred_at"]
     list_filter = ["signal_type", "occurred_at"]
     search_fields = ["signal_type", "trace_id", "message"]
     readonly_fields = ["id", "occurred_at"]

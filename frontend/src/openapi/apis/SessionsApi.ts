@@ -129,8 +129,6 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only sessions API — list with aggregates + detail.
-     * Get a session
      */
     async sessionsRetrieveRaw(requestParameters: SessionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Session>> {
         if (requestParameters['id'] == null) {
@@ -179,8 +177,6 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Read-only sessions API — list with aggregates + detail.
-     * Get a session
      */
     async sessionsRetrieve(requestParameters: SessionsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Session> {
         const response = await this.sessionsRetrieveRaw(requestParameters, initOverrides);

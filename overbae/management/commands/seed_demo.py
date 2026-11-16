@@ -2460,10 +2460,8 @@ class Command(BaseCommand):
         )
         # Everything is read; the signal beat starts from here.
         SignalCursor.objects.create(project=project, spans_through=NOW, scores_through=NOW)
-        for i, (event, when) in enumerate(signal_events):
-            SignalEvent.objects.filter(pk=event.pk).update(
-                occurred_at=when, seen_at=when + timedelta(hours=2) if i >= 4 else None
-            )
+        for event, when in signal_events:
+            SignalEvent.objects.filter(pk=event.pk).update(occurred_at=when)
 
         for a in capabilities:
             u = usage_acc[a.pk]

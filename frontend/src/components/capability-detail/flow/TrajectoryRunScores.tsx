@@ -110,10 +110,12 @@ export function TrajectoryScoresProvider({
           <Button asChild size="icon" variant="ghost">
             <Link
               aria-label={traceId ? "Open selected run in observability" : "View capability traces"}
-              {...(traceId
-                ? { params: { traceId }, to: "/observability/$traceId" as const }
-                : { to: "/observability" as const })}
-              search={{ capability, projectId: project }}
+              search={{
+                capability,
+                projectId: project,
+                ...(traceId ? { trace: traceId } : { group: "trace" as const }),
+              }}
+              to="/observability"
             >
               <Icon.observability />
             </Link>

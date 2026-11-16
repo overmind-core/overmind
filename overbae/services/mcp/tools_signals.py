@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from django.db.models import Q
 
 from overbae.innermind.signals import signal_factory
-from overbae.models import SignalEvent, SignalSubscription
+from overbae.models import SignalSubscription
 from overbae.services.entity_resolution import resolve_capability
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.signals import (
@@ -72,9 +72,6 @@ def _list_sync(payload: ListSignalsInput, context: MCPContext) -> ListSignalsOut
     return ListSignalsOutput(
         summary=f"{len(entries)} signals, {enabled} enabled.",
         signals=entries,
-        unseen_events=SignalEvent.objects.filter(
-            project=context.project, seen_at__isnull=True
-        ).count(),
         resource_links=[_events_link()],
     )
 
@@ -123,7 +120,7 @@ def register_signal_tools(catalog) -> None:
             name="list_signals",
             title="List signals",
             description="List automatic signal checks, effective enabled state, defaults and "
-            "project/capability overrides, plus the unseen event count. Deterministic checks "
+            "project/capability overrides. Deterministic checks "
             "run by default; plan_drift requires opt-in model calls. Read events at "
             "overmind://signal-events.",
             input_model=ListSignalsInput,

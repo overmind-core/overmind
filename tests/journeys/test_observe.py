@@ -61,14 +61,14 @@ def test_observe(
     for truth in sample_agent.truth["capabilities"].values():
         console.sees(truth["name"])
     console.goto(f"/observability?projectId={project}")
-    console.click("Signals")
-    console.sees("Signal checks")
-    console.click("Sessions")
-    console.click("Traces")
+    for group in ("Session", "Trace"):
+        console._browser.call(
+            lambda group=group: console._page.get_by_role("tab", name=group, exact=True).click()
+        )
     console.sees("handle_ticket")
 
     score_once_per_evidence(mcp, rest, project, key, live_api, fake_llm, worker)
-    raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat)
+    raise_deduplicated_signals(mcp, key, live_api, worker, beat)
     score_spans_before_their_root(mcp, rest, project, key, live_api, worker)
     import_a_vendor_trace(mcp, cli, sample_agent, fake_llm, worker, monkeypatch)
 
@@ -269,7 +269,7 @@ def score_once_per_evidence(mcp, rest, project, key, live_api, fake_llm, worker)
     assert any(m["metric"] == EXPECTATION for m in health["scoring"]["metrics"])
 
 
-def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
+def raise_deduplicated_signals(mcp, key, live_api, worker, beat):
     checks = mcp.call("list_signals", {})["signals"]
     assert next(check for check in checks if check["signal_type"] == "tool_failure")["enabled"]
 
@@ -279,12 +279,9 @@ def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
     beat(RUN_SIGNALS)
     beat(RUN_SIGNALS)
 
-    events = rest.request(
-        "GET",
-        "/api/signal-events/",
-        params={"project": project, "unseen": "true", "signal_type": "tool_failure"},
-    )["results"]
-    assert [(e["signal_type"], e["trace_id"]) for e in events] == [("tool_failure", failing.hex)]
+    resource = mcp.read("overmind://signal-events")
+    events = [e for e in resource["events"] if e["signal_type"] == "tool_failure"]
+    assert [e["trace"]["uri"] for e in events] == [f"overmind://traces/{failing.hex}"]
     assert "lookup_order (2/3)" in events[0]["message"]
     details = events[0]["details"]
     assert details["measurements"]["tools"]["lookup_order"] == {
@@ -295,20 +292,11 @@ def raise_deduplicated_signals(mcp, rest, project, key, live_api, worker, beat):
     assert [item["tool"] for item in details["evidence"]] == ["lookup_order", "lookup_order"]
     assert {item["trace_id"] for item in details["evidence"]} == {failing.hex}
 
-    assert mcp.call("list_signals", {})["unseen_events"] >= 1
-    resource = mcp.read("overmind://signal-events")
     [insight] = [i for i in resource["insights"] if i["signal_type"] == "tool_failure"]
     assert insight["latest_event"] == events[0]["id"]
     assert insight["causes"][0]["label"].startswith("lookup_order")
-    [shared] = [e for e in resource["events"] if e["id"] == events[0]["id"]]
-    assert [(item["span_id"], item["reason"]) for item in shared["details"]["evidence"]] == [
-        (item["span_id"], item["reason"]) for item in details["evidence"]
-    ]
     evidence = mcp.call("query_traces", {"signal_event": events[0]["id"]})
     assert [trace["trace_id"] for trace in evidence["traces"]] == [failing.hex]
-
-    rest.request("POST", "/api/signal-events/mark-seen/", json={"project": project})
-    assert mcp.call("list_signals", {})["unseen_events"] == 0
 
 
 def score_spans_before_their_root(mcp, rest, project, key, live_api, worker):

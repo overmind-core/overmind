@@ -981,7 +981,6 @@ def _signal_events_resource(project, uri: str) -> dict:
     return {
         "uri": uri,
         "kind": "signal_events",
-        "unseen": SignalEvent.objects.filter(project=project, seen_at__isnull=True).count(),
         "insight_days": INSIGHT_DAYS,
         "insights": [
             {
@@ -1004,7 +1003,6 @@ def _signal_events_resource(project, uri: str) -> dict:
                 if event.trace_id
                 else None,
                 "occurred_at": event.occurred_at,
-                "seen": event.seen_at is not None,
             }
             for event in events
         ],
@@ -1851,7 +1849,7 @@ def resource_list() -> list[types.Resource]:
             name="signal-events",
             title="Signal events",
             uri="overmind://signal-events",
-            description="Ranked signal insights for the last 7 days (what is failing, where, its top causes and trend), the newest signal events and the unseen count. Account connections must add ?project_id=ID.",
+            description="Ranked signal insights for the last 7 days (what is failing, where, its top causes and trend) and the newest signal events. Account connections must add ?project_id=ID.",
             mimeType=JSON_MIME,
         ),
         types.Resource(

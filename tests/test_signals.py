@@ -28,6 +28,7 @@ from overbae.models import (
     User,
 )
 from overbae.services.mcp.context import MCPContext
+from overbae.services.signal_insights import signal_insights
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
@@ -176,12 +177,6 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     assert event.subscription_id is None
     assert not SignalEvent.objects.filter(project=other_project).exists()
 
-    response = client.get(
-        "/api/signal-events/",
-        {"project": ctx.project.id, "conversation": session.id, "signal_type": "errors"},
-    )
-    assert response.status_code == 200
-    assert response.data["count"] == 1
     response = client.get("/api/traces/", {"project": ctx.project.id, "signal_event": event.id})
     assert response.status_code == 200
     assert {s["trace_id"] for s in response.data["results"]} == {first.trace_id, second.trace_id}
@@ -204,7 +199,7 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
 
 
 def test_signal_insights_rank_new_and_rising_issues_with_their_causes(context):
-    ctx, client = context
+    ctx, _ = context
     triage = Capability.objects.create(project=ctx.project, name="Triage", slug="triage")
 
     def event(signal_type, days_ago, *, capability=None, reason="", trace_id=None):
@@ -233,9 +228,7 @@ def test_signal_insights_rank_new_and_rising_issues_with_their_causes(context):
     event("errors", 20, capability=triage)
     event("errors", 0, capability=triage)
 
-    response = client.get("/api/signal-events/insights/", {"project": ctx.project.id})
-    assert response.status_code == 200
-    insights = response.data["insights"]
+    insights = signal_insights(SignalEvent.objects.filter(project=ctx.project), 7)["insights"]
     assert [(i["signal_type"], i["status"]) for i in insights] == [
         ("tool_failure", "rising"),
         ("errors", "ongoing"),
@@ -254,7 +247,7 @@ def test_signal_insights_rank_new_and_rising_issues_with_their_causes(context):
     assert rising["why"] == "why tool_failure"
 
     event("leak", 0)
-    first = client.get("/api/signal-events/insights/", {"project": ctx.project.id}).data
+    first = signal_insights(SignalEvent.objects.filter(project=ctx.project), 7)
     assert (first["insights"][0]["signal_type"], first["insights"][0]["status"]) == ("leak", "new")
 
 

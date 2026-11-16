@@ -171,7 +171,8 @@ it("pins a selected run and toggles its highlight from the row or the closed-pic
   expect(toggle.getAttribute("aria-pressed")).toBe("true");
   expect(screen.getByLabelText("Run highlight state").textContent).toBe("trace-1:true");
   const link = screen.getByRole("link", { name: "Open selected run in observability" });
-  expect(link.getAttribute("href")).toContain("/observability/trace-1?");
+  expect(link.getAttribute("href")).toContain("/observability?");
+  expect(link.getAttribute("href")).toContain("trace=trace-1");
   expect(link.getAttribute("href")).toContain("capability=capability-id");
   fireEvent.click(toggle);
   expect(screen.getByLabelText("Run highlight state").textContent).toBe("trace-1:false");

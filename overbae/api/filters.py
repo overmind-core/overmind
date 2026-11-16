@@ -313,14 +313,6 @@ class EvalScoreFilter(filters.FilterSet):
         ) | queryset.filter(source_type=EvalScore.SourceType.TRAJECTORY, source_id=value)
 
 
-class SignalEventFilter(filters.FilterSet):
-    unseen = filters.BooleanFilter(field_name="seen_at", lookup_expr="isnull")
-
-    class Meta:
-        model = SignalEvent
-        fields = ["project", "capability", "signal_type", "trace_id", "conversation"]
-
-
 # Same sentinel the datasets list uses for its unassigned rows.
 NO_CAPABILITY = "__none__"
 

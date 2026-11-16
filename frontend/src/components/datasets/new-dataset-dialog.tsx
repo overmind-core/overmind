@@ -4,16 +4,11 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { DatasetFileUpload } from "@/components/datasets/dataset-file-upload";
 import { evaluationRows } from "@/components/datasets/dataset-split";
-import {
-  TraceBulkSourcePicker,
-  type TraceSelectionState,
-} from "@/components/traces/trace-bulk-source-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -32,15 +27,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import {
   type SplitPosition,
-  type TraceSelectionSpec,
-  traceSelectionBody,
   useCreateDatasetMutation,
   useCreateDatasetSplitMutation,
 } from "@/hooks/use-datasets";
 import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useDatasetUploads } from "@/hooks/use-uploads";
 import { errorMessage } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import type { Dataset, SourceRequest } from "@/openapi";
 
 type Purpose = "train" | "eval" | "explore" | "split" | "pending";
@@ -68,11 +60,7 @@ export interface NewDatasetDialogProps {
   onOpenChange: (open: boolean) => void;
   projectId: string;
   initialCapabilityId?: string;
-  initialSource?: "file" | "traces";
   initialFiles?: File[];
-  initialTraceIds?: string[];
-  initialSelection?: TraceSelectionSpec | null;
-  initialSelectionCount?: number;
   onDone?: (dataset: Dataset) => void;
 }
 
@@ -81,27 +69,18 @@ export function NewDatasetDialog({
   onOpenChange,
   projectId,
   initialCapabilityId,
-  initialSource = "file",
   initialFiles,
-  initialTraceIds,
-  initialSelection,
-  initialSelectionCount,
   onDone,
 }: NewDatasetDialogProps) {
   const navigate = useNavigate();
-  const fromTraces = (initialTraceIds?.length ?? 0) > 0 || !!initialSelection;
-  const sourceType = fromTraces ? "traces" : initialSource;
   const [name, setName] = useState("");
   const [brief, setBrief] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
-  const defaultCapabilityId =
-    initialCapabilityId ?? (sourceType === "traces" ? NO_CAPABILITY : AUTO_CAPABILITY);
+  const defaultCapabilityId = initialCapabilityId ?? AUTO_CAPABILITY;
   const [capabilityId, setCapabilityId] = useState(defaultCapabilityId);
-  const [filePurpose, setPurpose] = useState<Purpose>("pending");
-  const purpose = sourceType === "traces" ? "pending" : filePurpose;
+  const [purpose, setPurpose] = useState<Purpose>("pending");
   const [percentInput, setPercentInput] = useState("30");
   const [position, setPosition] = useState<SplitPosition>("tail");
-  const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
   const [error, setError] = useState<string | null>(null);
   const upload = useDatasetUploads();
   const create = useCreateDatasetMutation();
@@ -127,7 +106,6 @@ export function NewDatasetDialog({
     setBrief("");
     setPercentInput("30");
     setPosition("tail");
-    setPicked({ status: "counting" });
     setError(null);
     if (initialFiles && initialFiles.length > 100) {
       setError("Choose up to 100 files.");
@@ -137,34 +115,20 @@ export function NewDatasetDialog({
   }, [open]);
 
   const readiness = useMemo((): Readiness => {
-    if (sourceType === "file") {
-      if (!upload.files.length) return { hint: "Choose files" };
-      if (upload.files.some((file) => file.status === "error"))
-        return { hint: "Remove or retry files with errors" };
-      if (upload.files.some((file) => file.status !== "ready"))
-        return { hint: "Uploading and counting rows" };
-      return {
-        rows: upload.files.every((file) => file.rows != null)
-          ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0)
-          : undefined,
-        source: { uploads: upload.files.map((file) => file.uploadId!) },
-      };
-    }
-    if (initialTraceIds?.length)
-      return { rows: initialTraceIds.length, source: { traces: { trace_ids: initialTraceIds } } };
-    if (initialSelection)
-      return {
-        rows: initialSelectionCount,
-        source: { traces: traceSelectionBody(initialSelection) },
-      };
-    if (picked.status === "counting") return { hint: "Counting matching traces" };
-    if (picked.status === "error") return { hint: "Couldn't count matching traces" };
-    if (picked.status === "incomplete") return { hint: picked.hint };
-    if (picked.count === 0) return { hint: "No traces match" };
-    return { rows: picked.count, source: { traces: traceSelectionBody(picked.selection) } };
-  }, [sourceType, upload.files, initialTraceIds, initialSelection, initialSelectionCount, picked]);
+    if (!upload.files.length) return { hint: "Choose files" };
+    if (upload.files.some((file) => file.status === "error"))
+      return { hint: "Remove or retry files with errors" };
+    if (upload.files.some((file) => file.status !== "ready"))
+      return { hint: "Uploading and counting rows" };
+    return {
+      rows: upload.files.every((file) => file.rows != null)
+        ? upload.files.reduce((sum, file) => sum + (file.rows ?? 0), 0)
+        : undefined,
+      source: { uploads: upload.files.map((file) => file.uploadId!) },
+    };
+  }, [upload.files]);
   const ready = "source" in readiness;
-  const canStart = ready || (sourceType === "file" && upload.files.length === 0 && !!brief.trim());
+  const canStart = ready || (upload.files.length === 0 && !!brief.trim());
   const rows = ready ? readiness.rows : undefined;
   const splitError =
     purpose === "split"
@@ -177,13 +141,7 @@ export function NewDatasetDialog({
   const heldRows =
     rows !== undefined && rows >= 2 && validPercent ? evaluationRows(rows, evalPercent) : undefined;
 
-  const capabilityName = capabilities.find((c) => c.id === capabilityId)?.name;
-  const suggestedName =
-    sourceType === "file"
-      ? stripExtension(upload.files[0]?.file.name ?? "")
-      : capabilityName
-        ? `${capabilityName} traces`
-        : "Traces";
+  const suggestedName = stripExtension(upload.files[0]?.file.name ?? "");
   useEffect(() => {
     if (!nameTouched) setName(suggestedName);
   }, [nameTouched, suggestedName]);
@@ -205,7 +163,7 @@ export function NewDatasetDialog({
     if (!canStart || busy || splitError || (purpose === "split" && !ready)) return;
     setError(null);
     const base = {
-      brief: sourceType === "traces" ? "" : brief.trim(),
+      brief: brief.trim(),
       capabilityId:
         capabilityId === AUTO_CAPABILITY
           ? undefined
@@ -239,14 +197,6 @@ export function NewDatasetDialog({
       <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>New dataset</DialogTitle>
-          {fromTraces && (
-            <DialogDescription>
-              {initialTraceIds?.length
-                ? `${initialTraceIds.length.toLocaleString()} selected ${initialTraceIds.length === 1 ? "trace" : "traces"}`
-                : `${(initialSelectionCount ?? 0).toLocaleString()} matching traces`}
-              {" · One row per trace"}
-            </DialogDescription>
-          )}
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -265,30 +215,19 @@ export function NewDatasetDialog({
             />
           </div>
 
-          {sourceType === "file" ? (
-            <DatasetFileUpload busy={busy} onError={setError} upload={upload} />
-          ) : !fromTraces ? (
-            <TraceBulkSourcePicker onChange={setPicked} projectId={projectId} />
-          ) : null}
+          <DatasetFileUpload busy={busy} onError={setError} upload={upload} />
 
-          <div
-            className={cn(
-              "grid grid-cols-1 gap-x-5 gap-y-3",
-              sourceType === "file" && "sm:grid-cols-2"
-            )}
-          >
+          <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground" htmlFor="dataset-capability">
-                Capability{sourceType === "traces" ? " (optional)" : ""}
+                Capability
               </Label>
               <Select disabled={busy} onValueChange={setCapabilityId} value={capabilityId}>
                 <SelectTrigger className="w-full" id="dataset-capability">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {sourceType === "file" && (
-                    <SelectItem value={AUTO_CAPABILITY}>Decide from the rows</SelectItem>
-                  )}
+                  <SelectItem value={AUTO_CAPABILITY}>Decide from the rows</SelectItem>
                   <SelectItem value={NO_CAPABILITY}>None</SelectItem>
                   {capabilities.map((capability) => (
                     <SelectItem key={capability.id} value={capability.id}>
@@ -298,30 +237,28 @@ export function NewDatasetDialog({
                 </SelectContent>
               </Select>
             </div>
-            {sourceType === "file" && (
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
-                  Purpose
-                </Label>
-                <Select
-                  disabled={busy}
-                  onValueChange={(value) => setPurpose(value as Purpose)}
-                  required
-                  value={purpose}
-                >
-                  <SelectTrigger className="w-full" id="dataset-purpose">
-                    <SelectValue placeholder="Select purpose" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PURPOSES.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
+                Purpose
+              </Label>
+              <Select
+                disabled={busy}
+                onValueChange={(value) => setPurpose(value as Purpose)}
+                required
+                value={purpose}
+              >
+                <SelectTrigger className="w-full" id="dataset-purpose">
+                  <SelectValue placeholder="Select purpose" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PURPOSES.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {purpose === "split" && (
@@ -398,38 +335,34 @@ export function NewDatasetDialog({
               )}
             </section>
           )}
-          {sourceType === "file" && (
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
-                Intent (optional)
-              </Label>
-              <textarea
-                className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
-                disabled={busy}
-                id="dataset-brief"
-                maxLength={8000}
-                onChange={(event) => setBrief(event.target.value)}
-                placeholder="e.g. Prepare support conversations for fine-tuning."
-                rows={2}
-                value={brief}
-              />
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
+              Intent (optional)
+            </Label>
+            <textarea
+              className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
+              disabled={busy}
+              id="dataset-brief"
+              maxLength={8000}
+              onChange={(event) => setBrief(event.target.value)}
+              placeholder="e.g. Prepare support conversations for fine-tuning."
+              rows={2}
+              value={brief}
+            />
+          </div>
           <DismissibleAlert message={error} variant="destructive" />
         </DialogBody>
         <DialogFooter className="flex-wrap">
-          {(!ready || sourceType === "file") && (
-            <span
-              aria-live="polite"
-              className="w-full text-xs text-muted-foreground sm:mr-auto sm:w-auto"
-            >
-              {ready
-                ? rows === undefined
-                  ? null
-                  : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
-                : readiness.hint}
-            </span>
-          )}
+          <span
+            aria-live="polite"
+            className="w-full text-xs text-muted-foreground sm:mr-auto sm:w-auto"
+          >
+            {ready
+              ? rows === undefined
+                ? null
+                : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
+              : readiness.hint}
+          </span>
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>

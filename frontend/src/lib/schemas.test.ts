@@ -5,61 +5,10 @@ import {
   datasetsSearchSchema,
   evaluationsSearchSchema,
   optimiserSearchSchema,
-  tracesSearchSchema,
   trainingSearchSchema,
 } from "./schemas";
 
 describe("schemas", () => {
-  describe("tracesSearchSchema", () => {
-    it("opens old reporting links in Traces", () => {
-      expect(tracesSearchSchema.parse({ view: "overview" }).view).toBe("roots");
-    });
-
-    it("parses DRF-style filter lookups", () => {
-      const result = tracesSearchSchema.parse({
-        capability: "abc-123",
-        ordering: "-score",
-        received_at__gte: "2026-01-01T00:00:00Z",
-        score__gte: "0.8",
-        total_cost__lte: "0.5",
-      });
-      expect(result.capability).toBe("abc-123");
-      expect(result.score__gte).toBe("0.8");
-      expect(result.total_cost__lte).toBe("0.5");
-      expect(result.received_at__gte).toBe("2026-01-01T00:00:00Z");
-      expect(result.ordering).toBe("-score");
-    });
-
-    it("does not keep behaviour or binding_source on the traces search", () => {
-      const result = tracesSearchSchema.parse({
-        behaviour: "b1",
-        binding_source: "unbound",
-        projectId: "proj-1",
-      });
-      expect(result.projectId).toBe("proj-1");
-      expect(result).not.toHaveProperty("behaviour");
-      expect(result).not.toHaveProperty("binding_source");
-    });
-
-    it("keeps the span-level filter params the quick chips and builder emit", () => {
-      // Zod strips undeclared keys, dropping the filter between URL and request.
-      const result = tracesSearchSchema.parse({
-        has_model: "true",
-        min_duration_ms: "5000",
-        operation__icontains: "chat",
-        service_name__icontains: "worker",
-        span_type: "llm_call",
-        status_code: "1",
-      });
-      expect(result.has_model).toBe("true");
-      expect(result.span_type).toBe("llm_call");
-      expect(result.status_code).toBe("1");
-      expect(result.min_duration_ms).toBe("5000");
-      expect(result.service_name__icontains).toBe("worker");
-      expect(result.operation__icontains).toBe("chat");
-    });
-  });
-
   describe("evaluationsSearchSchema", () => {
     it("round-trips a deep link carrying both a page and runs filters", () => {
       const result = evaluationsSearchSchema.parse({

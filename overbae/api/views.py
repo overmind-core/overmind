@@ -139,7 +139,6 @@ from overbae.services.inference_metrics import (
     model_metrics,
     recent_traffic_annotations,
 )
-from overbae.services.simulated_training import finish_simulated, is_simulated
 from overbae.services.training_cancellation import cancel as cancel_training
 from overbae.services.training_preparation import (
     live_progress_for_job,
@@ -581,18 +580,8 @@ class SpanViewSet(
         ),
         responses={200: SessionSerializer(many=True)},
     ),
-    retrieve=extend_schema(
-        summary="Get a session",
-        responses={200: SessionSerializer},
-    ),
 )
-class SessionViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Read-only sessions API — list with aggregates + detail."""
-
+class SessionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = SessionSerializer
     filterset_class = SessionFilter
     search_fields = ["external_id", "name"]
@@ -614,7 +603,6 @@ class SessionViewSet(
         "timespan",
     ]
     ordering = ["-created_at"]
-    lookup_field = "id"
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -776,18 +764,12 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
         from overbae.api.credit_gate import require_credits
         from overbae.tasks.finetuning import run_finetuning
 
-        project = serializer.validated_data["project"]
-
         def admit_new_training():
-            if not is_simulated(project):
-                require_credits(self.request.user)
+            require_credits(self.request.user)
 
         serializer.context["admit_new_training"] = admit_new_training
         job = serializer.save(triggered_by=self.request.user)
         if getattr(job, "launch_reused", False):
-            return
-        if is_simulated(project):
-            finish_simulated(job)
             return
         try:
             result = run_finetuning.apply_async(kwargs={"job_id": str(job.id)})

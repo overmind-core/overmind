@@ -19,12 +19,8 @@ vi.mock("@/hooks/use-evaluations", () => ({
   useProjectCapabilitiesQuery: () => ({ data: { results: [{ id: "cap", name: "Support" }] } }),
 }));
 vi.mock("@/hooks/use-datasets", () => ({
-  traceSelectionBody: (selection: unknown) => selection,
   useCreateDatasetMutation: () => ({ isPending: false, mutateAsync: mocks.create }),
   useCreateDatasetSplitMutation: () => ({ isPending: false, mutateAsync: mocks.split }),
-}));
-vi.mock("@/components/traces/trace-bulk-source-picker", () => ({
-  TraceBulkSourcePicker: () => <p>Trace filters</p>,
 }));
 vi.mock("@/client", () => ({
   default: {

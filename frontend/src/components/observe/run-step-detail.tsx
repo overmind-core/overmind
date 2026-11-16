@@ -13,7 +13,7 @@ import {
   MODEL_USAGE_FIELDS,
   RETRIEVAL_FIELDS,
   type ToolDefinition,
-} from "@/components/traces/SpanDetailView";
+} from "@/components/traces/span-payload";
 import { TraceErrorDetailsView } from "@/components/traces/trace-error-details";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";

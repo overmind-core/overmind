@@ -119,13 +119,17 @@ export function EntityLink({
           {children}
         </Link>
       );
+    // A trace's detail is a sheet over /observability, so `trace` opens it from the URL.
     case "trace":
       return (
         <Link
           className={className}
           onClick={onClick}
-          params={{ traceId: id }}
-          to="/observability/$traceId"
+          search={(prev: { projectId?: string }) => ({
+            projectId: projectId ?? prev.projectId,
+            trace: id,
+          })}
+          to="/observability"
           {...rest}
         >
           {children}

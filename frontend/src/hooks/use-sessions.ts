@@ -89,12 +89,3 @@ export function useSessionsList(params: SessionsListParams) {
     refetchInterval: (q) => backoffPolling(q, 10_000),
   });
 }
-
-export function useSessionDetail(sessionId: string | undefined) {
-  return useQuery({
-    enabled: !!sessionId,
-    queryFn: async (): Promise<SessionRow> =>
-      transformSession(await apiClient.sessions.sessionsRetrieve({ id: sessionId! })),
-    queryKey: ["session", sessionId],
-  });
-}

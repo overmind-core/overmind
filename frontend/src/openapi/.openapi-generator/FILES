@@ -33,8 +33,6 @@ apis/OptimizerExperimentsApi.ts
 apis/ProjectsApi.ts
 apis/PublicApi.ts
 apis/SessionsApi.ts
-apis/SignalEventsApi.ts
-apis/SignalSubscriptionsApi.ts
 apis/TracesApi.ts
 apis/TrainingExperimentsApi.ts
 apis/TrainingPlansApi.ts
@@ -342,8 +340,6 @@ models/PaginatedProjectMemberList.ts
 models/PaginatedPromptList.ts
 models/PaginatedRootSpanListList.ts
 models/PaginatedSessionList.ts
-models/PaginatedSignalEventList.ts
-models/PaginatedSignalSubscriptionList.ts
 models/PaginatedTrainingExperimentList.ts
 models/PaginatedTrainingPlanList.ts
 models/PartitionMember.ts
@@ -356,7 +352,6 @@ models/PatchedDedicatedWriteRequest.ts
 models/PatchedEvalSetRequest.ts
 models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts
-models/PatchedSignalSubscriptionRequest.ts
 models/PatchedUserOnboardingRequest.ts
 models/PerformanceRequestRequest.ts
 models/PerformanceWorkloadRequest.ts
@@ -408,19 +403,7 @@ models/ScopeEnum.ts
 models/ServingContextPlan.ts
 models/Session.ts
 models/SetCommandTemplateRequest.ts
-models/SeverityAfaEnum.ts
-models/SignalCatalogEntry.ts
-models/SignalEvent.ts
-models/SignalEventSeenRequest.ts
-models/SignalEventSeenResponse.ts
-models/SignalInsight.ts
-models/SignalInsightCause.ts
-models/SignalInsightSeverityEnum.ts
-models/SignalInsightStatusEnum.ts
-models/SignalInsights.ts
-models/SignalSubscription.ts
-models/SignalSubscriptionRequest.ts
-models/SignalTypeEnum.ts
+models/SeverityEnum.ts
 models/SourceEnum.ts
 models/SourceRequest.ts
 models/Span.ts
