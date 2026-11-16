@@ -3,9 +3,11 @@ import os
 import sys
 
 import pytest
+from starlette.testclient import TestClient
 
 from overbae.services.workspaces import conformance
 from overbae.services.workspaces.native import NativeProvider
+from sandbox import server
 
 pytestmark = pytest.mark.covers("workspaces")
 
@@ -54,3 +56,14 @@ def test_a_native_kernel_is_unprivileged_and_cannot_change_its_data(provider):
         assert result.ok and result.output == "'a,b\\n1,2\\n'\n", result
     finally:
         provider.stop("p1", "c1")
+
+
+def test_a_sandbox_without_workspaces_answers_reads_without_creating_them(tmp_path, monkeypatch):
+    blocked = tmp_path / "file"
+    blocked.write_text("")
+    monkeypatch.setenv("SANDBOX_WORKSPACES", str(blocked / "workspaces"))
+    monkeypatch.setenv("SANDBOX_TOKEN", "t")
+    client = TestClient(server.app, headers={"Authorization": "Bearer t"})
+    assert client.head("/v1/workspaces/p1/data/source.csv").status_code == 404
+    assert client.get("/v1/workspaces/p1/kernels/c1/files/out.csv").status_code == 404
+    assert client.delete("/v1/workspaces/p1").status_code == 204
