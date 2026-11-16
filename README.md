@@ -3,7 +3,7 @@
 # The Training Platform for Specialized Agents
 
 <p align="center">
-  <a href="https://console.overmindlab.ai/">Console</a> | <a href="https://www.overmindlab.ai/">Site</a> | <a href="#run-it-yourself">Self-host</a>
+  <a href="https://console.overmindlab.ai/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=always-on&amp;utm_content=readme-header">Console</a> | <a href="https://www.overmindlab.ai/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=always-on&amp;utm_content=readme-header">Site</a> | <a href="#run-it-yourself">Self-host</a>
 </p>
 <p align="center">
   <a href="https://docs.overmindlab.ai"><img src="https://img.shields.io/badge/Docs-ed670f?style=for-the-badge" alt="Documentation"></a>
@@ -22,7 +22,7 @@ Point it at your agent's codebase and it turns production traces (or any dataset
 
 > The weights are yours to download, retrain or roll back.
 
-Available from the [Console](https://console.overmindlab.ai/), the `overmind` CLI, the [REST API](https://docs.overmindlab.ai/reference/api), and an [MCP server](#connect-your-coding-agent) for Cursor, Claude Code, OpenCode and Codex. Hosted at [console.overmindlab.ai](https://console.overmindlab.ai/) or [run it yourself](#run-it-yourself).
+Available from the [Console](https://console.overmindlab.ai/?utm_source=github&utm_medium=readme&utm_campaign=always-on&utm_content=readme-intro), the `overmind` CLI, the [REST API](https://docs.overmindlab.ai/reference/api), and an [MCP server](#connect-your-coding-agent) for Cursor, Claude Code, OpenCode and Codex. Hosted at [console.overmindlab.ai](https://console.overmindlab.ai/?utm_source=github&utm_medium=readme&utm_campaign=always-on&utm_content=readme-intro) or [run it yourself](#run-it-yourself).
 
 <table>
 <tr><td><b><a href="https://docs.overmindlab.ai/explanation/capabilities">Agent & Capabilities</a></b></td><td>A graph of your agent — capabilities, prompts, tools, and tasks — scanned from the repo.</td></tr>
@@ -44,7 +44,7 @@ Available from the [Console](https://console.overmindlab.ai/), the `overmind` CL
 
 ### Hosted
 
-Sign up at [console.overmindlab.ai](https://console.overmindlab.ai/), copy the onboarding prompt from **Get started**, and paste it into your coding agent (Cursor, Claude Code, OpenCode or Codex) with your agent's repo root open. The **Data** tab starts from an uploaded dataset instead. It installs `overmind`, runs `overmind init` and `overmind sync`, and maps the agent's capabilities. From then on everything is a `/overmind` command in the same chat:
+Sign up at [console.overmindlab.ai](https://console.overmindlab.ai/?utm_source=github&utm_medium=readme&utm_campaign=always-on&utm_content=readme-get-started), copy the onboarding prompt from **Get started**, and paste it into your coding agent (Cursor, Claude Code, OpenCode or Codex) with your agent's repo root open. The **Data** tab starts from an uploaded dataset instead. It installs `overmind`, runs `overmind init` and `overmind sync`, and maps the agent's capabilities. From then on everything is a `/overmind` command in the same chat:
 
 | Command                    | What it does                                  |
 | -------------------------- | --------------------------------------------- |
@@ -239,5 +239,5 @@ This repository contains two licences. The platform (`overbae/`, `frontend/`, an
 </p>
 
 <p align="center">
-  <a href="https://docs.overmindlab.ai">docs.overmindlab.ai</a> · <a href="https://www.overmindlab.ai/">overmindlab.ai</a>
+  <a href="https://docs.overmindlab.ai">docs.overmindlab.ai</a> · <a href="https://www.overmindlab.ai/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=always-on&amp;utm_content=readme-footer">overmindlab.ai</a>
 </p>
