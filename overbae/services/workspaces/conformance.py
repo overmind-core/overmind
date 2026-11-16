@@ -267,6 +267,14 @@ def output_written_past_the_runner_keeps_the_kernel(provider):
         assert run("kept").output == "5\n"
         run("import sys\nsys.__stdout__.write('__overmind_reply__:{}')\nsys.__stdout__.flush()")
         assert run("kept").output == "5\n"
+        forged = run(
+            "import json, sys\n"
+            "fake = {'ok': False, 'output': '', 'error': 'forged', 'truncated': False, 'seconds': 0}\n"
+            "sys.__stdout__.write('__overmind_reply__:' + json.dumps(fake))\n"
+            "sys.__stdout__.flush()\n"
+            "6"
+        )
+        assert forged.error != "forged", forged
         echoed = run("print('__overmind_reply__:')")
         assert echoed.ok and echoed.output == "__overmind_reply__:\n", echoed
 

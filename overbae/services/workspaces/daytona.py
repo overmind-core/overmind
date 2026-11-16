@@ -462,20 +462,19 @@ def _state(sandbox) -> str:
 
 
 def _reply(stdout: str) -> dict | None:
-    """The runner's reply: the last line holding the marker followed by one JSON object.
-    The cell's own output, inside that object, may hold the marker too."""
+    """The runner's reply: the last marker followed by a whole reply object. The cell's
+    own output may hold the marker too, inside the reply or written before it."""
     decoder = json.JSONDecoder()
     for line in reversed(stdout.splitlines()):
-        start = line.find(REPLY)
+        start = line.rfind(REPLY)
         while start >= 0:
             try:
                 reply, _ = decoder.raw_decode(line, start + len(REPLY))
             except ValueError:
-                start = line.find(REPLY, start + 1)
-                continue
+                reply = None
             if isinstance(reply, dict) and reply.keys() == REPLY_KEYS:
                 return reply
-            start = line.find(REPLY, start + 1)
+            start = line.rfind(REPLY, 0, start)
     return None
 
 
