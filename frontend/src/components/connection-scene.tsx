@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import styles from "./connection-scene.module.css";
 
 const ASTEROIDS = [
@@ -11,36 +12,44 @@ const ASTEROIDS = [
   { delay: -6, duration: 9, left: "38%", size: 100, top: "-2%" },
 ];
 
+/** The night sky behind the connection pages and the Datasets landing. It fills its
+ *  nearest positioned ancestor; `fixed` makes it fill the window. */
+export function ConnectionBackground({ className }: { className?: string }) {
+  return (
+    <div aria-hidden="true" className={cn("absolute inset-0", styles.art, className)}>
+      <img alt="" className={styles.landscape} src="/connection/stars-v2.jpg" />
+      {ASTEROIDS.map((asteroid) => (
+        <div
+          className={styles.asteroid}
+          key={asteroid.left}
+          style={
+            {
+              "--delay": `${asteroid.delay}s`,
+              "--duration": `${asteroid.duration}s`,
+              left: asteroid.left,
+              top: asteroid.top,
+            } as CSSProperties
+          }
+        >
+          <img
+            alt=""
+            className="rotate-12 object-contain opacity-80"
+            height={asteroid.size}
+            src="/connection/asteroid.png"
+            width={asteroid.size}
+          />
+        </div>
+      ))}
+      <img alt="" className={styles.landscape} src="/connection/trees.png" />
+    </div>
+  );
+}
+
 export function ConnectionScene({ children }: { children: ReactNode }) {
   return (
     <main className={`dark ${styles.scene} bg-card text-foreground`}>
-      <div aria-hidden="true" className={styles.art}>
-        <img alt="" className={styles.landscape} src="/connection/stars-v2.jpg" />
-        {ASTEROIDS.map((asteroid) => (
-          <div
-            className={styles.asteroid}
-            key={asteroid.left}
-            style={
-              {
-                "--delay": `${asteroid.delay}s`,
-                "--duration": `${asteroid.duration}s`,
-                left: asteroid.left,
-                top: asteroid.top,
-              } as CSSProperties
-            }
-          >
-            <img
-              alt=""
-              className="rotate-12 object-contain opacity-80"
-              height={asteroid.size}
-              src="/connection/asteroid.png"
-              width={asteroid.size}
-            />
-          </div>
-        ))}
-        <img alt="" className={styles.landscape} src="/connection/trees.png" />
-        <div className={styles.scanlines} />
-      </div>
+      <ConnectionBackground className="fixed" />
+      <div aria-hidden="true" className={styles.scanlines} />
       <div className={styles.content}>{children}</div>
     </main>
   );

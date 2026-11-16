@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -31,26 +30,6 @@ def compact_run(record: dict, evidence_resource: dict) -> dict:
 
 class DatasetInput(MCPModel):
     dataset: str = Field(min_length=1, max_length=255)
-
-
-class StartPreparationInput(DatasetInput):
-    request_key: str = Field(min_length=1, max_length=128)
-
-
-class UpdatePreparationInput(DatasetInput):
-    preparation_id: UUID
-    state: Literal["preparing", "paused", "completed", "cancelled"]
-    outputs: list[UUID] = Field(default_factory=list, max_length=100)
-
-
-class PreparationWorkflow(MCPModel):
-    id: str
-    dataset_id: str
-    state: Literal["preparing", "paused", "completed", "cancelled"]
-    actor_kind: str
-    actor_name: str
-    outputs: list[str]
-    updated_at: datetime
 
 
 class InspectInput(MCPModel):
@@ -213,7 +192,6 @@ class Output(MCPModel):
     next_actions: list[NextAction] = Field(default_factory=list, max_length=8)
     dataset: str | None = None
     preparation: dict[str, Any] | None = None
-    preparation_workflow: PreparationWorkflow | None = None
     current_pipeline: str | None = None
     pipeline: Pipeline | None = None
     run: Run | None = None

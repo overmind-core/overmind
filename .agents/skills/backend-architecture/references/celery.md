@@ -1,11 +1,12 @@
 # Celery topology
 
-Six workers over six queues. Workers are resource profiles; queues are fairness classes.
+Seven workers over seven queues. Workers are resource profiles; queues are fairness classes.
 
 | Worker        | Pool    | Conc | Holds                                                                               |
 | ------------- | ------- | ---- | ----------------------------------------------------------------------------------- |
 | `control`     | threads | 8    | orchestration, chord callbacks, FSM advances, reconcilers                           |
 | `io`          | threads | 24   | preparation, eval launch, serving, connector polling                                |
+| `assistant`   | threads | 24   | assistant turns, kernel stops and workspace cleanup                                 |
 | `io_traces`   | prefork | 4    | live span and trajectory scoring, signals                                           |
 | `batch`       | prefork | 6    | pipeline bindings, evaluation generation and scoring, partitions, native evaluation |
 | `landing`     | prefork | 1    | source imports                                                                      |

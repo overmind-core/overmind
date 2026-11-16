@@ -15,19 +15,19 @@ export type EntityKind =
   | "trace";
 
 // Deliberately the sidebar's icon for each vertical, so a chip says where the
-// entity lives before you read its name.
+// entity lives before you read its name. The accent is the type, never a status.
 export const ENTITY_META: Record<
   EntityKind,
-  { icon: (typeof Icon)[keyof typeof Icon]; label: string }
+  { accent: string; icon: (typeof Icon)[keyof typeof Icon]; label: string }
 > = {
-  capability: { icon: Icon.agent, label: "Capability" },
-  dataset: { icon: Icon.dataset, label: "Dataset" },
-  evalRun: { icon: Icon.eval, label: "Eval run" },
-  experiment: { icon: Icon.optimiser, label: "Optimisation" },
-  job: { icon: Icon.training, label: "Training run" },
-  model: { icon: Icon.inference, label: "Model" },
-  project: { icon: Icon.project, label: "Project" },
-  trace: { icon: Icon.observability, label: "Trace" },
+  capability: { accent: "text-cat-3", icon: Icon.agent, label: "Capability" },
+  dataset: { accent: "text-cat-2", icon: Icon.dataset, label: "Dataset" },
+  evalRun: { accent: "text-cat-3", icon: Icon.eval, label: "Eval run" },
+  experiment: { accent: "text-cat-5", icon: Icon.optimiser, label: "Optimisation" },
+  job: { accent: "text-cat-5", icon: Icon.training, label: "Training run" },
+  model: { accent: "text-cat-4", icon: Icon.inference, label: "Model" },
+  project: { accent: "text-cat-6", icon: Icon.project, label: "Project" },
+  trace: { accent: "text-cat-1", icon: Icon.observability, label: "Trace" },
 };
 
 export function Row({ children, label }: { children: ReactNode; label: string }) {
@@ -57,7 +57,7 @@ export function EntityCardShell({
   return (
     <div className="divide-y divide-border/70">
       <div className="flex items-start gap-2 px-3 py-2.5">
-        <meta.icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <meta.icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", meta.accent)} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
           <p className="chip-label mt-0.5 text-xs text-muted-foreground">

@@ -234,6 +234,40 @@ COVERAGE_MAP: dict[str, Entry] = {
         "A pipeline step runs from its retained package with its pinned runtime and no "
         "network; a failed exit never reports success.",
     ),
+    "assistant-turn": Entry(
+        S2,
+        INVARIANT,
+        "A turn runs from a message to the reply and saves every step: a turn that stopped "
+        "moving is marked interrupted and writes nothing more, a stop ends it at the next "
+        "step, a question ends it, and a dataset's deletion removes its copies from the "
+        "workspace.",
+    ),
+    "assistant-api": Entry(
+        S1,
+        CONTRACT,
+        "Only a project member reaches a thread; the stream resumes after a cursor without "
+        "repeating an event; a guest cannot send.",
+    ),
+    "assistant-results": Entry(
+        S3,
+        CONTRACT,
+        "A presented result holds the rows and images the kernel computed; a file that is "
+        "missing or not a table or image refuses the document, and only a project member "
+        "reads an image.",
+    ),
+    "api-compression": Entry(
+        S4,
+        CONTRACT,
+        "API responses are gzip-compressed for a client that accepts it, and an event "
+        "stream is never compressed, so each event reaches the page when it is sent.",
+    ),
+    "workspaces": Entry(
+        S3,
+        CONTRACT,
+        "Every workspace provider keeps a conversation's variables between cells, copies a "
+        "version in once and read-only, reports a kernel that ended and starts another with "
+        "the files kept, and keeps a project from the data, processes and network of others.",
+    ),
     "metrics-math": Entry(
         S3,
         LOGIC,

@@ -39,5 +39,5 @@ def test_open_dataset_streams_hold_no_database_connection(
     with ExitStack() as stack:
         for _ in range(5):
             lines = _open(stack, url, key).iter_lines()
-            next(line for line in lines if "replay.done" in line)
+            next(line for line in lines if '"type": "connected"' in line)
         assert _client_connections() <= before

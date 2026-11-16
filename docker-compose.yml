@@ -18,6 +18,8 @@ x-env-common: &env-common
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  WORKSPACE_PROVIDER: ${WORKSPACE_PROVIDER:-native}
+  DAYTONA_API_KEY: ${DAYTONA_API_KEY:-}
   JEV_REQUESTS_PER_MINUTE: ${JEV_REQUESTS_PER_MINUTE:-1200}
   JEV_TOKENS_PER_SECOND: ${JEV_TOKENS_PER_SECOND:-250000}
   TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
@@ -164,6 +166,20 @@ services:
       redis:
         condition: service_healthy
 
+  celery-assistant-worker:
+    <<: *build-common
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=24 --prefetch-multiplier=1 --disable-prefetch --hostname=assistant@%h -Q assistant
+    restart: unless-stopped
+    environment:
+      <<: *env-common
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Assistant turns run Python in the sandbox's workspaces.
+    networks: [default, sandbox_net]
+
   celery-traces-worker:
     <<: *build-common
     command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=prefork --concurrency=4 --prefetch-multiplier=1 --disable-prefetch --hostname=io_traces@%h -Q io_traces
@@ -256,10 +272,13 @@ services:
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-change-me-in-production}
       SANDBOX_MEMORY_BYTES: ${SANDBOX_MEMORY_BYTES:-0}
       SANDBOX_OCR_WORKERS: ${SANDBOX_OCR_WORKERS:-2}
+      SANDBOX_WORKSPACES: /workspaces
     tmpfs:
       - /tmp:size=8g
     volumes:
       - ./sandbox:/code/sandbox:ro
+      # Project workspaces outlive their kernels and the container.
+      - workspaces:/workspaces
     networks:
       - sandbox_net
     healthcheck:
@@ -305,6 +324,7 @@ volumes:
     name: overclaw_pg_data
   grafana_data:
   frontend_node_modules:
+  workspaces:
 
 networks:
   sandbox_net:

@@ -67,6 +67,8 @@ function DatasetNavigation({ projectId, enabled }: { projectId?: string; enabled
         { signal }
       ),
     queryKey: ["datasets", "list", projectId, "navigation", debouncedSearch],
+    // Progress counters move while a dataset is busy. A dataset deleted or started
+    // elsewhere records no activity the list hears, so an idle list still looks again.
     refetchInterval: (query) =>
       query.state.data?.pages.some((page) => page.results.some(isBusy)) ? 3000 : 15000,
   });

@@ -305,6 +305,7 @@ def submit(
         from overbae.tasks.datasets import execute_pipeline
 
         transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
+        transaction.on_commit(lambda: events.publish(locked.pk, {"type": "dataset_changed"}))
     run.refresh_from_db()
     return run
 
@@ -344,6 +345,9 @@ def execute(run_id, *, script_executor=None):
     run = DatasetPipelineRun.objects.select_related(
         "dataset__capability", "pipeline__package", "source", "artifact", "created_by", "binding"
     ).get(pk=run_id)
+    # Open pages read the run's start from the stream, as its queueing and its end.
+    dataset_id = run.dataset_id
+    transaction.on_commit(lambda: events.publish(dataset_id, {"type": "dataset_changed"}))
     started = checkpoint = time.monotonic()
     started_at = timezone.now().isoformat()
     queue_seconds = round(max(0, (timezone.now() - run.created_at).total_seconds()), 3)

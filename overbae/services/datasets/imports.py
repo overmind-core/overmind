@@ -237,12 +237,18 @@ def _block(run, code, error):
     Dataset.objects.filter(pk__in=_target_ids(run), state=Dataset.State.LANDING).update(
         state=Dataset.State.ERROR, error=run.error, updated_at=timezone.now()
     )
+    # Lazy: the assistant reaches the MCP catalog, which imports this module.
+    from overbae.services.assistant.turn import wake_dataset
+
     for dataset_id in _target_ids(run):
         transaction.on_commit(
             lambda dataset_id=dataset_id: events.publish(
                 dataset_id, {"dataset_id": str(dataset_id), "type": "land_failed", "error": error}
             )
         )
+        # A message sent with the upload waited for this source; it is read once the
+        # source's error is committed, or a turn could still see it landing.
+        transaction.on_commit(lambda dataset_id=dataset_id: wake_dataset(dataset_id), robust=True)
 
 
 @transaction.atomic
@@ -756,6 +762,16 @@ def execute(task_id, inputs):
         return {"status": "failed", "error": str(exc)}
     finally:
         beat.set()
-        for target_id in _target_ids(run):
-            operations.finished(target_id, task_id=str(run.pk))
-        shutil.rmtree(stage, ignore_errors=True)
+        # Lazy: the assistant reaches the MCP catalog, which imports this module.
+        from overbae.services.assistant.turn import wake_dataset
+
+        try:
+            for target_id in _target_ids(run):
+                operations.finished(target_id, task_id=str(run.pk))
+                # A message sent with the upload waited for its source, landed or failed.
+                try:
+                    wake_dataset(target_id)
+                except Exception:  # noqa: BLE001 - the next message wakes the conversation
+                    logger.exception("assistant not woken for dataset %s", target_id)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)

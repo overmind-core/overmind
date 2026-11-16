@@ -1,15 +1,11 @@
 import multiprocessing
 import os
 import uuid
-from datetime import timedelta
 
 import pytest
 import redis
-from django.utils import timezone
 
 from overbae.celery import app
-from overbae.models import Activity, DatasetPreparation
-from overbae.tasks.datasets import reap_stuck_runs
 from overbae.tasks.utils.task_lock import acquire_task_lock, with_task_lock
 
 from .conftest import GOOD_REPLY
@@ -120,39 +116,3 @@ def test_a_failing_judge_is_tried_three_times_then_scored_with_errors(
     clock.shift(SWEEP_WAIT)
     beat(SWEEP_SPANS, SWEEP_TRAJECTORIES)
     assert judge_calls() == 3 * per_pass + 3
-
-
-def test_console_ends_an_open_preparation_and_idle_preparations_expire(console, workshop):
-    project = workshop.project()["id"]
-    datasets = [
-        workshop.call(
-            "start_dataset", {"name": name, "brief": "Prepare support rows", "intent": "train"}
-        )["dataset"]["id"]
-        for name in ("Abandoned preparation", "Idle preparation", "Recently active preparation")
-    ]
-    for dataset in datasets:
-        workshop.call(
-            "start_dataset_preparation", {"dataset": dataset, "request_key": f"open-{dataset}"}
-        )
-    console.goto(f"/datasets/{datasets[0]}?projectId={project}")
-    console.sees("Preparing")
-    console.press("End preparation")
-    console.wait_until("() => !document.body.textContent.includes('End preparation')")
-    ended = workshop.call("inspect_dataset_workbench", {"dataset": datasets[0]})
-    assert ended["preparation_workflow"]["state"] == "cancelled"
-
-    idle = DatasetPreparation.objects.get(dataset_id=datasets[1])
-    active = DatasetPreparation.objects.get(dataset_id=datasets[2])
-    stale = timezone.now() - timedelta(hours=25)
-    DatasetPreparation.objects.filter(pk__in=[idle.pk, active.pk]).update(updated_at=stale)
-    Activity.objects.filter(key=f"preparation:{idle.pk}").update(updated_at=stale)
-    assert reap_stuck_runs()["preparations_expired"] == 1
-    kept = workshop.call("inspect_dataset_workbench", {"dataset": datasets[2]})
-    assert kept["preparation_workflow"]["state"] == "preparing"
-    expired = workshop.call("inspect_dataset_workbench", {"dataset": datasets[1]})
-    assert expired["preparation_workflow"]["state"] == "cancelled"
-    restarted = workshop.call(
-        "start_dataset_preparation", {"dataset": datasets[1], "request_key": "after-expiry"}
-    )
-    assert restarted["preparation_workflow"]["state"] == "preparing"
-    console.healthy()

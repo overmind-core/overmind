@@ -2,7 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -702,6 +704,113 @@ def call_llm_tools(
         getattr(response, "_response_ms", 0),
     )
     stats["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
+    if stats["finish_reason"] in INCOMPLETE_FINISH_REASONS:
+        raise IncompleteCompletionError(text, stats)
+    return text, tool_calls, stats
+
+
+# Fields of a streamed reasoning detail that arrive in pieces.
+_REASONING_TEXT = ("text", "summary", "data")
+
+
+STREAM_MAX_TOKENS = 8000
+
+
+@lru_cache(maxsize=1)
+def _stream_client() -> OpenAI:
+    """A synchronous client, shared by the worker's threads: a stream's ``on_progress``
+    then runs in the caller's thread and may use the ORM."""
+    provider = PROVIDERS["openrouter"]
+    api_key = provider.key()
+    if not api_key:
+        raise RuntimeError(f"{provider.key_env} is required for LLM completions")
+    return OpenAI(
+        api_key=api_key,
+        base_url=provider.base_url,
+        default_headers=provider.headers or None,
+        timeout=_REQUEST_TIMEOUT,
+        max_retries=_SDK_RETRIES,
+    )
+
+
+def stream_llm_tools(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    model: str | None = None,
+    fallback_models: list[str] | None = None,
+    on_progress: Callable[[str, list[dict]], None] | None = None,
+) -> tuple[str, list[dict[str, Any]], dict]:
+    """:func:`call_llm_tools`, streamed. ``on_progress`` receives the text so far and the
+    tool calls as far as they are written; an exception it raises ends the stream and
+    propagates.
+
+    Never retried: a stream that started may already be billed.
+    """
+    completion_kwargs, selected = _tool_completion_kwargs(
+        messages, tools, model, STREAM_MAX_TOKENS, fallback_models
+    )
+    completion_kwargs |= {"stream": True, "stream_options": {"include_usage": True}}
+    deadline = RETRY_DEADLINE_BACKGROUND
+    text, calls, usage, served, finish = "", {}, None, None, None
+    reasoning: dict[tuple, dict] = {}
+    started = time.monotonic()
+    expired = threading.Event()
+    try:
+        with _stream_client().chat.completions.create(**completion_kwargs) as stream:
+            # A provider can keep the stream open with keep-alive comments and no chunk:
+            # the deadline closes it from outside the wait.
+            timer = threading.Timer(deadline, lambda: (expired.set(), stream.close()))
+            timer.daemon = True
+            timer.start()
+            try:
+                for chunk in stream:
+                    usage, served = chunk.usage or usage, chunk.model or served
+                    for choice in chunk.choices:
+                        finish = choice.finish_reason or finish
+                        text += choice.delta.content or ""
+                        for part in _extra(choice.delta).get("reasoning_details") or []:
+                            # Fragments of one record share its index; records without one
+                            # stay apart by their id.
+                            position = part.get("index")
+                            identity = position if position is not None else part.get("id")
+                            detail = reasoning.setdefault((identity, part.get("type")), {})
+                            for key, value in part.items():
+                                streamed = key in _REASONING_TEXT and isinstance(value, str)
+                                detail[key] = detail.get(key, "") + value if streamed else value
+                        for piece in choice.delta.tool_calls or []:
+                            call = calls.setdefault(
+                                piece.index,
+                                {
+                                    "id": "",
+                                    "type": "function",
+                                    "function": {"name": "", "arguments": ""},
+                                },
+                            )
+                            call["id"] = piece.id or call["id"]
+                            if piece.function is not None:
+                                call["function"]["name"] += piece.function.name or ""
+                                call["function"]["arguments"] += piece.function.arguments or ""
+                        if on_progress is not None:
+                            on_progress(text, [calls[index] for index in sorted(calls)])
+                if expired.is_set():
+                    raise CompletionDeadlineExceededError(
+                        f"Completion deadline exceeded after {deadline:g}s"
+                    )
+            except Exception:
+                if expired.is_set():
+                    raise CompletionDeadlineExceededError(
+                        f"Completion deadline exceeded after {deadline:g}s"
+                    ) from None
+                raise
+            finally:
+                timer.cancel()
+    except openai.OpenAIError as exc:
+        raise RuntimeError(f"Error calling LLM: {exc}") from exc
+    text, tool_calls = text.strip(), [calls[index] for index in sorted(calls)]
+    stats = _tool_call_stats(usage, served, selected, (time.monotonic() - started) * 1000)
+    stats["finish_reason"] = finish
+    # The provider needs these back unchanged with the reply's tool results.
+    stats["reasoning_details"] = list(reasoning.values())
     if stats["finish_reason"] in INCOMPLETE_FINISH_REASONS:
         raise IncompleteCompletionError(text, stats)
     return text, tool_calls, stats

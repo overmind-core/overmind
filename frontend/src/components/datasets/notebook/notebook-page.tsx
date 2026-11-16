@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
-import { CodingAgentIcon } from "@/components/coding-agent-icon";
+import { AssistantDock } from "@/components/assistant/assistant-dock";
 import { NotebookControls } from "@/components/datasets/notebook/canvas-controls";
 import { NotebookCell, type UsePurpose } from "@/components/datasets/notebook/cell";
 import { CellFlow } from "@/components/datasets/notebook/cell-flow";
@@ -19,6 +19,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/spinner";
+import { useAssistantThread } from "@/hooks/use-assistant-thread";
 import {
   activeCellOf,
   type DatasetEvent,
@@ -27,14 +28,12 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
-  openPreparation,
   rankOf,
   useCancelDatasetMutation,
   useDatasetEvents,
   useDatasetPreparationQuery,
   useDatasetQuery,
   useDatasetWorkbenchQuery,
-  useEndPreparationMutation,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
 } from "@/hooks/use-datasets";
@@ -43,6 +42,13 @@ import { useGuestGate } from "@/hooks/use-guest-gate";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { notify } from "@/lib/notify";
 import type { Cell } from "@/openapi";
+
+const PARTITIONS: Record<string, string> = {
+  calibration: "Calibration data",
+  development: "Development data",
+  final: "Final evaluation data",
+  train: "Training data",
+};
 
 export function DatasetNotebook({
   datasetId,
@@ -65,11 +71,11 @@ export function DatasetNotebook({
     dataset?.updatedAt?.getTime()
   );
   const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
+  const assistant = useAssistantThread(datasetId);
   const capabilities = capabilitiesQuery.data?.results ?? [];
 
   const patch = usePatchDatasetMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
-  const endPreparation = useEndPreparationMutation(datasetId);
   const resumeImport = useResumeDatasetImportMutation(datasetId);
 
   const [showMinimap, setShowMinimap] = usePersistedState("workshopFlow:showMinimap", false);
@@ -94,10 +100,33 @@ export function DatasetNotebook({
     }, 250);
   }, [qc, datasetId]);
 
-  useDatasetEvents(datasetId, (event: DatasetEvent, meta) => {
-    // Detail polling picks up landing counters; immutable cells do not change per page.
-    if (event.type === "land_progress") return;
-    if (meta.live || event.type === "replay.done") refresh();
+  const [stamp, setStamp] = useState<number | null>(null);
+  const read = dataset?.updatedAt?.getTime();
+  useEffect(() => {
+    if (stamp === null || read === undefined) return;
+    setStamp(null);
+    if (stamp !== read) refresh();
+  }, [stamp, read, refresh]);
+
+  useDatasetEvents(datasetId, (event: DatasetEvent) => {
+    if (event.type === "assistant" || event.type === "assistant.draft") {
+      assistant.handle(event);
+      return;
+    }
+    if (event.type === "connected") {
+      // The conversation reads after the events it holds, so every connection catches up
+      // on it. A dropped connection may have missed dataset changes; a first one only
+      // those made after the page read the dataset, compared once that read has arrived.
+      assistant.handle(event);
+      if (event.again) {
+        refresh();
+      } else {
+        setStamp(event.updated_at ? new Date(event.updated_at).getTime() : Number.NaN);
+      }
+      return;
+    }
+    // Detail polling picks up landing counters while the dataset is busy.
+    if (event.type !== "land_progress") refresh();
   });
 
   const nodes = preparationQuery.data?.nodes;
@@ -116,7 +145,6 @@ export function DatasetNotebook({
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
   const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
-  const preparing = openPreparation(dataset);
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
 
@@ -213,7 +241,7 @@ export function DatasetNotebook({
         {node && (node.role || !local) && (
           <div className="mb-2 text-sm text-muted-foreground">
             <Link params={{ datasetId: owner }} search={{ projectId }} to="/datasets/$datasetId">
-              {node.role || node.datasetName}
+              {PARTITIONS[node.role] || node.role || node.datasetName}
             </Link>
           </div>
         )}
@@ -239,6 +267,7 @@ export function DatasetNotebook({
           intent={node?.intent ?? intent}
           key={cell.id}
           onSelect={() => setSelectedId(cell.id)}
+          partition={PARTITIONS[node?.role ?? ""] || node?.role}
           preparationActions={cell.id === actionCellId ? preparationControls(cell) : undefined}
           selected={cell.id === selectedId}
           sourceDetails={
@@ -257,7 +286,7 @@ export function DatasetNotebook({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div className="pointer-events-none absolute right-12 bottom-3 left-3 z-10 max-h-48 max-w-xl overflow-y-auto">
+      <div className="assistant-notices pointer-events-none absolute bottom-16 z-10 max-h-48 overflow-y-auto">
         <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
           {busy && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
@@ -269,22 +298,6 @@ export function DatasetNotebook({
                 variant="secondary"
               >
                 Stop operation
-              </Button>
-            </div>
-          )}
-          {!busy && preparing && (
-            <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
-              <span className="inline-flex items-center gap-1.5">
-                {preparing.actorKind ? <CodingAgentIcon kind={preparing.actorKind} /> : null}
-                {preparing.label}
-              </span>
-              <Button
-                disabled={endPreparation.isPending}
-                onClick={() => endPreparation.mutate()}
-                size="sm"
-                variant="secondary"
-              >
-                End preparation
               </Button>
             </div>
           )}
@@ -349,6 +362,14 @@ export function DatasetNotebook({
             storageKey={`workshop-flow:layers:${projectId}:${datasetId}`}
           />
         )}
+        <AssistantDock
+          assistant={assistant}
+          cells={cells}
+          datasetId={datasetId}
+          onSelectCell={scrollTo}
+          projectId={projectId}
+          selectedCell={selectedId}
+        />
       </div>
     </div>
   );

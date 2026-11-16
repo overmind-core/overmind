@@ -1,7 +1,7 @@
 /** Every dataset query and mutation. Nested JSON blobs (reports, rows, chat)
  *  come back verbatim from the server, so their keys stay snake_case here. */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -62,7 +62,10 @@ export interface RowsParams {
 }
 
 export type DatasetEvent =
-  | { type: "replay.done" }
+  /** Sent first on every connection; ``again`` when it replaces a dropped one. */
+  | { type: "connected"; again: boolean; updated_at: string | null }
+  | { type: "assistant" }
+  | { type: "assistant.draft"; added: string; at: number; steps: string[] }
   | { type: "land_started" | "land_progress" | "land_done" | "land_failed"; [k: string]: unknown }
   | { type: "run_started" | "run_done" | "run_failed"; cell_id?: string; error?: string }
   | {
@@ -145,9 +148,6 @@ export const isBusy = (ds: Dataset | null | undefined): boolean =>
     ds.state === "running" ||
     ds.state === "landing");
 
-export const openPreparation = (ds: Dataset | null | undefined) =>
-  ds?.work && ["preparing", "paused"].includes(ds.work.status) ? ds.work : null;
-
 /** The used-version block consumers carry (`cell_info`). */
 export interface UsedVersionInfo {
   id: string;
@@ -227,9 +227,8 @@ export function useDatasetWorkbenchQuery(datasetId: string) {
   return useQuery({
     queryFn: ({ signal }) =>
       apiClient.datasets.datasetsWorkbenchRetrieve({ id: datasetId, limit: 1 }, { signal }),
+    // A run's start and end are announced on the dataset's stream.
     queryKey: ["datasets", datasetId, "workbench"],
-    // Failed runs preserve the active cell; they cannot be inferred from its state.
-    refetchInterval: 5000,
   });
 }
 
@@ -268,16 +267,23 @@ export function useProjectDatasetsQuery(projectId: string | undefined) {
     enabled: !!projectId,
     queryFn: ({ signal }) => fetchProjectDatasets(projectId!, signal),
     queryKey: ["datasets", "list", projectId, "inventory"],
+    // Progress counters move while a dataset is busy. An upload or run started elsewhere
+    // records no activity until it ends, so an idle list still looks again.
     refetchInterval: (query) => (query.state.data?.some(isBusy) ? 3000 : 15000),
   });
 }
 
+/** One cache entry for a dataset's detail, whichever component reads it. */
+export const datasetDetailQuery = (id: string) => ({
+  queryFn: () => apiClient.datasets.datasetsRetrieve({ id }),
+  queryKey: datasetKeys.detail(id),
+});
+
 /** Polls while the dataset is busy; the SSE stream fills the gaps. */
 export function useDatasetQuery(id: string | undefined) {
   return useQuery<Dataset>({
+    ...datasetDetailQuery(id ?? ""),
     enabled: !!id,
-    queryFn: () => apiClient.datasets.datasetsRetrieve({ id: id! }),
-    queryKey: datasetKeys.detail(id ?? ""),
     refetchInterval: (query) => (isBusy(query.state.data) ? 3000 : false),
   });
 }
@@ -449,30 +455,39 @@ export async function downloadExport(
   URL.revokeObjectURL(url);
 }
 
-/** Fetch-based SSE (EventSource cannot send an Authorization header). Replays the
- *  backlog on every connect, then streams; reconnects after a pause. */
+/** The dataset's one event stream, fetch-based (EventSource cannot send an Authorization
+ *  header). An event names what changed; the page reads it again. A hidden tab holds no
+ *  connection, and the next one says it replaces a dropped one. */
 export function useDatasetEvents(
   datasetId: string | undefined,
-  onEvent: (event: DatasetEvent, meta: { live: boolean }) => void
+  onEvent: (event: DatasetEvent) => void
 ) {
   const onEventRef = useRef(onEvent);
   useEffect(() => {
     onEventRef.current = onEvent;
   });
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  const connections = useRef(0);
 
   useEffect(() => {
-    if (!datasetId) return;
+    if (!datasetId || !visible) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
-    let live = false;
 
     const consume = (line: string) => {
       if (!line.startsWith("data: ")) return;
       try {
         const event = JSON.parse(line.slice(6)) as DatasetEvent;
-        if (event.type === "replay.done") live = true;
-        onEventRef.current(event, { live });
+        if (event.type === "connected") {
+          connections.current += 1;
+          onEventRef.current({ ...event, again: connections.current > 1 });
+        } else onEventRef.current(event);
       } catch {
         // A malformed frame carries nothing worth surfacing.
       }
@@ -480,7 +495,6 @@ export function useDatasetEvents(
 
     const connect = async () => {
       if (cancelled) return;
-      live = false;
       controller = new AbortController();
       let buffer = "";
       try {
@@ -510,7 +524,7 @@ export function useDatasetEvents(
       controller?.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [datasetId]);
+  }, [datasetId, visible]);
 }
 
 export const useCancelDatasetMutation = (id: string) => {
@@ -518,15 +532,6 @@ export const useCancelDatasetMutation = (id: string) => {
   return useMutation({
     mutationFn: () => apiClient.datasets.datasetsCancelCreate({ id }),
     onError: (error) => notify.error(error, "Cancellation request failed"),
-    onSuccess: () => invalidateDataset(qc, id),
-  });
-};
-
-export const useEndPreparationMutation = (id: string) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiClient.datasets.datasetsEndPreparationCreate({ id }),
-    onError: (error) => notify.error(error, "Couldn't end the preparation"),
     onSuccess: () => invalidateDataset(qc, id),
   });
 };

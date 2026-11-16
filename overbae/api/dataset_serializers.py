@@ -102,6 +102,7 @@ class CellSerializer(serializers.ModelSerializer):
     usage = serializers.SerializerMethodField()
     transformation = serializers.SerializerMethodField()
     analytics = serializers.SerializerMethodField()
+    review = serializers.SerializerMethodField()
 
     class Meta:
         model = Cell
@@ -123,7 +124,6 @@ class CellSerializer(serializers.ModelSerializer):
             "intent_report",
             "capability_report",
             "fits",
-            "stats",
             "analytics",
             "review",
             "quality_report",
@@ -142,6 +142,13 @@ class CellSerializer(serializers.ModelSerializer):
         if versions is None:
             versions = obj.dataset.versions()
         return versions.get(obj.id, "")
+
+    @extend_schema_field(serializers.DictField())
+    def get_review(self, obj):
+        """What kind of review a version holds. Its findings are read with the dataset's
+        review; a page lists many versions and shows none of them."""
+        kind = (obj.review or {}).get("kind")
+        return {"kind": kind} if kind else {}
 
     @extend_schema_field(DatasetAnalyticsSerializer)
     def get_analytics(self, obj):

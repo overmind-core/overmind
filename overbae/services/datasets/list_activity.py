@@ -1,4 +1,4 @@
-from overbae.models import Activity, DatasetPipelineRun, DatasetPreparation, DatasetTransfer
+from overbae.models import Activity, AssistantThread, DatasetPipelineRun, DatasetTransfer
 
 
 def current_work(datasets):
@@ -37,15 +37,19 @@ def current_work(datasets):
             "total": sum(member["size"] for member in members),
             "unit": "bytes",
         }
-    for preparation in DatasetPreparation.objects.filter(
-        dataset_id__in=ids, state__in=["preparing", "paused"]
+    # A conversation whose turn runs is preparing its dataset, even between jobs; a turn
+    # lost with its worker is not.
+    for dataset_id in (
+        AssistantThread.objects.moving()
+        .filter(dataset_id__in=ids)
+        .values_list("dataset_id", flat=True)
     ):
         work.setdefault(
-            str(preparation.dataset_id),
+            str(dataset_id),
             {
-                "label": "Preparing" if preparation.state == "preparing" else "Preparation paused",
-                "status": preparation.state,
-                "actor_kind": preparation.actor_kind,
+                "label": "Preparing",
+                "status": "running",
+                "actor_kind": "overmind",
                 "completed": None,
                 "total": None,
                 "unit": "",

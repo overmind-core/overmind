@@ -100,6 +100,20 @@ def heartbeat():
     return status
 
 
+def _refusal(response) -> str:
+    """Why the sandbox took no run, in its own words when it gave any: a runtime that a
+    package no longer matches is repaired by saving the package again."""
+    try:
+        reason = json.loads(response.read()).get("error")
+    except (ValueError, AttributeError, httpx.HTTPError):
+        reason = None
+    if not reason and response.status_code == 503:
+        reason = "The sandbox has no memory free now."
+    return (
+        f"{reason or f'The sandbox returned HTTP {response.status_code}.'} No script was replayed."
+    )
+
+
 def execute_script(run, index, source, directory, step, files, progress):
     if not settings.SANDBOX_URL or not settings.SANDBOX_TOKEN:
         raise RuntimeUnavailableError("The isolated sandbox is not configured.")
@@ -188,9 +202,7 @@ def execute_script(run, index, source, directory, step, files, progress):
                 output.open("wb") as stream,
             ):
                 if response.status_code != 200:
-                    raise RuntimeUnavailableError(
-                        f"The sandbox returned HTTP {response.status_code}. No script was replayed."
-                    )
+                    raise RuntimeUnavailableError(_refusal(response))
                 for chunk in response.iter_bytes():
                     pending = reader.feed(chunk)
                     while reader.header is not None and "progress" in reader.header:

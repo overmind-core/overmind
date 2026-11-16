@@ -443,10 +443,9 @@ def reap_stuck_runs() -> dict[str, Any]:
     from datetime import timedelta
 
     from overbae.models import Dataset, DatasetPipelineRun
-    from overbae.services.datasets import imports, preparation_workflow
+    from overbae.services.datasets import imports
 
     imports.reconcile()
-    expired = preparation_workflow.expire()
 
     now = timezone.now()
     from overbae.services.datasets.workbench import expire_runs
@@ -478,7 +477,7 @@ def reap_stuck_runs() -> dict[str, Any]:
         _emit(
             dataset_id, {"type": "run_failed", "error": "The worker stopped before this finished."}
         )
-    return {"reaped": len(ids), "preparations_expired": expired}
+    return {"reaped": len(ids)}
 
 
 @shared_task(

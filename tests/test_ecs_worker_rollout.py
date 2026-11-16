@@ -75,7 +75,7 @@ def service():
     }
 
 
-@pytest.mark.parametrize("queue", ["landing", "interactive", "io", "io_traces"])
+@pytest.mark.parametrize("queue", ["landing", "interactive", "io", "io_traces", "assistant"])
 def test_every_release_overrides_stale_worker_command(definition, queue):
     service = "celery-traces-worker" if queue == "io_traces" else f"celery-{queue}-worker"
     definition["family"] = service

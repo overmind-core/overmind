@@ -16,7 +16,7 @@ import { userFacingJobError } from "@/components/finetuning/train/model-config";
 import { CreditsAmount } from "@/components/ui/credits";
 import { DateTime } from "@/components/ui/datetime";
 import { DeltaChip, fromScore } from "@/components/ui/delta-chip";
-import { INTENT_LABEL, intentOf } from "@/hooks/use-datasets";
+import { datasetDetailQuery, INTENT_LABEL, intentOf } from "@/hooks/use-datasets";
 import { jobCostUsd } from "@/lib/finetuning-cost";
 import { StatusBadge } from "@/lib/job-status";
 import { scorePct } from "@/lib/utils";
@@ -84,10 +84,7 @@ export function CapabilityCard({ id, name }: { id: string; name: string }) {
 }
 
 export function DatasetCard({ id, name }: { id: string; name: string }) {
-  const { data, isPending } = useQuery({
-    queryFn: () => apiClient.datasets.datasetsRetrieve({ id }),
-    queryKey: ["dataset", id],
-  });
+  const { data, isPending } = useQuery(datasetDetailQuery(id));
   if (isPending) return <EntityCardSkeleton kind="dataset" name={name} />;
   if (!data) return <EntityCardMissing kind="dataset" name={name} />;
   return (

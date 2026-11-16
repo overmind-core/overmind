@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
 
 import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
+import { FileTypeIcon } from "@/components/file-type-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { DateTime } from "@/components/ui/datetime";
@@ -21,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useActivityHighlights } from "@/hooks/use-activity";
 import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
@@ -117,7 +120,7 @@ export function DatasetsToolbar({
               <SelectItem value="unassigned">Unassigned</SelectItem>
             </SelectContent>
           </Select>
-          {setCapabilityFilter && (
+          {setCapabilityFilter && capabilityIds.length > 1 && (
             <Select onValueChange={setCapabilityFilter} value={capabilityFilter}>
               <SelectTrigger aria-label="Filter by capability" className="w-[180px]" size="default">
                 <SelectValue placeholder="All capabilities" />
@@ -175,25 +178,31 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
   }
 };
 
-function DatasetStatus({ dataset }: { dataset: Dataset }) {
+// The widest glyphs of the table's text, in pixels: an estimate must not fall short.
+const CHAR_PX = 7;
+
+function statusOf(dataset: Dataset) {
   const work = dataset.work;
   const queued =
     work?.status === "queued" ||
     (!work && dataset.state === "landing" && dataset.operation?.state === "queued");
   const busy = !!work || dataset.state === "running" || dataset.state === "landing";
   const failed = !work && dataset.state === "error";
-  if (!busy && !failed) {
-    return (
-      <span className="text-sm text-muted-foreground">
-        {dataset.activeVersion ? "Ready" : "Waiting for source"}
-      </span>
-    );
-  }
-  const label = failed
-    ? "Failed"
-    : queued
-      ? "Queued"
-      : (work?.label ?? (dataset.state === "landing" ? "Importing" : "Transforming"));
+  return { busy, failed, queued, work };
+}
+
+function statusLabel(dataset: Dataset): string {
+  const { busy, failed, queued, work } = statusOf(dataset);
+  if (!busy && !failed) return dataset.activeVersion ? "Ready" : "Waiting for source";
+  if (failed) return "Failed";
+  if (queued) return "Queued";
+  return work?.label ?? (dataset.state === "landing" ? "Importing" : "Transforming");
+}
+
+function DatasetStatus({ dataset }: { dataset: Dataset }) {
+  const { busy, failed, queued, work } = statusOf(dataset);
+  const label = statusLabel(dataset);
+  if (!busy && !failed) return <span className="text-sm text-muted-foreground">{label}</span>;
   const completed = work?.completed;
   const total = work?.total;
   const percent =
@@ -218,6 +227,7 @@ function DatasetStatus({ dataset }: { dataset: Dataset }) {
 function getColumns(opts: {
   roleWidth: number;
   sourceWidth: number;
+  statusWidth: number;
   onDelete: (ds: Dataset) => void;
   onDeleteClick?: (e: React.MouseEvent) => void;
   deletePendingId?: string | null;
@@ -247,8 +257,8 @@ function getColumns(opts: {
       header: "Status",
       id: "status",
       meta: { label: "Status", noTruncate: true },
-      minSize: 120,
-      size: 120,
+      minSize: opts.statusWidth,
+      size: opts.statusWidth,
     },
     {
       accessorFn: (row) => row.roles.join(", "),
@@ -280,8 +290,8 @@ function getColumns(opts: {
       header: "Version",
       id: "version",
       meta: { label: "Version", orderingField: "version" },
-      minSize: 100,
-      size: 100,
+      minSize: 88,
+      size: 88,
     },
     {
       accessorFn: (row) => row.rows ?? 0,
@@ -316,12 +326,13 @@ function getColumns(opts: {
               const extension = filename.replace(/\.gz$/i, "").match(/\.([^.]+)$/)?.[1];
               return (
                 <Badge
-                  className="min-w-0 max-w-44 gap-1.5"
+                  className="min-w-0 max-w-full gap-1.5"
                   key={`${filename}:${index}`}
                   size="chip"
+                  title={filename}
                   variant="outline"
                 >
-                  <Icon.file className="size-3 shrink-0 text-muted-foreground" />
+                  <FileTypeIcon className="size-3" filename={filename} />
                   <span className="min-w-0 truncate">{filename}</span>
                   <span className="shrink-0 text-muted-foreground">
                     {extension?.toUpperCase() ?? "File"}
@@ -434,6 +445,40 @@ function getColumns(opts: {
   return cols;
 }
 
+const ATTACH_COLUMN: ColumnDef<Dataset> = {
+  cell: ({ row }) => {
+    const published = !!row.original.activeVersion;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Checkbox
+              aria-label={`Attach ${datasetDisplayName(row.original)} to chat`}
+              checked={row.getIsSelected()}
+              disabled={!published}
+              onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+              onClick={(event) => event.stopPropagation()}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {!published
+            ? "This dataset has no published data."
+            : row.getIsSelected()
+              ? "Remove from chat"
+              : "Attach to chat"}
+        </TooltipContent>
+      </Tooltip>
+    );
+  },
+  enableResizing: false,
+  enableSorting: false,
+  header: "",
+  id: "attach",
+  meta: { label: "Attach to chat", noTruncate: true },
+  size: 36,
+};
+
 export function DatasetsBrowser({
   datasets,
   search,
@@ -448,7 +493,12 @@ export function DatasetsBrowser({
   hideCapabilityColumn,
   fill = true,
   rowSearch,
+  rowSelection,
+  onRowSelectionChange,
 }: DatasetsFilterProps & {
+  /** With both set, each row gets a checkbox that attaches its dataset to the assistant. */
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
   isLoading: boolean;
   error?: unknown;
   onRetry?: () => unknown;
@@ -485,36 +535,55 @@ export function DatasetsBrowser({
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
 
-  // Chip widths follow the rendered chip text, so two roles fit without truncation.
+  // A column is as wide as the widest thing it shows now: a cell clips what does not fit.
   const roleWidth = Math.max(
     100,
     ...datasets.map((dataset) =>
       dataset.roles.reduce(
         (width, role, index) =>
-          width + (DATASET_ROLES[role] ?? role).length * 6.5 + 19 + (index ? 5 : 0),
+          width + (DATASET_ROLES[role] ?? role).length * CHAR_PX + 19 + (index ? 5 : 0),
         16
       )
     )
   );
-
+  // A status at work is a badge: an icon and padding beside its label.
+  const statusWidth = Math.max(
+    120,
+    ...datasets.map((dataset) => {
+      const { busy, failed } = statusOf(dataset);
+      return statusLabel(dataset).length * CHAR_PX + (busy || failed ? 52 : 16);
+    })
+  );
+  // A column of dashes says nothing and costs the width the others need.
+  const noCapabilities = !datasets.some((dataset) => dataset.capability);
   const sourceWidth = datasets.some(
     (dataset) => dataset.sourceSpec?.sources?.length || dataset.sourceSpec?.filename
   )
     ? 160
     : 90;
 
-  const columns = useMemo(
-    () =>
-      getColumns({
-        deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
-        hideCapabilityColumn,
-        onDelete: (ds) => deleteMutation.mutate(ds.id),
-        onDeleteClick: guard(() => undefined),
-        roleWidth,
-        sourceWidth,
-      }),
-    [deleteMutation, guard, hideCapabilityColumn, roleWidth, sourceWidth]
-  );
+  const selectable = !!onRowSelectionChange;
+  const columns = useMemo(() => {
+    const base = getColumns({
+      deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
+      hideCapabilityColumn: hideCapabilityColumn || noCapabilities,
+      onDelete: (ds) => deleteMutation.mutate(ds.id),
+      onDeleteClick: guard(() => undefined),
+      roleWidth,
+      sourceWidth,
+      statusWidth,
+    });
+    return selectable ? [ATTACH_COLUMN, ...base] : base;
+  }, [
+    deleteMutation,
+    guard,
+    hideCapabilityColumn,
+    noCapabilities,
+    roleWidth,
+    selectable,
+    sourceWidth,
+    statusWidth,
+  ]);
 
   return (
     <DataTable
@@ -524,6 +593,7 @@ export function DatasetsBrowser({
       emptyState={
         <EmptyState className="flex-1" icon={Icon.dataset} size="section" title="No datasets yet" />
       }
+      enableRowSelection={selectable}
       error={error}
       getRowId={(row) => row.id}
       hasActiveFilters={hasActiveFilters}
@@ -550,10 +620,12 @@ export function DatasetsBrowser({
           to: "/datasets/$datasetId",
         })
       }
+      onRowSelectionChange={onRowSelectionChange}
       ordering={ordering}
       page={currentPage}
       pageSize={pageSize}
       rowClassName={(row) => (highlights[`dataset:${row.id}`] ? "activity-highlight" : undefined)}
+      rowSelection={rowSelection}
       storageKey="datasets-table"
     />
   );

@@ -9,6 +9,7 @@ export type ProviderId =
   | "baichuan"
   | "baidu"
   | "bytedance"
+  | "cloudflare"
   | "cohere"
   | "deepseek"
   | "google"
@@ -91,6 +92,7 @@ const PROVIDER_BY_SLUG: Record<Exclude<ProviderId, "unknown">, ProviderBundle> =
   baidu: { id: "baidu", providerLabel: "Baidu", providerSlug: "baidu" },
   bytedance: { id: "bytedance", providerLabel: "ByteDance", providerSlug: "bytedance" },
   claude: { id: "claude", providerLabel: "Claude", providerSlug: "claude" },
+  cloudflare: { id: "cloudflare", providerLabel: "Cloudflare", providerSlug: "cloudflare" },
   cohere: { id: "cohere", providerLabel: "Cohere", providerSlug: "cohere" },
   cursor: { id: "cursor", providerLabel: "Cursor", providerSlug: "cursor" },
   deepseek: { id: "deepseek", providerLabel: "DeepSeek", providerSlug: "deepseek" },
