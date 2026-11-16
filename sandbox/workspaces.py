@@ -57,9 +57,7 @@ RESTARTED = "The kernel restarted: variables from earlier cells are gone, files 
 
 
 def root() -> Path:
-    path = Path(os.environ.get("SANDBOX_WORKSPACES", "/workspaces"))
-    path.mkdir(mode=0o711, parents=True, exist_ok=True)
-    return path
+    return Path(os.environ.get("SANDBOX_WORKSPACES", "/workspaces"))
 
 
 class BusyError(Exception):
@@ -103,6 +101,8 @@ _starts: dict[tuple[str, str], threading.Lock] = {}
 
 
 def project_dir(project: str) -> Path:
+    # Only a write creates the root: a sandbox beside a hosted provider has no workspaces.
+    root().mkdir(mode=0o711, parents=True, exist_ok=True)
     path = root() / project
     for part in (path, path / "data", path / "conversations"):
         with contextlib.suppress(FileExistsError):
