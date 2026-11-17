@@ -31,6 +31,62 @@ def component_name_for(deployment, gpu_type: str | None = None) -> str:
     return f"om-ic-{str(deployment.id).replace('-', '')[:16]}-{gpu}"[:63]
 
 
+def serve_image_uri() -> str:
+    return _image_uri("serve-vllm")
+
+
+def decision_image_uri() -> str:
+    from modal_shared.stacks import TRAIN_DECISION
+
+    return _image_uri(f"train-{TRAIN_DECISION}")
+
+
+def _image_uri(name: str) -> str:
+    prefix = getattr(settings, "SAGEMAKER_ECR_REPOSITORY_PREFIX", "overmind")
+    tag = getattr(settings, "SAGEMAKER_IMAGE_TAG", "latest")
+    if ".dkr.ecr." in prefix:
+        return f"{prefix}-{name}:{tag}"
+    region = getattr(settings, "AWS_REGION", "eu-west-1")
+    account_id = boto3_client("sts", region_name=region).get_caller_identity()["Account"]
+    return f"{account_id}.dkr.ecr.{region}.amazonaws.com/{prefix}-{name}:{tag}"
+
+
+def inference_container(deployment) -> dict:
+    """Weights come from the checkpoint zip. LoRA also names the base snapshot."""
+    from overbae.modal.model_registry import get_hf_base
+
+    deployed = deployment.deployed_model
+    job = deployed.finetuning_job
+    wbucket = getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", "")
+    contract = "decision" if deployed.inference_contract == "decision" else "chat"
+    image = decision_image_uri() if contract == "decision" else serve_image_uri()
+    if job is None:
+        return {
+            "Image": image,
+            "ArtifactUrl": f"s3://{wbucket}/{deployed.model_id}/",
+            "Environment": {
+                "SERVED_MODEL_ID": deployment.served_model_id,
+                "MAX_MODEL_LEN": str(deployed.max_model_len or 8192),
+            },
+        }
+    user_id = str(job.triggered_by_id) if job.triggered_by_id else "unknown"
+    archive = getattr(settings, "AWS_BUCKET_NAME", "")
+    environment = {
+        "OVERMIND_CHECKPOINT_S3": f"s3://{archive}/{user_id}/{job.id}/checkpoints/checkpoint.zip",
+        "OVERMIND_CONTRACT": contract,
+        "OVERMIND_SERVED_NAME": deployment.served_model_id,
+        "OVERMIND_BASE_MODEL": get_hf_base(deployed.base_model_id),
+        "OVERMIND_MAX_MODEL_LEN": str(deployed.max_model_len or 2048),
+        "OVERMIND_GPU_TYPE": deployment.gpu_type or "H100",
+        "AWS_REGION": getattr(settings, "AWS_REGION", "eu-west-1"),
+    }
+    if deployed.is_lora or contract == "decision":
+        slug = get_hf_base(deployed.base_model_id).replace("/", "--")
+        environment["OVERMIND_WEIGHTS_BUCKET"] = wbucket
+        environment["OVERMIND_BASE_PREFIX"] = f".base_models/{slug}"
+    return {"Image": image, "Environment": environment}
+
+
 def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int) -> SageMakerDedicatedHandle:
     sm = boto3_client("sagemaker")
     aas = boto3_client("application-autoscaling")
@@ -38,13 +94,9 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int) -> SageMa
     component_name = component_name_for(deployment)
     instance_type = sagemaker_instance_type(deployment.gpu_type, 1)
     role_arn = getattr(settings, "SAGEMAKER_EXECUTION_ROLE_ARN", "")
-    wbucket = getattr(settings, "AWS_WEIGHTS_BUCKET_NAME", "")
-    prefix = getattr(settings, "SAGEMAKER_ECR_REPOSITORY_PREFIX", "overmind")
-    tag = getattr(settings, "SAGEMAKER_IMAGE_TAG", "latest")
-
-    deployed = deployment.deployed_model
     config_name = f"{endpoint_name}-cfg"[:63]
 
+    initial = max(1, int(minimum) if int(minimum) > 0 else 1)
     try:
         sm.describe_endpoint(EndpointName=endpoint_name)
     except Exception:  # noqa: BLE001
@@ -56,8 +108,17 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int) -> SageMa
                     {
                         "VariantName": "AllTraffic",
                         "InstanceType": instance_type,
-                        "InitialInstanceCount": max(1, int(minimum) if int(minimum) > 0 else 1),
+                        "InitialInstanceCount": initial,
+                        # Without this, the endpoint stays Creating and never launches an instance.
+                        "ManagedInstanceScaling": {
+                            "Status": "ENABLED",
+                            "MinInstanceCount": initial,
+                            "MaxInstanceCount": max(initial, int(maximum)),
+                        },
                         "RoutingConfig": {"RoutingStrategy": "LEAST_OUTSTANDING_REQUESTS"},
+                        # vLLM 0.33 is CUDA 13. The default inference AMI cannot start it,
+                        # and the container exits with no logs.
+                        "InferenceAmiVersion": "al2-ami-sagemaker-inference-gpu-3-1",
                     }
                 ],
             )
@@ -69,14 +130,7 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int) -> SageMa
 
     desired = max(0, int(minimum))
     spec = {
-        "Container": {
-            "Image": f"{prefix}-serve-vllm:{tag}",
-            "ArtifactUrl": f"s3://{wbucket}/{deployed.model_id}/",
-            "Environment": {
-                "SERVED_MODEL_ID": deployment.served_model_id,
-                "MAX_MODEL_LEN": str(deployed.max_model_len or 8192),
-            },
-        },
+        "Container": inference_container(deployment),
         "StartupParameters": {
             "ModelDataDownloadTimeoutInSeconds": 1800,
             "ContainerStartupHealthCheckTimeoutInSeconds": 1800,
@@ -84,7 +138,9 @@ def bind(deployment, *, minimum: int, maximum: int, idle_seconds: int) -> SageMa
         "ComputeResourceRequirements": {
             "NumberOfAcceleratorDevicesRequired": 1.0,
             "NumberOfCpuCoresRequired": 4.0,
-            "MinMemoryRequiredInMb": 16384,
+            # Reservation, not a cap. The schedulable pool is far below instance RAM;
+            # 16384 is rejected on g5 even though the process can use the rest of the host.
+            "MinMemoryRequiredInMb": 1024,
         },
     }
     runtime_cfg = {"CopyCount": max(desired, 1 if int(maximum) > 0 else 0)}

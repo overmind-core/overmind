@@ -1,8 +1,9 @@
 # One training image definition for Modal and SageMaker.
 # Modal's Image.from_dockerfile has no --target, so ARG STACK selects the stage
 # and the last stage is the image. SageMaker builds with the same argument.
-# No ENTRYPOINT: SageMaker sets ContainerEntrypoint, and an ENTRYPOINT would
-# also start inside every Modal function that uses this image.
+# No ENTRYPOINT on the last stage: SageMaker training sets ContainerEntrypoint,
+# and an ENTRYPOINT would also start inside every Modal function on this image.
+# The serve stage is what an inference component runs.
 ARG STACK=u2026_10_7
 ARG CUDA_BASE=nvidia/cuda:12.8.0-devel-ubuntu22.04
 FROM ${CUDA_BASE} AS base
@@ -161,10 +162,17 @@ ENV UNSLOTH_IMAGE=u2026_10_3_decision \
     UNSLOTH_DISABLE_STATISTICS=1 \
     UNSLOTH_COMPILE_DISABLE=1
 
-FROM ${STACK} AS runtime
+FROM ${STACK} AS prepared
 RUN python -m pip install --no-cache-dir "jsonschema==4.26.0" "boto3>=1.35.0"
 WORKDIR /workspace
 COPY modal_shared /root/modal_shared
 COPY overbae/services/sft_assets /root/sft_assets
 COPY overbae/sagemaker /workspace/overbae/sagemaker
 ENV OVERMIND_SFT_ASSETS_DIR=/root/sft_assets
+
+# Inference components cannot set a container entrypoint. Modal builds the last
+# stage, which stays without one so a function does not boot the server.
+FROM prepared AS serve
+ENTRYPOINT ["python", "-m", "overbae.sagemaker.serve_entrypoint"]
+
+FROM prepared AS runtime

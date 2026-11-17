@@ -20,7 +20,7 @@ WORKDIR /workspace
 COPY modal_shared /root/modal_shared
 COPY overbae/modal/weight_ops.py /root/weight_ops.py
 COPY overbae/sagemaker /workspace/overbae/sagemaker
-ENTRYPOINT []
+ENTRYPOINT ["python", "-m", "overbae.sagemaker.serve_entrypoint"]
 
 FROM lmsysorg/sglang:${SGLANG_TAG} AS sglang
 RUN ln -sf $(command -v python3) /usr/local/bin/python && \

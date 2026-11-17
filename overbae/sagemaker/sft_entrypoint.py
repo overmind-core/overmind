@@ -17,7 +17,7 @@ from modal_shared.compute_usage import ComputeMeter
 from modal_shared.decision_artifact import seal_artifact
 from modal_shared.decisions import DECISION_OBJECTIVES
 from modal_shared.preparation import run_preparation_process
-from modal_shared.serving.artifacts import atomic_json
+from modal_shared.serving.artifacts import atomic_json, read_base_manifest, seal_base
 from modal_shared.training_failure import failure_receipt
 from modal_shared.training_telemetry import record_heartbeat, record_stage
 from overbae.sagemaker.s3_io import (
@@ -80,6 +80,16 @@ def _ensure_base_snapshot(model_id: str, bucket: str, dest: Path) -> None:
     )
     if not _snapshot_usable(dest):
         raise RuntimeError(f"Base snapshot for {model_id} is incomplete at {dest}")
+    manifest = dest / ".base-manifest.json"
+    if manifest.is_file():
+        try:
+            read_base_manifest(dest)
+        except ValueError:
+            # A copy back from S3 changes mtimes, so the sealed identity no longer matches.
+            manifest.unlink()
+            seal_base(dest, model_id)
+    else:
+        seal_base(dest, model_id)
     if bucket:
         sync_directory_to_s3(dest, bucket, f".base_models/{model_id.replace('/', '--')}")
 
@@ -133,6 +143,7 @@ def run_train() -> int:
         if weights_bucket:
             sync_s3_to_directory(weights_bucket, f".base_models/{slug}", base_local)
         _ensure_base_snapshot(model_id, weights_bucket, base_local)
+        os.environ["BASE_MODEL_PATH"] = str(base_local)
 
     final_dir = run_dir / "final"
     candidate_dir = run_dir / "candidate"

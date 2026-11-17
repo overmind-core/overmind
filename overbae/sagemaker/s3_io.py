@@ -46,6 +46,12 @@ def upload_file(bucket: str, key: str, path: Path | str, *, client=None) -> None
     put_bytes(bucket, key, Path(path).read_bytes(), client=client)
 
 
+def download_file(bucket: str, key: str, path: Path | str, *, client=None) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    (client or s3_client()).download_file(bucket, key.lstrip("/"), str(target))
+
+
 def get_bytes(bucket: str, key: str, *, client=None) -> bytes | None:
     try:
         resp = (client or s3_client()).get_object(Bucket=bucket, Key=key.lstrip("/"))

@@ -75,7 +75,11 @@ def test_training_container_modules_do_not_import_django():
     import ast
 
     root = Path(__file__).resolve().parents[1]
-    for rel in ("overbae/sagemaker/s3_io.py", "overbae/sagemaker/sft_entrypoint.py"):
+    for rel in (
+        "overbae/sagemaker/s3_io.py",
+        "overbae/sagemaker/sft_entrypoint.py",
+        "overbae/sagemaker/serve_entrypoint.py",
+    ):
         tree = ast.parse((root / rel).read_text())
         modules: list[str] = []
         for node in ast.walk(tree):
@@ -358,6 +362,91 @@ def test_failed_sagemaker_run_drops_its_prefix(aws_env):
     )
 
 
+def test_dedicated_container_fetches_the_checkpoint_zip(aws_env, tmp_path):
+    import io
+    import zipfile
+
+    from overbae.sagemaker.serve_entrypoint import serve_argv, unzip_checkpoint
+    from overbae.sagemaker.serving_runtime import inference_container
+
+    user = User.objects.create_user(email="zip@example.test", password="pw")
+    project = Project.objects.create(name="Zip AWS", slug="zip-aws")
+    dataset = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=dataset,
+        base_model="Qwen/Qwen3-0.6B",
+        status=FinetuningJob.Status.SUCCEEDED,
+        provider=FinetuningJob.Provider.SAGEMAKER,
+        remote_job_id="ft-zip:arn",
+        triggered_by=user,
+        hyperparameters={"training_type": {"type": "Lora"}},
+    )
+    deployed = DeployedModel.objects.create(
+        project=project,
+        finetuning_job=job,
+        model_id="ft-zip-qwen",
+        base_model_id="Qwen/Qwen3-0.6B",
+        gpu_type="A10G",
+        max_model_len=2048,
+        is_lora=True,
+        weights_path="/weights/.base_models/unsloth--Qwen3-0.6B",
+        status=DeployedModel.Status.READY,
+    )
+    row = type(
+        "Row",
+        (),
+        {"deployed_model": deployed, "gpu_type": "A10G", "served_model_id": "ft-zip-qwen"},
+    )()
+    container = inference_container(row)
+    assert container["Environment"]["OVERMIND_CHECKPOINT_S3"].endswith(
+        f"/{user.id}/{job.id}/checkpoints/checkpoint.zip"
+    )
+    assert container["Environment"]["OVERMIND_BASE_PREFIX"] == ".base_models/unsloth--Qwen3-0.6B"
+    assert "ArtifactUrl" not in container
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("adapter_config.json", '{"r": 8}')
+        archive.writestr("adapter_model.safetensors", b"weights")
+    zip_path = tmp_path / "checkpoint.zip"
+    zip_path.write_bytes(buf.getvalue())
+    out = tmp_path / "checkpoint"
+    unzip_checkpoint(zip_path, out)
+    argv = serve_argv(
+        out,
+        out,
+        contract="chat",
+        served_name="ft-zip-qwen",
+        base_model="unsloth/Qwen3-0.6B",
+        max_model_len=2048,
+        gpu_type="A10G",
+    )
+    assert f"ft-zip-qwen={out}" in argv
+    assert argv[argv.index("--kv-cache-dtype") + 1] == "bfloat16"
+    assert "--load-format" not in argv
+    full = serve_argv(
+        out,
+        None,
+        contract="chat",
+        served_name="ft-full",
+        base_model="unsloth/Qwen3-0.6B",
+        max_model_len=2048,
+        gpu_type="A10G",
+    )
+    assert "--lora-modules" not in full
+    decision = serve_argv(
+        out,
+        out,
+        contract="decision",
+        served_name="decision",
+        base_model="unsloth/Qwen3-0.6B",
+        max_model_len=2048,
+        gpu_type="A10G",
+    )
+    assert "--enable-lora" in decision
+
+
 def test_sagemaker_dedicated_serving_and_pricing(aws_env):
     rates_card = provider_pricing.refresh_rates()
     assert rates_card["status"] == "current"
@@ -393,6 +482,10 @@ def test_sagemaker_dedicated_serving_and_pricing(aws_env):
     ded_row.refresh_from_db()
     assert ded_row.status == DedicatedDeployment.Status.WARMING
     assert ded_row.probe_call_id.startswith("sm-probe:")
+    variant = next(iter(aws_env.sagemaker.endpoint_configs.values()))["ProductionVariants"][0]
+    assert variant["ManagedInstanceScaling"]["Status"] == "ENABLED"
+    assert variant["ManagedInstanceScaling"]["MinInstanceCount"] == 1
+    assert variant["InferenceAmiVersion"] == "al2-ami-sagemaker-inference-gpu-3-1"
 
     dedicated.advance(str(ded_row.id))
     ded_row.refresh_from_db()
