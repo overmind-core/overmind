@@ -18,7 +18,7 @@
     }
   },
   "models": [
-    {
+{
       "id": "Qwen/Qwen3.5-2B",
       "openrouter_id": null,
       "backend": "together",
@@ -73,7 +73,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-0.8B",
       "openrouter_id": null,
       "backend": "together",
@@ -128,7 +128,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-4B",
       "openrouter_id": null,
       "backend": "together",
@@ -183,7 +183,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-1.7B",
       "openrouter_id": null,
       "backend": "together",
@@ -238,7 +238,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.2-3B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
       "backend": "together",
@@ -293,7 +293,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.2-1B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
       "backend": "together",
@@ -348,7 +348,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-9B",
       "openrouter_id": "qwen/qwen3.5-9b",
       "backend": "together",
@@ -403,7 +403,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-8B",
       "openrouter_id": "qwen/qwen3-8b",
       "backend": "together",
@@ -458,7 +458,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen2.5-7B-Instruct",
       "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "backend": "together",
@@ -513,7 +513,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
       "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
       "backend": "together",
@@ -568,7 +568,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-27B",
       "openrouter_id": "qwen/qwen3.5-27b",
       "backend": "together",
@@ -623,7 +623,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-14B",
       "openrouter_id": "qwen/qwen3-14b",
       "backend": "together",
@@ -678,7 +678,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-35B-A3B",
       "openrouter_id": "qwen/qwen3.5-35b-a3b",
       "backend": "together",
@@ -733,7 +733,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-4B",
       "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-4B",
@@ -796,7 +796,7 @@
         "Qwen/Qwen3.5-4B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-2B",
       "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-2B",
@@ -859,7 +859,7 @@
         "Qwen/Qwen3.5-2B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-0.8B",
       "openrouter_id": null,
       "hf_model_id": "unsloth/Qwen3.5-0.8B",
@@ -922,7 +922,7 @@
         "Qwen/Qwen3.5-0.8B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-4B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -985,7 +985,7 @@
         "Qwen/Qwen3-4B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-1.7B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1046,7 +1046,7 @@
         "Qwen/Qwen3-1.7B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-0.6B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1107,7 +1107,7 @@
         "Qwen/Qwen3-0.6B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen2.5-0.5B-Instruct",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1168,7 +1168,7 @@
         "Qwen/Qwen2.5-0.5B-Instruct"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.2-3B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
       "backend": "baseten",
@@ -1229,7 +1229,7 @@
         "meta-llama/Llama-3.2-3B-Instruct"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.2-1B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
       "backend": "baseten",
@@ -1290,7 +1290,7 @@
         "meta-llama/Llama-3.2-1B-Instruct"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM3-1.7B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1353,7 +1353,7 @@
         "LiquidAI/LFM3-1.7B"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM2.5-2.6B",
       "openrouter_id": "liquid/lfm-2.5-2.6b:free",
       "backend": "baseten",
@@ -1413,7 +1413,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM2.5-1.2B-Instruct",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1476,7 +1476,7 @@
         "LiquidAI/LFM2.5-1.2B-Instruct"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM2.5-350M",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1536,7 +1536,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM2.5-230M",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1599,7 +1599,7 @@
         "LiquidAI/LFM2.5-230M"
       ]
     },
-    {
+{
       "id": "fdtn-ai/antares-1b",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1660,7 +1660,7 @@
         "security"
       ]
     },
-    {
+{
       "id": "fdtn-ai/antares-350m",
       "openrouter_id": null,
       "backend": "baseten",
@@ -1721,7 +1721,7 @@
         "security"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-9B",
       "openrouter_id": "qwen/qwen3.5-9b",
       "hf_model_id": "unsloth/Qwen3.5-9B",
@@ -1784,70 +1784,7 @@
         "Qwen/Qwen3.5-9B"
       ]
     },
-    {
-      "id": "ornith-ai/Ornith-1.5-9B",
-      "openrouter_id": null,
-      "hf_model_id": "ornith-ai/Ornith-1.5-9B",
-      "display": "Ornith 1.5 9B",
-      "tier": "small",
-      "params": "9B",
-      "total_params_b": 9.0,
-      "context_length": 262144,
-      "supports_tool_calling": true,
-      "type": "chat",
-      "hidden_size": 4096,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 262144,
-        "max_batch_size": 8,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 131072,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 131072,
-            "validated_context_length": false
-          }
-        },
-        "real_max_context_length": 131072
-      },
-      "num_attn_layers": 8,
-      "num_kv_heads": 4,
-      "head_dim": 256,
-      "backend": "baseten",
-      "disabled": false,
-      "disabled_reason": null,
-      "group": "Ornith",
-      "pricing": {
-        "train_from_usd": 1.0,
-        "run_from_usd_per_1m_output": 6.0
-      },
-      "marketing": {
-        "pitch": "9B Qwen 3.5 finetune with a 256K window and tool calling.",
-        "description": "Ornith 1.5 9B is a Qwen 3.5 9B finetune. It trains with LoRA on the Qwen 3.5 stack and serves on the pinned vLLM image with thinking disabled.",
-        "overview": "Same architecture as Qwen 3.5 9B: 8 full-attention layers, 256K positions, tool calling. LoRA uses the 128K window measured on that base.",
-        "good_for": [
-          "Agents that start from the Ornith 1.5 9B checkpoint",
-          "LoRA on a 9B Qwen 3.5 architecture",
-          "Tool-calling rows"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ],
-      "benchmark_hf_model_ids": [
-        "ornith-ai/Ornith-1.5-9B"
-      ]
-    },
-    {
+{
       "id": "Qwen/Qwen3-8B",
       "openrouter_id": "qwen/qwen3-8b",
       "backend": "baseten",
@@ -1910,7 +1847,7 @@
         "Qwen/Qwen3-8B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen2.5-7B-Instruct",
       "openrouter_id": "qwen/qwen-2.5-7b-instruct",
       "backend": "baseten",
@@ -1973,7 +1910,70 @@
         "Qwen/Qwen2.5-7B-Instruct"
       ]
     },
-    {
+{
+      "id": "ornith-ai/Ornith-1.5-9B",
+      "openrouter_id": null,
+      "hf_model_id": "ornith-ai/Ornith-1.5-9B",
+      "display": "Ornith 1.5 9B",
+      "tier": "small",
+      "params": "9B",
+      "total_params_b": 9.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 8,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Ornith",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "9B Qwen 3.5 finetune with a 256K window and tool calling.",
+        "description": "Ornith 1.5 9B is a Qwen 3.5 9B finetune. It trains with LoRA on the Qwen 3.5 stack and serves on the pinned vLLM image with thinking disabled.",
+        "overview": "Same architecture as Qwen 3.5 9B: 8 full-attention layers, 256K positions, tool calling. LoRA uses the 128K window measured on that base.",
+        "good_for": [
+          "Agents that start from the Ornith 1.5 9B checkpoint",
+          "LoRA on a 9B Qwen 3.5 architecture",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "ornith-ai/Ornith-1.5-9B"
+      ]
+    },
+{
       "id": "google/gemma-4-E4B-it",
       "openrouter_id": null,
       "backend": "baseten",
@@ -2036,7 +2036,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "google/gemma-4-E2B-it",
       "openrouter_id": null,
       "backend": "baseten",
@@ -2099,7 +2099,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.1-8B-Instruct",
       "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
       "backend": "baseten",
@@ -2162,7 +2162,7 @@
         "meta-llama/Llama-3.1-8B-Instruct"
       ]
     },
-    {
+{
       "id": "LiquidAI/LFM2.5-8B-A1B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -2222,7 +2222,7 @@
         "tool-calling"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.8-27B",
       "openrouter_id": "qwen/qwen3.8-27b",
       "hf_model_id": "unsloth/Qwen3.8-27B",
@@ -2285,7 +2285,7 @@
         "Qwen/Qwen3.8-27B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.6-27B",
       "openrouter_id": "qwen/qwen3.6-27b",
       "hf_model_id": "unsloth/Qwen3.6-27B",
@@ -2348,7 +2348,7 @@
         "Qwen/Qwen3.6-27B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-27B",
       "openrouter_id": "qwen/qwen3.5-27b",
       "hf_model_id": "unsloth/Qwen3.5-27B",
@@ -2411,70 +2411,7 @@
         "Qwen/Qwen3.5-27B"
       ]
     },
-    {
-      "id": "microsoft/Fara1.5-27B",
-      "openrouter_id": null,
-      "hf_model_id": "microsoft/Fara1.5-27B",
-      "display": "Fara 1.5 27B",
-      "tier": "mid",
-      "params": "27B",
-      "total_params_b": 27.0,
-      "context_length": 262144,
-      "supports_tool_calling": true,
-      "type": "chat",
-      "hidden_size": 5120,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L40S",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 262144,
-        "max_batch_size": 4,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 262144,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 262144,
-            "validated_context_length": false
-          }
-        },
-        "real_max_context_length": 262144
-      },
-      "num_attn_layers": 16,
-      "num_kv_heads": 4,
-      "head_dim": 256,
-      "backend": "baseten",
-      "disabled": false,
-      "disabled_reason": null,
-      "group": "Fara",
-      "pricing": {
-        "train_from_usd": 2.0,
-        "run_from_usd_per_1m_output": 15.0
-      },
-      "marketing": {
-        "pitch": "27B Qwen 3.5 finetune with a 256K window and tool calling.",
-        "description": "Fara 1.5 27B is a Qwen 3.5 27B finetune. Its chat template takes the training path, and a 2-step LoRA completed on the Qwen 3.5 Unsloth image.",
-        "overview": "Same architecture as Qwen 3.5 27B: 16 full-attention layers, 256K positions, tool calling. LoRA uses that full window.",
-        "good_for": [
-          "Agents that start from the Fara 1.5 checkpoint",
-          "LoRA on a 27B Qwen 3.5 architecture",
-          "Tool-calling rows"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ],
-      "benchmark_hf_model_ids": [
-        "microsoft/Fara1.5-27B"
-      ]
-    },
-    {
+{
       "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "openrouter_id": "qwen/qwen3-coder-30b-a3b-instruct",
       "hf_model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
@@ -2537,7 +2474,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3-14B",
       "openrouter_id": "qwen/qwen3-14b",
       "backend": "baseten",
@@ -2600,7 +2537,7 @@
         "Qwen/Qwen3-14B"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen2.5-14B-Instruct",
       "openrouter_id": null,
       "backend": "baseten",
@@ -2663,7 +2600,70 @@
         "Qwen/Qwen2.5-14B-Instruct"
       ]
     },
-    {
+{
+      "id": "microsoft/Fara1.5-27B",
+      "openrouter_id": null,
+      "hf_model_id": "microsoft/Fara1.5-27B",
+      "display": "Fara 1.5 27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Fara",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "27B Qwen 3.5 finetune with a 256K window and tool calling.",
+        "description": "Fara 1.5 27B is a Qwen 3.5 27B finetune. Its chat template takes the training path, and a 2-step LoRA completed on the Qwen 3.5 Unsloth image.",
+        "overview": "Same architecture as Qwen 3.5 27B: 16 full-attention layers, 256K positions, tool calling. LoRA uses that full window.",
+        "good_for": [
+          "Agents that start from the Fara 1.5 checkpoint",
+          "LoRA on a 27B Qwen 3.5 architecture",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "microsoft/Fara1.5-27B"
+      ]
+    },
+{
       "id": "google/gemma-4-12B-it",
       "openrouter_id": null,
       "backend": "baseten",
@@ -2725,7 +2725,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "openai/gpt-oss-20b",
       "openrouter_id": "openai/gpt-oss-20b",
       "hf_model_id": "unsloth/gpt-oss-20b-BF16",
@@ -2790,7 +2790,7 @@
         "openai/gpt-oss-20b"
       ]
     },
-    {
+{
       "id": "Qwen/Qwen3.5-35B-A3B",
       "openrouter_id": "qwen/qwen3.5-35b-a3b",
       "hf_model_id": "unsloth/Qwen3.5-35B-A3B",
@@ -2853,7 +2853,258 @@
         "Qwen/Qwen3.5-35B-A3B"
       ]
     },
-    {
+{
+      "id": "Qwen/Qwen3-32B",
+      "openrouter_id": "qwen/qwen3-32b",
+      "backend": "baseten",
+      "display": "Qwen 3 32B",
+      "hf_model_id": "unsloth/Qwen3-32B",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 40960,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 40960,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 40960,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 40960
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 3",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Largest dense Qwen 3 base when the size ladder needs a top end.",
+        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
+        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "good_for": [
+          "Side-by-side size sweeps in one family",
+          "Code agents (via Qwen 3 Coder 30B)",
+          "Compact bases when tool calling is optional"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen3-32B"
+      ]
+    },
+{
+      "id": "Qwen/Qwen2.5-72B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-72b-instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 72B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
+      "tier": "large",
+      "params": "72B",
+      "total_params_b": 72.0,
+      "context_length": 131072,
+      "supports_tool_calling": false,
+      "type": "chat",
+      "hidden_size": 8192,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 80,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 5.0,
+        "run_from_usd_per_1m_output": 40.0
+      },
+      "marketing": {
+        "pitch": "Largest Qwen 2.5 instruct on the catalogue when you need headroom and continuity with the 2.5 line.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-72B-Instruct"
+      ]
+    },
+{
+      "id": "Qwen/Qwen2.5-32B-Instruct",
+      "openrouter_id": null,
+      "backend": "baseten",
+      "display": "Qwen 2.5 32B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-32B-Instruct",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Large Qwen 2.5 instruct for quality-sensitive agents staying on 2.5.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
+        "good_for": [
+          "Pipelines already tuned on Qwen 2.5",
+          "Code specialists at 32B",
+          "Stable baselines for eval-driven iteration"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-32B-Instruct"
+      ]
+    },
+{
+      "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "openrouter_id": "qwen/qwen-2.5-coder-32b-instruct",
+      "backend": "baseten",
+      "display": "Qwen 2.5 Coder 32B Instruct",
+      "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
+      "tier": "large",
+      "params": "32B",
+      "total_params_b": 32.0,
+      "context_length": 131072,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "A100",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 32768,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 32768,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 32768,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 32768
+      },
+      "disabled": false,
+      "disabled_reason": null,
+      "num_attn_layers": 64,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "group": "Qwen 2.5",
+      "pricing": {
+        "train_from_usd": 2.25,
+        "run_from_usd_per_1m_output": 20.0
+      },
+      "marketing": {
+        "pitch": "Dedicated Qwen 2.5 coder at 32B for code agents already on this family.",
+        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
+        "overview": "Qwen 2.5 Coder 32B Instruct is the dedicated coder in the mature Qwen 2.5 line. Keep it when your coding agent or eval harness is already tuned around Qwen 2.5 and you want controlled training rather than moving families.",
+        "good_for": [
+          "Code agents already on Qwen 2.5",
+          "Tool-calling engineering workflows",
+          "Stable baselines before a family upgrade"
+        ]
+      },
+      "use_cases": [
+        "tool-calling",
+        "coding"
+      ],
+      "benchmark_hf_model_ids": [
+        "Qwen/Qwen2.5-Coder-32B-Instruct"
+      ]
+    },
+{
       "id": "ornith-ai/Ornith-1.5-35B-A3B",
       "openrouter_id": null,
       "hf_model_id": "ornith-ai/Ornith-1.5-35B-A3B",
@@ -2918,258 +3169,7 @@
         "ornith-ai/Ornith-1.5-35B-A3B"
       ]
     },
-    {
-      "id": "Qwen/Qwen3-32B",
-      "openrouter_id": "qwen/qwen3-32b",
-      "backend": "baseten",
-      "display": "Qwen 3 32B",
-      "hf_model_id": "unsloth/Qwen3-32B",
-      "tier": "large",
-      "params": "32B",
-      "total_params_b": 32.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": "chat",
-      "hidden_size": 5120,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "H100",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 40960,
-        "max_batch_size": 2,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 40960,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 40960,
-            "validated_context_length": true
-          }
-        },
-        "real_max_context_length": 40960
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 64,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 3",
-      "pricing": {
-        "train_from_usd": 2.25,
-        "run_from_usd_per_1m_output": 20.0
-      },
-      "marketing": {
-        "pitch": "Largest dense Qwen 3 base when the size ladder needs a top end.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
-        "good_for": [
-          "Side-by-side size sweeps in one family",
-          "Code agents (via Qwen 3 Coder 30B)",
-          "Compact bases when tool calling is optional"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ],
-      "benchmark_hf_model_ids": [
-        "Qwen/Qwen3-32B"
-      ]
-    },
-    {
-      "id": "Qwen/Qwen2.5-72B-Instruct",
-      "openrouter_id": "qwen/qwen-2.5-72b-instruct",
-      "backend": "baseten",
-      "display": "Qwen 2.5 72B Instruct",
-      "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
-      "tier": "large",
-      "params": "72B",
-      "total_params_b": 72.0,
-      "context_length": 131072,
-      "supports_tool_calling": false,
-      "type": "chat",
-      "hidden_size": 8192,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "H100",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 32768,
-        "max_batch_size": 4,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 32768,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 32768,
-            "validated_context_length": true
-          }
-        },
-        "real_max_context_length": 32768
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 80,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 2.5",
-      "pricing": {
-        "train_from_usd": 5.0,
-        "run_from_usd_per_1m_output": 40.0
-      },
-      "marketing": {
-        "pitch": "Largest Qwen 2.5 instruct on the catalogue when you need headroom and continuity with the 2.5 line.",
-        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
-        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
-        "good_for": [
-          "Pipelines already tuned on Qwen 2.5",
-          "Code specialists at 32B",
-          "Stable baselines for eval-driven iteration"
-        ]
-      },
-      "use_cases": [],
-      "benchmark_hf_model_ids": [
-        "Qwen/Qwen2.5-72B-Instruct"
-      ]
-    },
-    {
-      "id": "Qwen/Qwen2.5-32B-Instruct",
-      "openrouter_id": null,
-      "backend": "baseten",
-      "display": "Qwen 2.5 32B Instruct",
-      "hf_model_id": "unsloth/Qwen2.5-32B-Instruct",
-      "tier": "large",
-      "params": "32B",
-      "total_params_b": 32.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": "chat",
-      "hidden_size": 5120,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "A100",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 32768,
-        "max_batch_size": 8,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 32768,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 32768,
-            "validated_context_length": true
-          }
-        },
-        "real_max_context_length": 32768
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 64,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 2.5",
-      "pricing": {
-        "train_from_usd": 2.25,
-        "run_from_usd_per_1m_output": 20.0
-      },
-      "marketing": {
-        "pitch": "Large Qwen 2.5 instruct for quality-sensitive agents staying on 2.5.",
-        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
-        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
-        "good_for": [
-          "Pipelines already tuned on Qwen 2.5",
-          "Code specialists at 32B",
-          "Stable baselines for eval-driven iteration"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ],
-      "benchmark_hf_model_ids": [
-        "Qwen/Qwen2.5-32B-Instruct"
-      ]
-    },
-    {
-      "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-      "openrouter_id": "qwen/qwen-2.5-coder-32b-instruct",
-      "backend": "baseten",
-      "display": "Qwen 2.5 Coder 32B Instruct",
-      "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
-      "tier": "large",
-      "params": "32B",
-      "total_params_b": 32.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": "chat",
-      "hidden_size": 5120,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "A100",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 32768,
-        "max_batch_size": 8,
-        "min_batch_size": 1,
-        "training_type": {
-          "full": {
-            "enabled": false,
-            "context_length": 32768,
-            "validated_context_length": false
-          },
-          "lora": {
-            "enabled": true,
-            "context_length": 32768,
-            "validated_context_length": true
-          }
-        },
-        "real_max_context_length": 32768
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 64,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 2.5",
-      "pricing": {
-        "train_from_usd": 2.25,
-        "run_from_usd_per_1m_output": 20.0
-      },
-      "marketing": {
-        "pitch": "Dedicated Qwen 2.5 coder at 32B for code agents already on this family.",
-        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
-        "overview": "Qwen 2.5 Coder 32B Instruct is the dedicated coder in the mature Qwen 2.5 line. Keep it when your coding agent or eval harness is already tuned around Qwen 2.5 and you want controlled training rather than moving families.",
-        "good_for": [
-          "Code agents already on Qwen 2.5",
-          "Tool-calling engineering workflows",
-          "Stable baselines before a family upgrade"
-        ]
-      },
-      "use_cases": [
-        "tool-calling",
-        "coding"
-      ],
-      "benchmark_hf_model_ids": [
-        "Qwen/Qwen2.5-Coder-32B-Instruct"
-      ]
-    },
-    {
+{
       "id": "google/gemma-4-31B-it",
       "openrouter_id": "google/gemma-4-31b-it",
       "backend": "baseten",
@@ -3231,7 +3231,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "google/gemma-4-26B-A4B-it",
       "openrouter_id": "google/gemma-4-26b-a4b-it",
       "backend": "baseten",
@@ -3293,7 +3293,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "meta-llama/Llama-3.3-70B-Instruct",
       "openrouter_id": "meta-llama/llama-3.3-70b-instruct",
       "backend": "baseten",
@@ -3356,7 +3356,7 @@
         "meta-llama/Llama-3.3-70B-Instruct"
       ]
     },
-    {
+{
       "id": "unsloth/Muse-Glimmer-30B",
       "openrouter_id": null,
       "backend": "baseten",
@@ -3418,7 +3418,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
       "openrouter_id": null,
       "hf_model_id": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
@@ -3483,7 +3483,7 @@
         "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16"
       ]
     },
-    {
+{
       "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
       "openrouter_id": "nvidia/nemotron-3.5-lightning",
       "backend": "baseten",
@@ -3549,7 +3549,7 @@
         "coding"
       ]
     },
-    {
+{
       "id": "Cloudflare/clef",
       "openrouter_id": null,
       "backend": "decision",
@@ -3592,7 +3592,7 @@
       "disabled": false,
       "disabled_reason": null
     },
-    {
+{
       "id": "Cloudflare/clef-flash",
       "openrouter_id": null,
       "backend": "decision",
@@ -3635,7 +3635,7 @@
       "disabled": false,
       "disabled_reason": null
     },
-    {
+{
       "id": "OvermindLab/qwen-3.5-0.8B-decision",
       "openrouter_id": null,
       "backend": "decision",
@@ -3678,7 +3678,7 @@
       "disabled": false,
       "disabled_reason": null
     },
-    {
+{
       "id": "OvermindLab/qwen-3.5-2B-decision",
       "openrouter_id": null,
       "backend": "decision",
@@ -3721,7 +3721,7 @@
       "disabled": false,
       "disabled_reason": null
     },
-    {
+{
       "id": "vllm-sr/d3-edge",
       "openrouter_id": null,
       "backend": "decision",
@@ -3764,7 +3764,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "vllm-sr/d3-lite",
       "openrouter_id": null,
       "backend": "decision",
@@ -3807,7 +3807,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "vllm-sr/d3-nano",
       "openrouter_id": null,
       "backend": "decision",
@@ -3850,7 +3850,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "vllm-sr/d3-mini",
       "openrouter_id": null,
       "backend": "decision",
@@ -3893,7 +3893,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "vllm-sr/d3-flash",
       "openrouter_id": null,
       "backend": "decision",
@@ -3936,7 +3936,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "vllm-sr/d3",
       "openrouter_id": null,
       "backend": "decision",
@@ -3979,7 +3979,7 @@
       "disabled": true,
       "disabled_reason": "Exact training and verified serving runtime not yet qualified"
     },
-    {
+{
       "id": "LiquidAI/d1-omni-600M",
       "openrouter_id": null,
       "backend": "decision",
@@ -4023,7 +4023,7 @@
       "disabled": true,
       "disabled_reason": "vLLM 0.33.0 cannot load this checkpoint: text_config has no num_attention_heads."
     },
-    {
+{
       "id": "LiquidAI/d1-3B",
       "openrouter_id": null,
       "backend": "decision",
