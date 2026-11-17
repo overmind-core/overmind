@@ -47,6 +47,7 @@ _ORDERING = [
     ("LiquidAI/LFM2.5-1.2B-Instruct", "lfm2"),
     ("mistralai/Ministral-3-3B-Instruct-2512", "ministral"),
     ("fdtn-ai/antares-1b", "antares"),
+    ("nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16", "bolt"),
     ("ibm-granite/granite-4.0-h-tiny", "antares"),
     ("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", "nemotron35"),
     ("unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B", "nemotron35"),
@@ -59,6 +60,9 @@ _ORDERING = [
     ("Qwen/Qwen3-Coder-30B-A3B-Instruct", "qwen3_coder"),
     ("Qwen/Qwen2.5-VL-7B-Instruct", "qwen_mm"),
     ("Qwen/Qwen3-8B", "qwen"),
+    ("ornith-ai/Ornith-1.5-9B", "qwen35"),
+    ("ornith-ai/Ornith-1.5-35B-A3B", "qwen35"),
+    ("microsoft/Fara1.5-27B", "qwen35"),
     ("allenai/Olmo-3-7B-Instruct", "olmo"),
     ("totally/unknown-model", "unknown"),
 ]

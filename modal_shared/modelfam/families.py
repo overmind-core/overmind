@@ -168,6 +168,18 @@ ANTARES = FamilySpec(
     hooks_module="families.antares",
 )
 
+# Before NEMOTRON35: "nemotron-3.5" would send Bolt through the Nemotron-H hooks.
+BOLT = FamilySpec(
+    key="bolt",
+    patterns=("nemotron-3.5-bolt",),
+    train_image=TRAIN_U2026_8_TF510,
+    tool_call_parser="gemma4",
+    pretok_headers=(r"<\|turn>(\w+)\n",),
+    force_mask_pairs=(("<|tool_response>", "<tool_response|>"),),
+    notes="Gemma 4 E4B finetune. FastModel, SDPA, checkpointing off.",
+    hooks_module="families.bolt",
+)
+
 # Before generic NEMOTRON — "nemotron-3.5" would otherwise inherit SPECIAL_N pretok.
 NEMOTRON35 = FamilySpec(
     key="nemotron35",
@@ -226,14 +238,14 @@ QWEN38 = FamilySpec(
 
 QWEN35 = FamilySpec(
     key="qwen35",
-    patterns=("qwen3.5", "qwen3.6"),
+    patterns=("qwen3.5", "qwen3.6", "ornith", "fara"),
     train_image=TRAIN_U2026_10_7,
     tool_call_parser="qwen3_coder",
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
     natively_multimodal=True,
     multimodal_id_tokens=("qwen3-5", "qwen3-6"),
     config_fixups=("nest_qwen3_5_text",),
-    notes="Qwen3.5/3.6 XML tool calls; natively multimodal — wrap content as text parts.",
+    notes="Qwen3.5/3.6 and their Ornith and Fara finetunes. XML tool calls; natively multimodal.",
     hooks_module="families.qwen35",
 )
 

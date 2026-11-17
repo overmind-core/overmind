@@ -10,6 +10,17 @@ pytestmark = pytest.mark.covers("model-runtime")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
 
 
+def test_bolt_lora_leaves_checkpointing_off(monkeypatch):
+    monkeypatch.setenv("MODEL_ID", "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16")
+    from families.bolt import hooks
+
+    assert hooks.peft_gradient_checkpointing() is False
+    cfg = hooks.sft_config_overrides(use_lora=True)
+    assert cfg["gradient_checkpointing"] is False
+    assert cfg["optim"] == "adamw_8bit"
+    assert hooks.load_kwargs(use_lora=True)["attn_implementation"] == "sdpa"
+
+
 def test_e2b_lora_enables_torch_gc(monkeypatch):
     monkeypatch.setenv("MODEL_ID", "unsloth/gemma-4-E2B-it")
     from families.gemma4 import hooks

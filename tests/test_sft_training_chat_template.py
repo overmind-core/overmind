@@ -91,6 +91,44 @@ def test_every_training_template_compiles() -> None:
         env.from_string(src)
 
 
+def test_ornith_training_templates_match_base() -> None:
+    env = _generation_env()
+    cases = [
+        [
+            {"role": "user", "content": "What is 2+2?"},
+            {"role": "assistant", "content": "4"},
+        ],
+        [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "old", "reasoning_content": "kept"},
+            {"role": "user", "content": "second"},
+            {"role": "assistant", "content": "now"},
+        ],
+        [
+            {"role": "user", "content": "lookup"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": "lookup", "arguments": {"q": "2+2", "n": 1}}}],
+            },
+        ],
+    ]
+    for stem in ("ornith15_9b", "ornith15_35b"):
+        base = env.from_string((_ASSETS / "qwen_templates" / f"{stem}.jinja").read_text())
+        training = env.from_string(
+            (_ASSETS / "qwen_templates" / f"{stem}_training.jinja").read_text()
+        )
+        for messages in cases:
+            for prompt in (False, True):
+                kwargs = {
+                    "messages": messages,
+                    "tools": None,
+                    "add_generation_prompt": prompt,
+                    "enable_thinking": False,
+                }
+                assert base.render(**kwargs) == training.render(**kwargs)
+
+
 def test_qwen38_training_template_compiles_and_matches_base() -> None:
     env = _generation_env()
     base = (_ASSETS / "qwen_templates/qwen38_unsloth.jinja").read_text(encoding="utf-8")
@@ -104,6 +142,37 @@ def test_qwen38_training_template_compiles_and_matches_base() -> None:
     ]
     kwargs = {"messages": messages, "tools": None, "add_generation_prompt": False}
     assert env.from_string(base).render(**kwargs) == env.from_string(training).render(**kwargs)
+
+
+def test_bolt_e4b_training_matches_base() -> None:
+    env = _generation_env()
+    base = env.from_string((_ASSETS / "gemma_templates/bolt_e4b.jinja").read_text())
+    training = env.from_string((_ASSETS / "gemma_templates/bolt_e4b_training.jinja").read_text())
+    cases = [
+        [
+            {"role": "user", "content": "What is 2+2?"},
+            {"role": "assistant", "content": "4"},
+        ],
+        [
+            {"role": "user", "content": "lookup"},
+            {
+                "role": "assistant",
+                "content": "checking",
+                "tool_calls": [{"function": {"name": "lookup", "arguments": {"q": "2+2"}}}],
+            },
+            {"role": "tool", "name": "lookup", "content": "4"},
+            {"role": "assistant", "content": "4"},
+        ],
+    ]
+    for messages in cases:
+        for prompt in (False, True):
+            kwargs = {
+                "messages": messages,
+                "tools": None,
+                "add_generation_prompt": prompt,
+                "enable_thinking": False,
+            }
+            assert base.render(**kwargs) == training.render(**kwargs)
 
 
 def test_gemma4_e2b_training_matches_base() -> None:

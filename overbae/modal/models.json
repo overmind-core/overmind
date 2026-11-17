@@ -10,6 +10,8 @@
       "google": "Google",
       "nvidia": "NVIDIA",
       "liquidai": "Liquid AI",
+      "microsoft": "Microsoft",
+      "ornith-ai": "Ornith",
       "deepseek": "DeepSeek",
       "x-ai": "xAI",
       "anthropic": "Anthropic"
@@ -1783,6 +1785,69 @@
       ]
     },
     {
+      "id": "ornith-ai/Ornith-1.5-9B",
+      "openrouter_id": null,
+      "hf_model_id": "ornith-ai/Ornith-1.5-9B",
+      "display": "Ornith 1.5 9B",
+      "tier": "small",
+      "params": "9B",
+      "total_params_b": 9.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 4096,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 8,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 131072,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 131072,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 131072
+      },
+      "num_attn_layers": 8,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Ornith",
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
+      },
+      "marketing": {
+        "pitch": "9B Qwen 3.5 finetune with a 256K window and tool calling.",
+        "description": "Ornith 1.5 9B is a Qwen 3.5 9B finetune. It trains with LoRA on the Qwen 3.5 stack and serves on the pinned vLLM image with thinking disabled.",
+        "overview": "Same architecture as Qwen 3.5 9B: 8 full-attention layers, 256K positions, tool calling. LoRA uses the 128K window measured on that base.",
+        "good_for": [
+          "Agents that start from the Ornith 1.5 9B checkpoint",
+          "LoRA on a 9B Qwen 3.5 architecture",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "ornith-ai/Ornith-1.5-9B"
+      ]
+    },
+    {
       "id": "Qwen/Qwen3-8B",
       "openrouter_id": "qwen/qwen3-8b",
       "backend": "baseten",
@@ -2347,6 +2412,69 @@
       ]
     },
     {
+      "id": "microsoft/Fara1.5-27B",
+      "openrouter_id": null,
+      "hf_model_id": "microsoft/Fara1.5-27B",
+      "display": "Fara 1.5 27B",
+      "tier": "mid",
+      "params": "27B",
+      "total_params_b": 27.0,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 5120,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 16,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Fara",
+      "pricing": {
+        "train_from_usd": 2.0,
+        "run_from_usd_per_1m_output": 15.0
+      },
+      "marketing": {
+        "pitch": "27B Qwen 3.5 finetune with a 256K window and tool calling.",
+        "description": "Fara 1.5 27B is a Qwen 3.5 27B finetune. Its chat template takes the training path, and a 2-step LoRA completed on the Qwen 3.5 Unsloth image.",
+        "overview": "Same architecture as Qwen 3.5 27B: 16 full-attention layers, 256K positions, tool calling. LoRA uses that full window.",
+        "good_for": [
+          "Agents that start from the Fara 1.5 checkpoint",
+          "LoRA on a 27B Qwen 3.5 architecture",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "microsoft/Fara1.5-27B"
+      ]
+    },
+    {
       "id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
       "openrouter_id": "qwen/qwen3-coder-30b-a3b-instruct",
       "hf_model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
@@ -2723,6 +2851,71 @@
       ],
       "benchmark_hf_model_ids": [
         "Qwen/Qwen3.5-35B-A3B"
+      ]
+    },
+    {
+      "id": "ornith-ai/Ornith-1.5-35B-A3B",
+      "openrouter_id": null,
+      "hf_model_id": "ornith-ai/Ornith-1.5-35B-A3B",
+      "display": "Ornith 1.5 35B MoE",
+      "tier": "large",
+      "params": "35B MoE (3B active)",
+      "total_params_b": 35.0,
+      "moe": true,
+      "context_length": 262144,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2048,
+      "fp8_supported": true,
+      "inference": {
+        "gpu_type": "H100",
+        "lora_supported": true,
+        "max_model_len": 16384
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 2,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 262144,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 262144,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 262144
+      },
+      "num_attn_layers": 10,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Ornith",
+      "pricing": {
+        "train_from_usd": 2.5,
+        "run_from_usd_per_1m_output": 8.0
+      },
+      "marketing": {
+        "pitch": "35B MoE Qwen 3.5 finetune, 3B active, with a 256K window.",
+        "description": "Ornith 1.5 35B-A3B is a Qwen 3.5 35B-A3B finetune. A 2-step LoRA completed on the Qwen 3.5 Unsloth image, and the pinned vLLM image serves it with thinking disabled.",
+        "overview": "Same architecture as Qwen 3.5 35B-A3B: 10 full-attention layers, 256 experts, 256K positions. LoRA uses that full window.",
+        "good_for": [
+          "Agents that start from the Ornith 1.5 MoE checkpoint",
+          "LoRA on a 35B Qwen 3.5 mixture of experts",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "ornith-ai/Ornith-1.5-35B-A3B"
       ]
     },
     {
@@ -3223,6 +3416,71 @@
       "use_cases": [
         "tool-calling",
         "coding"
+      ]
+    },
+    {
+      "id": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
+      "openrouter_id": null,
+      "hf_model_id": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
+      "display": "Nemotron 3.5 Bolt E4B",
+      "tier": "small",
+      "params": "E4B (~8B)",
+      "total_params_b": 8.0,
+      "context_length": 65536,
+      "supports_tool_calling": true,
+      "type": "chat",
+      "hidden_size": 2560,
+      "fp8_supported": false,
+      "inference": {
+        "gpu_type": "L40S",
+        "min_vram_gb": 48,
+        "max_model_len": 8192
+      },
+      "finetuning": {
+        "context_length": 65536,
+        "max_batch_size": 4,
+        "min_batch_size": 1,
+        "unsloth_image": "gemma4",
+        "training_type": {
+          "full": {
+            "enabled": false,
+            "context_length": 65536,
+            "validated_context_length": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": false
+          }
+        },
+        "real_max_context_length": 65536
+      },
+      "num_attn_layers": 42,
+      "num_kv_heads": 2,
+      "head_dim": 256,
+      "backend": "baseten",
+      "disabled": false,
+      "disabled_reason": null,
+      "group": "Nemotron",
+      "pricing": {
+        "train_from_usd": 0.75,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "marketing": {
+        "pitch": "8B Gemma 4 finetune with thinking that can be turned off.",
+        "description": "Nemotron 3.5 Bolt E4B is an NVIDIA finetune of Gemma 4 E4B. It trains with LoRA on the Gemma 4 image and serves on the pinned vLLM image.",
+        "overview": "42 layers, a 65,536-token window, and tool calling. LoRA is the enabled training method.",
+        "good_for": [
+          "Agents that start from the Bolt E4B checkpoint",
+          "LoRA on a Gemma 4 E4B architecture",
+          "Tool-calling rows"
+        ]
+      },
+      "use_cases": [
+        "tool-calling"
+      ],
+      "benchmark_hf_model_ids": [
+        "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16"
       ]
     },
     {

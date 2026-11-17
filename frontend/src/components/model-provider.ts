@@ -153,6 +153,7 @@ const PROVIDER_ALIASES: Record<string, Exclude<ProviderId, "unknown">> = {
   moonshot: "kimi",
   moonshotai: "kimi",
   nousresearch: "nous",
+  ornithai: "qwen",
   palm: "google",
   seed: "bytedance",
   zai: "zhipu",

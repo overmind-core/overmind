@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from modal_shared.modelfam.families import (
     ANTARES,
+    BOLT,
     CLEF,
     D1,
     D3,
@@ -43,6 +44,7 @@ _FAMILIES: tuple[FamilySpec, ...] = (
     LFM2,
     MINISTRAL,
     ANTARES,
+    BOLT,
     NEMOTRON35,
     NEMOTRON,
     LLAMA,
