@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package overmind.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service InvitationService {
+  rpc Invite(InviteRequest) returns (InviteResponse);
+  rpc Resend(ResendRequest) returns (ResendResponse);
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  // Requires a signed-in user when an account already exists for the invited
+  // email; otherwise creates that account with `password`.
+  rpc Accept(AcceptRequest) returns (AcceptResponse);
+}
+
+message Invitation {
+  string id = 1;
+  string project_id = 2;
+  string email = 3;
+  string role = 4;
+  string status = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message InviteRequest {
+  string project_id = 1;
+  string email = 2;
+}
+
+message InviteResponse {
+  Invitation invitation = 1;
+}
+
+message ResendRequest {
+  string invitation_id = 1;
+}
+
+message ResendResponse {
+  Invitation invitation = 1;
+}
+
+message RevokeRequest {
+  string invitation_id = 1;
+}
+
+message RevokeResponse {
+  Invitation invitation = 1;
+}
+
+message AcceptRequest {
+  string token = 1;
+  string password = 2;
+}
+
+message AcceptResponse {
+  string project_id = 1;
+  string membership_id = 2;
+  string user_id = 3;
+}

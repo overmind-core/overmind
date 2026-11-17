@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OTLP check</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/ext/json-enc.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 14px/1.45 system-ui, sans-serif; background: #0b0d10; color: #e6e8eb; margin: 0; }
+    main { width: min(880px, 94vw); margin: 32px auto; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    h2 { font-size: 14px; margin: 0 0 8px; color: #aab1ba; }
+    section, form { border: 1px solid #2a2f36; background: #12151a; padding: 16px; margin: 0 0 12px; }
+    label { display: block; font-size: 12px; margin: 8px 0 4px; color: #aab1ba; }
+    input, select { width: 100%; box-sizing: border-box; padding: 8px; background: #0b0d10; color: inherit; border: 1px solid #2a2f36; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    button { padding: 8px 12px; background: #e6e8eb; color: #0b0d10; border: 0; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; border-top: 1px solid #2a2f36; padding: 6px 8px 6px 0; vertical-align: top; }
+    td:last-child, th:last-child { word-break: break-all; }
+    #status { min-height: 1.4em; font-size: 13px; color: #aab1ba; }
+    h2 span { color: #e6e8eb; }
+  </style>
+</head>
+<body hx-ext="json-enc">
+<main>
+  <h1>OTLP check</h1>
+  <p id="status" role="status"></p>
+
+  <form hx-post="/api/collections/users/records" hx-swap="none" hx-on::after-request="onCreated(event)">
+    <h2>Account</h2>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" minlength="8" required>
+    <input name="passwordConfirm" type="hidden">
+    <div class="row">
+      <button type="submit">Create account</button>
+      <button type="button" hx-post="/api/collections/users/auth-with-password" hx-swap="none" hx-params="none"
+        hx-vals="js:{identity: document.getElementById('email').value, password: document.getElementById('password').value}"
+        hx-on::after-request="onAuth(event)">Sign in</button>
+    </div>
+  </form>
+
+  <form hx-post="/api/collections/projects/records" hx-swap="none" hx-on::after-request="onProject(event)">
+    <h2>Project</h2>
+    <label for="projects">Yours</label>
+    <select id="projects" hx-get="/otel/projects" hx-trigger="signed-in from:body" hx-swap="innerHTML"
+      onchange="sessionStorage.setItem('project', this.value); htmx.trigger(document.body, 'sent')"></select>
+    <label for="name">Name</label>
+    <input id="name" name="name" required>
+    <label for="slug">Slug</label>
+    <input id="slug" name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*">
+    <div class="row"><button type="submit">Create project</button></div>
+  </form>
+
+  <section>
+    <h2>Send</h2>
+    <div class="row">
+      <button type="button" hx-post="/api/v1/traces" hx-swap="none" hx-vals="js:sampleTrace()" hx-on::after-request="onSent(event)">Trace</button>
+      <button type="button" hx-post="/api/v1/logs" hx-swap="none" hx-vals="js:sampleLog()" hx-on::after-request="onSent(event)">Log</button>
+      <button type="button" hx-post="/api/v1/metrics" hx-swap="none" hx-vals="js:sampleMetric()" hx-on::after-request="onSent(event)">Metric</button>
+      <button type="button" hx-post="/api/v1/profiles" hx-swap="none" hx-vals="js:{}" hx-on::after-request="onSent(event)">Profile</button>
+    </div>
+  </section>
+
+  <div id="board" hx-get="/otel/board" hx-trigger="sent from:body" hx-swap="innerHTML"></div>
+</main>
+<script>
+  const status = document.getElementById("status");
+
+  document.body.addEventListener("htmx:configRequest", (event) => {
+    const form = event.detail.elt.form || event.detail.elt.closest("form");
+    if (form && event.detail.elt.name !== "passwordConfirm") {
+      const password = form.querySelector("[name=password]");
+      const confirm = form.querySelector("[name=passwordConfirm]");
+      if (password && confirm) confirm.value = password.value;
+    }
+    if (event.detail.path === "/api/collections/users/records" && event.detail.parameters.password) {
+      event.detail.parameters.passwordConfirm = event.detail.parameters.password;
+    }
+    const token = sessionStorage.getItem("token");
+    const project = sessionStorage.getItem("project");
+    if (token) event.detail.headers["Authorization"] = token;
+    if (project) event.detail.headers["X-Overmind-Project"] = project;
+    const path = event.detail.path;
+    if (path.startsWith("/api/v1/") && !project) {
+      event.preventDefault();
+      status.textContent = "Select a project.";
+    }
+  });
+
+  function hex(bytes) {
+    const raw = new Uint8Array(bytes);
+    crypto.getRandomValues(raw);
+    return [...raw].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  function nanos() { return String(BigInt(Date.now()) * 1000000n); }
+
+  function sampleTrace() {
+    const start = nanos();
+    return { resourceSpans: [{ scopeSpans: [{ scope: { name: "otel-page" }, spans: [{
+      traceId: hex(16), spanId: hex(8), name: "page-trace",
+      startTimeUnixNano: start, endTimeUnixNano: start,
+      attributes: [{ key: "source", value: { stringValue: "htmx" } }],
+    }] }] }] };
+  }
+  function sampleLog() {
+    return { resourceLogs: [{ scopeLogs: [{ logRecords: [{
+      timeUnixNano: nanos(), severityText: "INFO",
+      body: { stringValue: "hello from the page" },
+    }] }] }] };
+  }
+  function sampleMetric() {
+    return { resourceMetrics: [{ scopeMetrics: [{ metrics: [{
+      name: "page.gauge", unit: "{check}",
+      gauge: { dataPoints: [{ asDouble: 1, timeUnixNano: nanos() }] },
+    }] }] }] };
+  }
+
+  function show(event) {
+    const xhr = event.detail.xhr;
+    status.textContent = xhr.status + " " + xhr.responseText;
+    return xhr.status < 300;
+  }
+  function onCreated(event) {
+    if (!show(event)) return;
+    status.textContent = "Account created. Sign in.";
+  }
+  function onAuth(event) {
+    if (!show(event)) return;
+    const body = JSON.parse(event.detail.xhr.responseText);
+    sessionStorage.setItem("token", body.token);
+    status.textContent = "Signed in.";
+    htmx.trigger(document.body, "signed-in");
+  }
+  function onProject(event) {
+    if (!show(event)) return;
+    const body = JSON.parse(event.detail.xhr.responseText);
+    sessionStorage.setItem("project", body.id);
+    status.textContent = "Project " + body.slug + ".";
+    htmx.trigger(document.body, "signed-in");
+  }
+  function onSent(event) {
+    if (show(event)) htmx.trigger(document.body, "sent");
+  }
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail.target.id !== "projects") return;
+    const id = sessionStorage.getItem("project");
+    if (id) event.detail.target.value = id;
+  });
+  if (sessionStorage.getItem("token")) htmx.trigger(document.body, "signed-in");
+</script>
+</body>
+</html>

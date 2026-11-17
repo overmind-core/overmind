@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accept invitation</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; background: #0b0d10; color: #e6e8eb; margin: 0; display: grid; place-items: center; min-height: 100vh; }
+    main { width: min(380px, 92vw); border: 1px solid #2a2f36; background: #12151a; padding: 24px; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    h2 { font-size: 14px; margin: 20px 0 8px; color: #aab1ba; }
+    label { display: block; font-size: 13px; margin: 8px 0 4px; color: #aab1ba; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; background: #0b0d10; color: inherit; border: 1px solid #2a2f36; }
+    button { margin-top: 12px; width: 100%; padding: 8px; background: #e6e8eb; color: #0b0d10; border: 0; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { margin-top: 16px; font-size: 13px; min-height: 1.5em; }
+    .error { color: #ff7b72; }
+    .ok { color: #3fb950; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Accept invitation</h1>
+
+  <form id="sign-in">
+    <h2>Existing account</h2>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email" required>
+    <label for="sign-in-password">Password</label>
+    <input id="sign-in-password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in and accept</button>
+  </form>
+
+  <form id="create">
+    <h2>New account</h2>
+    <label for="new-password">Password</label>
+    <input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+    <button type="submit">Create account and accept</button>
+  </form>
+
+  <p id="status" role="status"></p>
+</main>
+<script>
+  const token = new URLSearchParams(location.search).get("token");
+  const status = document.getElementById("status");
+  const buttons = document.querySelectorAll("button");
+
+  function show(message, kind) {
+    status.textContent = message;
+    status.className = kind;
+  }
+
+  async function postJSON(path, body, authToken) {
+    const headers = { "Content-Type": "application/json" };
+    if (authToken) headers.Authorization = authToken;
+    const res = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    return data;
+  }
+
+  async function accept(body, authToken) {
+    buttons.forEach((b) => (b.disabled = true));
+    show("", "");
+    try {
+      await postJSON("/rpc/overmind.v1.InvitationService/Accept", { token, ...body }, authToken);
+      show("Invitation accepted.", "ok");
+    } catch (err) {
+      show(err.message, "error");
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+
+  if (!token) {
+    show("The link has no invitation token.", "error");
+    buttons.forEach((b) => (b.disabled = true));
+  }
+
+  document.getElementById("sign-in").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    try {
+      const auth = await postJSON("/api/collections/users/auth-with-password", {
+        identity: form.get("email"),
+        password: form.get("password"),
+      });
+      await accept({}, auth.token);
+    } catch (err) {
+      show(err.message, "error");
+    }
+  });
+
+  document.getElementById("create").addEventListener("submit", (event) => {
+    event.preventDefault();
+    accept({ password: new FormData(event.target).get("password") });
+  });
+</script>
+</body>
+</html>
