@@ -5,11 +5,15 @@ import sys
 import uuid
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
+from django.utils.module_loading import import_string
 from starlette.testclient import TestClient
 
+from overbae.services import workspaces
 from overbae.services.workspaces import WorkspaceUnavailableError, conformance
 from overbae.services.workspaces.daytona import DaytonaProvider, snapshot_name
 from overbae.services.workspaces.native import NativeProvider
+from overbae.services.workspaces.nitro import NitroProvider
 from sandbox import server
 
 pytestmark = pytest.mark.covers("workspaces")
@@ -28,6 +32,34 @@ def provider(sandbox_server):
 @pytest.mark.parametrize("check", conformance.CHECKS, ids=lambda check: check.__name__)
 def test_native_provider_meets_the_contract(provider, check):
     check(provider)
+
+
+@pytest.mark.parametrize("check", conformance.CHECKS, ids=lambda check: check.__name__)
+def test_nitro_provider_meets_the_contract_against_a_workspace_server(sandbox_server, check):
+    check(NitroProvider(*sandbox_server))
+
+
+CONTRACT = sorted(
+    name for name, value in vars(workspaces.Provider).items() if callable(value) and name[0] != "_"
+)
+
+
+@pytest.mark.parametrize("name", sorted(workspaces.PROVIDERS))
+def test_every_registered_provider_implements_the_whole_contract(name):
+    cls = import_string(workspaces.PROVIDERS[name])
+    missing = [method for method in CONTRACT if not callable(getattr(cls, method, None))]
+    assert not missing, f"{name} lacks {missing}"
+
+
+def test_the_factory_builds_the_configured_provider_and_refuses_an_unknown_one(settings):
+    settings.WORKSPACE_PROVIDER = "nitro"
+    settings.NITRO_SANDBOX_URL, settings.NITRO_SANDBOX_TOKEN = "http://nitro.test", "t"
+    built = workspaces.provider()
+    assert isinstance(built, NitroProvider)
+    assert built.url == "http://nitro.test/v1/workspaces"
+    settings.WORKSPACE_PROVIDER = "firecracker"
+    with pytest.raises(ImproperlyConfigured, match="native, daytona, nitro"):
+        workspaces.provider()
 
 
 @contained
