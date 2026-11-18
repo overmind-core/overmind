@@ -99,6 +99,16 @@ function AuthorizeConnection() {
               <p className="text-muted-foreground">Return address</p>
               <p className="break-all">{details.data.redirectUri}</p>
             </div>
+            {me.isError ? (
+              <Alert variant="destructive">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Account details did not load.</span>
+                  <Button onClick={() => void me.refetch()} size="sm" variant="secondary">
+                    Retry
+                  </Button>
+                </div>
+              </Alert>
+            ) : null}
             {decision.isError ? (
               <Alert variant="destructive">
                 The connection could not be completed. Start again from your MCP client.
