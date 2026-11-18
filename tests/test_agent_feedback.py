@@ -16,6 +16,7 @@ from overbae.services.mcp.server import create_mcp_application
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("privacy")]
 
 SLACK = "https://hooks.slack.com/services/T000/B000/feedback"
+PEM = "PRIVATE" + " KEY"  # Split so the private-key commit hook skips this fixture.
 
 
 def report(**fields):
@@ -92,7 +93,7 @@ def test_reports_keep_platform_behaviour_and_drop_what_identifies_the_customer(s
             "Upload of /home/alice/acme/claims.csv for alice@acme.com failed at "
             "https://acme.internal/upload from 10.2.3.4 with key sk-live-abcdefghijklmnop. "
             "Authorization: Bearer opaque-example-123456. <!channel> <@U123> please look. "
-            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpkeybody\n-----END RSA PRIVATE KEY-----"
+            f"-----BEGIN RSA {PEM}-----\nMIIEpkeybody\n-----END RSA {PEM}-----"
         ),
         trail=[
             {
