@@ -1,11 +1,14 @@
 import json
 import os
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import httpx
 import pytest
 
+from overbae.services.datasets import store
 from overbae.services.workspaces.conformance import LIBRARY_USE
 from sandbox import execute, packages
 from sandbox.protocol import HeaderReader, header_bytes
@@ -13,10 +16,16 @@ from sandbox.protocol import HeaderReader, header_bytes
 pytestmark = pytest.mark.covers("sandbox")
 
 
-def run_package(sandbox_server, code, *, limits=None, runtime=None, files=None):
+def run_package(
+    sandbox_server, code, *, limits=None, runtime=None, files=None, rows=None, batch_rows=None
+):
     url, token = sandbox_server
     package = json.dumps(files or {"step.py": code}).encode()
-    source = b'{"source_row": 0, "value": 9007199254740993}\n'
+    rows = rows or [{"source_row": 0, "value": 9007199254740993}]
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "input.parquet"
+        store.write_rows(path, rows)
+        source = path.read_bytes()
     header = {
         "mode": "package",
         "runtime": runtime or packages.runtime_id(),
@@ -24,7 +33,9 @@ def run_package(sandbox_server, code, *, limits=None, runtime=None, files=None):
         "parameters": {},
         "package_bytes": len(package),
         "input_bytes": len(source),
+        "rows": len(rows),
         "limits": limits or {"seconds": 20},
+        **({"batch_rows": batch_rows} if batch_rows else {}),
     }
     response = httpx.post(
         url + "/v1/run",
@@ -60,6 +71,32 @@ def test_package_runs_on_isolated_service_with_exact_rows_and_nested_modules(san
     assert status == 200 and result["ok"], result
     assert result["exit_code"] == 0
     assert json.loads(payload)["value"] == 9007199254740993
+
+
+@pytest.mark.parametrize("fail_last", [False, True])
+def test_batches_run_one_after_another_in_fresh_processes_and_keep_order(sandbox_server, fail_last):
+    code = """import json, pathlib, sys
+rows = [json.loads(line) for line in open(sys.argv[1])]
+if FAIL and rows[0]["source_row"] == 8:
+    raise SystemExit(1)
+seen = pathlib.Path("seen").exists()
+pathlib.Path("seen").write_text("x")
+# No final newline: each batch's last row must not join the next batch's first.
+with open(sys.argv[2], "w") as output:
+    output.write("\\n".join(json.dumps({**r, "batch": len(rows), "seen": seen}) for r in rows))
+""".replace("FAIL", str(fail_last))
+    status, result, payload = run_package(
+        sandbox_server, code, rows=[{"source_row": i} for i in range(11)], batch_rows=4
+    )
+    assert status == 200
+    if fail_last:
+        assert not result["ok"] and payload == b""
+        return
+    assert result["ok"], result
+    rows = [json.loads(line) for line in payload.splitlines()]
+    assert [row["source_row"] for row in rows] == list(range(11))
+    assert [row["batch"] for row in rows] == [4] * 8 + [3] * 3
+    assert not any(row["seen"] for row in rows)
 
 
 def test_a_package_sees_no_other_process_and_opens_no_network_socket(sandbox_server):

@@ -261,10 +261,6 @@ class FileRows:
             }
 
 
-def read_file_rows(path: Path, *, filename: str) -> list[dict[str, Any]]:
-    return list(FileRows(path, filename=filename))
-
-
 def inspect_upload(
     upload_id: str, *, size: int, json_rows_field: str | None = None
 ) -> dict[str, Any]:

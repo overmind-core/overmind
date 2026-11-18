@@ -1,8 +1,8 @@
 from django.db.models import Q
 
-from overbae.models import Cell, DataPartitionMember, EvalRun, FinetuningJob, NativeEvaluationPlan
+from overbae.models import DataPartitionMember, EvalRun, FinetuningJob, NativeEvaluationPlan
 
-ROLE_NAMES = ("training", "development", "calibration", "evaluation", "source")
+ROLE_NAMES = ("training", "development", "calibration", "evaluation")
 PARTITION_ROLES = {
     "train": "training",
     "development": "development",
@@ -53,17 +53,6 @@ def dataset_roles(datasets):
             for identity, role in zip(row, fields.values(), strict=True):
                 add(identity, role)
 
-    sources = set()
-    transformed = set()
-    for identity, position in (
-        Cell.objects.filter(dataset_id__in=ids, state="ok")
-        .exclude(fingerprint="")
-        .values_list("dataset_id", "position")
-    ):
-        (sources if position == 0 else transformed).add(identity)
-    for identity in sources - transformed:
-        if not roles[identity]:
-            add(identity, "source")
     return {
         str(identity): [role for role in ROLE_NAMES if role in assigned]
         for identity, assigned in roles.items()

@@ -44,15 +44,23 @@ def set_active(dataset: Dataset, cell: Cell | None) -> Dataset:
     return dataset
 
 
-def set_intent(dataset: Dataset, intent: str) -> Dataset:
+def set_intent(dataset: Dataset, intent: str, train_format: str = "") -> Dataset:
     _refuse_while_busy(dataset)
-    if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL, Dataset.Intent.EXPLORE):
-        raise DatasetError("Choose Training, Eval, or Data exploration.", code="intent")
+    if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
+        raise DatasetError("Choose training or evaluation.", code="intent")
+    if train_format not in ("", *Dataset.TrainFormat.values) or (
+        train_format and intent != Dataset.Intent.TRAIN
+    ):
+        raise DatasetError(
+            "A training format is sft or decision, for training only.", code="intent"
+        )
     if dataset.frozen_before >= 0:
         raise DatasetError("A version was used; the intent is fixed.", code="frozen")
-    if intent != dataset.intent:
-        _touch(dataset, intent=intent)
-        measure.capability_only(dataset)
+    if (intent, train_format) != (dataset.intent, dataset.train_format):
+        changed = intent != dataset.intent
+        _touch(dataset, intent=intent, train_format=train_format)
+        if changed:
+            measure.capability_only(dataset)
     return dataset
 
 

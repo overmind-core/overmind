@@ -11,6 +11,7 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
@@ -29,13 +30,14 @@ from overbae.services.datasets import (
     contract,
     documents,
     files,
+    lineage,
     measure,
     operations,
     paths,
     selection,
     store,
 )
-from overbae.services.datasets.partition import preserve_lineage, split_rows
+from overbae.services.datasets.partition import split_rows
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,8 @@ class Landing:
     kind: str = "file"
     spec: dict[str, Any] = field(default_factory=dict)
     manifest: list[dict] | None = None
+    # The lineage keys each row carries from an earlier version, in row order.
+    inherited: Iterable[lineage.Keys] | None = None
 
     def split(
         self, *, eval_percent: int, position: str, group_by=(), stratify_by=None, deduplicate=True
@@ -83,7 +87,6 @@ def _stamp_source_rows(rows):
     for offset, row in enumerate(rows):
         row = dict(row)
         row[store.SOURCE_ROW] = offset
-        row["_overmind_provenance"] = preserve_lineage(row)
         yield row
 
 
@@ -97,19 +100,28 @@ class PreparedLanding:
     sources: list[dict]
 
 
-def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True):
+def prepare(
+    dataset, landing, *, path, state=Dataset.State.IDLE, infer_capability=True, on_progress=None
+):
     manifest = landing.manifest
-    if manifest and not any(column["name"] == "_overmind_provenance" for column in manifest):
-        manifest = [*manifest, {"name": "_overmind_provenance", "type": "json"}]
+    # Traces stream with no count up front; the counter then has no total.
+    total = len(landing.rows) if hasattr(landing.rows, "__len__") else None
+
+    def progress(detail):
+        if on_progress:
+            on_progress(detail)
 
     def checked_rows():
         for index, row in enumerate(_stamp_source_rows(landing.rows)):
             if index % 1000 == 0:
                 operations.check_cancelled(dataset.id)
+                progress({"stage": "writing", "rows_done": index, "rows_total": total})
             yield row
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
     store.write_rows(path, checked_rows(), manifest)
+    written = time.monotonic()
     operations.check_cancelled(dataset.id)
     sources = landing.spec.get("sources", [])
     fields = {
@@ -135,18 +147,35 @@ def prepare(dataset, landing, *, path, state=Dataset.State.IDLE, infer_capabilit
             fields["capability_id"] = best["capability_id"]
             measured.capability_id = best["capability_id"]
     source = dataset.cells.filter(position=0).first()
-    return PreparedLanding(
+    prepared = PreparedLanding(
         dataset.pk,
         source.pk if source else uuid.uuid4(),
         path,
         fields,
         {
-            **measure.describe_frame(measured, path, report=contract.measure_path(path)),
+            **measure.describe_frame(
+                measured,
+                path,
+                inherited=landing.inherited,
+                on_progress=lambda done: progress(
+                    {"stage": "measuring", "rows_done": done, "rows_total": total}
+                ),
+            ),
             "input_fingerprint": "",
             "seconds": 0.0,
         },
         sources,
     )
+    logger.info(
+        "Landing measured",
+        extra={
+            "dataset": str(dataset.pk),
+            "rows": prepared.cell_fields["rows"],
+            "write_seconds": round(written - started, 3),
+            "measure_seconds": round(time.monotonic() - written, 3),
+        },
+    )
+    return prepared
 
 
 @transaction.atomic
@@ -166,6 +195,7 @@ def publish(dataset, prepared, *, user=None):
     destination = paths.cell_path(locked.pk, prepared.cell_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
     prepared.path.replace(destination)
+    lineage.keys_path(prepared.path).replace(lineage.keys_path(destination))
     if source is None:
         Cell.objects.create(
             id=prepared.cell_id,
@@ -176,13 +206,7 @@ def publish(dataset, prepared, *, user=None):
             **prepared.cell_fields,
         )
     else:
-        fields = dict(prepared.cell_fields)
-        if source.preparation_plan:
-            fields["preparation_plan"] = {
-                **source.preparation_plan,
-                "result_fingerprint": fields["fingerprint"],
-            }
-        Cell.objects.filter(pk=source.pk).update(**fields)
+        Cell.objects.filter(pk=source.pk).update(**prepared.cell_fields)
     Dataset.objects.filter(pk=locked.pk).update(
         **prepared.dataset_fields, updated_at=timezone.now()
     )
@@ -281,40 +305,28 @@ def _read_one(
         "staged_path": str(path),
     }
     return Landing(
-        EvidenceRows(rows, identity, filename, spool),
+        SourceRows(rows, spool),
         spec={"filename": filename, "sources": [artifact]},
     )
 
 
 @dataclass
-class EvidenceRows:
+class SourceRows:
+    """A file's rows, and the extraction spool they are read from while the landing runs."""
+
     source: files.FileRows
-    identity: str
-    filename: str
     spool: tempfile.TemporaryDirectory | None = field(default=None, repr=False)
 
     def __len__(self):
         return len(self.source)
 
-    def __getitem__(self, index):
-        for offset, row in enumerate(self):
-            if offset == index:
-                return row
-        raise IndexError(index)
-
     def __iter__(self):
-        for offset, original in enumerate(self.source):
-            row = dict(original)
-            row["_overmind_provenance"] = {
-                **preserve_lineage(row),
-                "file": {"sha256": self.identity, "filename": self.filename, "row": offset},
-            }
-            yield row
+        return iter(self.source)
 
 
 @dataclass
 class UploadRows:
-    sources: list[EvidenceRows]
+    sources: list[SourceRows]
 
     def __len__(self):
         return sum(len(source) for source in self.sources)

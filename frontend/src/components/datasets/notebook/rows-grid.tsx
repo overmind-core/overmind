@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { diffText } from "@/components/datasets/notebook/diff";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +109,76 @@ function cellText(value: unknown): string {
   }
 }
 
+const TURN_FIELDS = new Set(["role", "content", "name", "tool_calls", "tool_call_id"]);
+
+/** A chat turn: a role and nothing but the fields a turn carries. */
+function isTurn(value: unknown): value is { role: string; content?: unknown } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { role?: unknown }).role === "string" &&
+    Object.keys(value).every((key) => TURN_FIELDS.has(key))
+  );
+}
+
+// A collapsed object shows its first fields; the expanded row shows them all.
+const PREVIEW_FIELDS = 6;
+
+function Tag({ children }: { children: ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-xs border border-border/70 px-1 text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+/** One line for a nested value: a conversation's turns, a list's size and first item,
+ *  or an object's fields, so a cell reads as data rather than JSON text. */
+function ValuePreview({ value }: { value: object }) {
+  if (Array.isArray(value)) {
+    if (value.length > 0 && value.every(isTurn)) {
+      // A conversation reads by its first user message; every turn shows in the row view.
+      const text = (turn: { content?: unknown }) => cellText(turn.content ?? "").trim();
+      const opening =
+        value.find((turn) => turn.role === "user" && text(turn)) ??
+        value.find((turn) => text(turn)) ??
+        value[0];
+      return (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Tag>{value.length === 1 ? "1 turn" : `${value.length} turns`}</Tag>
+          <span className="truncate">{cellText(opening.content)}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Tag>{value.length === 1 ? "1 item" : `${value.length} items`}</Tag>
+        {value.length > 0 &&
+          (value[0] && typeof value[0] === "object" ? (
+            <ValuePreview value={value[0] as object} />
+          ) : (
+            <span className="truncate">{cellText(value[0])}</span>
+          ))}
+      </span>
+    );
+  }
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      {Object.entries(value)
+        .slice(0, PREVIEW_FIELDS)
+        .map(([key, item]) => (
+          <span className="flex shrink-0 items-center gap-1" key={key}>
+            <span className="text-muted-foreground">{key}</span>
+            <span>{item === null ? "—" : cellText(item)}</span>
+          </span>
+        ))}
+      {Object.keys(value).length > PREVIEW_FIELDS && (
+        <Tag>+{Object.keys(value).length - PREVIEW_FIELDS}</Tag>
+      )}
+    </span>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-sm border border-border/70 bg-wash-raised px-2 py-1.5">
@@ -148,7 +218,7 @@ function ColumnStatsCard({ column, total }: { column: ColumnStat; total: number 
       <HoverCardTrigger asChild>
         <button
           aria-label={`Profile of ${column.name}`}
-          className="rounded-sm p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+          className="rounded-sm p-0.5 text-muted-foreground/60 opacity-0 hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/column:opacity-100"
           type="button"
         >
           <Icon.chartBar className="size-3" />
@@ -539,7 +609,7 @@ export function RowsGrid({
                       aria-sort={
                         active ? (sort?.dir === "asc" ? "ascending" : "descending") : "none"
                       }
-                      className="max-w-[26rem] border-r border-b border-border/70 px-2 py-1.5 text-left font-normal last:border-r-0"
+                      className="group/column max-w-[26rem] border-r border-b border-border/70 px-2 py-1.5 text-left font-normal last:border-r-0"
                       key={c.name}
                       scope="col"
                     >
@@ -595,9 +665,10 @@ export function RowsGrid({
                     ? undefined
                     : marks[String(sourceRow)];
                 const open = openRow === rowIndex;
+                // Frames written before _overmind_evidence keep it in _overmind_provenance.
                 const evidence =
                   (
-                    row._overmind_provenance as {
+                    (row._overmind_evidence ?? row._overmind_provenance) as {
                       evidence?: Array<{ filename: string; page?: number; element?: string }>;
                     } | null
                   )?.evidence ?? [];
@@ -620,10 +691,10 @@ export function RowsGrid({
                         setOpenRow(open ? null : rowIndex);
                       }}
                     >
-                      <td className="border-r border-b border-border/60 px-2 py-1 font-mono tabular-nums text-muted-foreground">
+                      <td className="border-r border-b border-border/60 px-2 py-1 align-top font-mono tabular-nums text-muted-foreground">
                         <button
                           aria-expanded={open}
-                          aria-label={`${open ? "Collapse" : "Inspect"} row ${row._index}`}
+                          aria-label={`${open ? "Collapse" : "Inspect"} row ${row._index + 1}`}
                           className="w-full text-left hover:text-foreground"
                           onClick={(event) => {
                             event.stopPropagation();
@@ -631,7 +702,7 @@ export function RowsGrid({
                           }}
                           type="button"
                         >
-                          {row._index}
+                          {row._index + 1}
                         </button>
                       </td>
                       {columns.map((c) => {
@@ -651,7 +722,7 @@ export function RowsGrid({
                             title={!open && text.length > 80 ? text.slice(0, 400) : undefined}
                           >
                             <div
-                              aria-label={open ? `Row ${row._index}, ${c.name}` : undefined}
+                              aria-label={open ? `Row ${row._index + 1}, ${c.name}` : undefined}
                               className={cn(
                                 open
                                   ? "max-h-48 select-text overflow-auto whitespace-pre-wrap break-words"
@@ -664,6 +735,8 @@ export function RowsGrid({
                                 <ChangedValue after={value} before={before[c.name]} wrap={open} />
                               ) : text === "" ? (
                                 "null"
+                              ) : !open && value && typeof value === "object" ? (
+                                <ValuePreview value={value} />
                               ) : (
                                 text
                               )}

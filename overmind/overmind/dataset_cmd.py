@@ -28,7 +28,7 @@ CHUNK_TIMEOUT = 120
 UPLOAD_TRANSPORT_RETRIES = 5
 MIN_UPLOAD_CHUNK_BYTES = 1024 * 1024
 EXPORT_CHUNK_SIZE = 8_192
-ALLOWED_INTENTS = {"train", "eval", "explore"}
+ALLOWED_INTENTS = {"train", "eval"}
 SPLIT_POSITIONS = ("head", "tail", "random")
 EXPORT_HEADERS = (
     ("cell", "X-Overmind-Cell"),
@@ -250,7 +250,7 @@ def _normalize_intent(intent: str | None) -> str | None:
     if not value:
         return None
     if value not in ALLOWED_INTENTS:
-        raise DatasetUploadError("intent must be train, eval or explore.")
+        raise DatasetUploadError("intent must be train or eval.")
     return value
 
 
@@ -631,7 +631,7 @@ def upload(
     path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
     intent: Annotated[
         str | None,
-        typer.Option("--intent", help="Dataset intent: train, eval or explore"),
+        typer.Option("--intent", help="Dataset intent: train or eval"),
     ] = None,
     capability: Annotated[
         str | None,

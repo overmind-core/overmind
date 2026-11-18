@@ -100,3 +100,23 @@ def test_a_transcript_that_landing_cut_does_not_fit_train():
     report = contract.measure(pd.DataFrame([row, {"messages": TURNS}]))["train"]
     assert report["ok"] is False
     assert report["failures"] == [{"row": 0, "reason": "a value was cut at landing"}]
+
+
+def test_a_batched_eval_output_is_judged_by_every_frame():
+    decision = {
+        "decision": {"state": "s", "question": "q?", "kind": "choice", "options": ["a", "b"]}
+    }
+    reference = {"probabilities": [1.0, 0.0]}
+    referenced = pd.DataFrame([{"input": decision, "expected_output": reference}])
+
+    def frames(*parts):
+        return contract.measure_frames(
+            ((part, None) for part in parts), ["input", "expected_output"]
+        )
+
+    # A later frame's decision without a reference fails the output.
+    unreferenced = pd.DataFrame([{"input": decision, "expected_output": None}])
+    assert not frames(referenced, unreferenced)["eval"]["ok"]
+    # A text frame without references still counts its input type.
+    text = pd.DataFrame([{"input": "plain question", "expected_output": None}])
+    assert set(frames(referenced, text)["eval"]["input_types"]) == {"decision", "text"}

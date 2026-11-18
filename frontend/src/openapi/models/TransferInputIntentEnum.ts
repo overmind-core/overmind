@@ -16,13 +16,11 @@
 /**
  * * `train` - train
  * * `eval` - eval
- * * `explore` - explore
  * @export
  */
 export const TransferInputIntentEnum = {
     train: 'train',
-    eval: 'eval',
-    explore: 'explore'
+    eval: 'eval'
 } as const;
 export type TransferInputIntentEnum = typeof TransferInputIntentEnum[keyof typeof TransferInputIntentEnum];
 

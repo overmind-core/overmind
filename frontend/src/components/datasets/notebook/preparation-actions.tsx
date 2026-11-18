@@ -82,7 +82,7 @@ export function PreparationActions({
           </HoverCardContent>
         </HoverCard>
       )}
-      <PromptAgentActions prompt={prompt} />
+      <PromptAgentActions prompt={prompt} quiet />
       {children}
     </div>
   );

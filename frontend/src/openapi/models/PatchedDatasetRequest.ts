@@ -56,9 +56,25 @@ export interface PatchedDatasetRequest {
      * @type {string}
      * @memberof PatchedDatasetRequest
      */
+    trainFormat?: PatchedDatasetRequestTrainFormatEnum;
+    /**
+     *
+     * @type {string}
+     * @memberof PatchedDatasetRequest
+     */
     active?: string | null;
 }
 
+
+/**
+ * @export
+ */
+export const PatchedDatasetRequestTrainFormatEnum = {
+    sft: 'sft',
+    decision: 'decision',
+    empty: ''
+} as const;
+export type PatchedDatasetRequestTrainFormatEnum = typeof PatchedDatasetRequestTrainFormatEnum[keyof typeof PatchedDatasetRequestTrainFormatEnum];
 
 
 /**
@@ -82,6 +98,7 @@ export function PatchedDatasetRequestFromJSONTyped(json: any, ignoreDiscriminato
         'ocrLanguages': json['ocr_languages'] == null ? undefined : json['ocr_languages'],
         'capability': json['capability'] == null ? undefined : json['capability'],
         'intent': json['intent'] == null ? undefined : IntentEnumFromJSON(json['intent']),
+        'trainFormat': json['train_format'] == null ? undefined : json['train_format'],
         'active': json['active'] == null ? undefined : json['active'],
     };
 }
@@ -101,6 +118,7 @@ export function PatchedDatasetRequestToJSONTyped(value?: PatchedDatasetRequest |
         'ocr_languages': value['ocrLanguages'],
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),
+        'train_format': value['trainFormat'],
         'active': value['active'],
     };
 }

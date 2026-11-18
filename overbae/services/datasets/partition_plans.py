@@ -14,9 +14,9 @@ from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
 from overbae.models import DataPartitionMember, DataPartitionPlan, Dataset, Project
-from overbae.services.datasets import land, paths, rows, store, use
+from overbae.services.datasets import land, lineage, paths, rows, store, use
 from overbae.services.datasets.examples import field_value, native_decision, prepare_native_record
-from overbae.services.datasets.partition import GROUP_ALIASES, contamination_keys, preserve_lineage
+from overbae.services.datasets.partition import GROUP_ALIASES
 
 ROLES = ("train", "development", "calibration", "final")
 
@@ -129,11 +129,16 @@ def assign(cell, recipe, destination, *, progress=None):
             "CREATE TABLE identities (kind TEXT, value TEXT, owner INTEGER, PRIMARY KEY(kind,value))"
         )
         db.execute("CREATE TABLE observations (row INTEGER PRIMARY KEY, stratum TEXT, forced TEXT)")
-        for index, record in enumerate(store.iter_rows(rows.frame_path(cell))):
+        for index, (record, (_, keys)) in enumerate(
+            zip(
+                store.iter_rows(rows.frame_path(cell)),
+                lineage.with_groups(cell, recipe["group_by"]),
+                strict=True,
+            )
+        ):
             if progress and index % 10000 == 0:
                 progress("grouping", index, cell.rows)
             parents.append(index)
-            keys = contamination_keys(record, recipe["group_by"])
             if unresolved_groups:
                 group_kinds = {kind for kind, _ in keys if kind != "content"}
                 unresolved_groups = {
@@ -304,31 +309,22 @@ def build(plan_id):
             streams = {
                 role: (work / f"{role}.jsonl").open("w") for role in plan.recipe["fractions"]
             }
+            inherited = {role: [] for role in plan.recipe["fractions"]}
             try:
                 with (work / "assignments.jsonl").open() as assignments:
-                    for index, (record, line) in enumerate(
+                    for index, (record, (_, keys), line) in enumerate(
                         zip(
                             store.iter_rows(rows.frame_path(plan.source_cell)),
+                            lineage.with_groups(plan.source_cell, plan.recipe["group_by"]),
                             assignments,
                             strict=True,
                         )
                     ):
                         if index % 10000 == 0:
                             progress("writing", index, plan.source_cell.rows)
-                        assignment = json.loads(line)
-                        preserved = {
-                            **record,
-                            "_overmind_provenance": preserve_lineage(
-                                record, group_by=plan.recipe["group_by"]
-                            ),
-                        }
-                        preserved.setdefault("_overmind_provenance", {})["partition"] = {
-                            "plan": str(plan.pk),
-                            "role": assignment["role"],
-                            "source_cell": str(plan.source_cell_id),
-                            "source_row": assignment["row"],
-                        }
-                        streams[assignment["role"]].write(json.dumps(preserved) + "\n")
+                        role = json.loads(line)["role"]
+                        streams[role].write(json.dumps(record) + "\n")
+                        inherited[role].append(keys)
             finally:
                 for stream in streams.values():
                     stream.close()
@@ -355,6 +351,7 @@ def build(plan_id):
                             dataset,
                             land.Landing(
                                 prepared_member_rows(source, role),
+                                inherited=inherited[role],
                                 spec={
                                     "partition_plan": str(plan.pk),
                                     "role": role,

@@ -70,6 +70,12 @@ export interface DatasetCreateRequest {
      * @memberof DatasetCreateRequest
      */
     source?: SourceRequest;
+    /**
+     * Queue the assistant's first pass, which starts once the source lands.
+     * @type {boolean}
+     * @memberof DatasetCreateRequest
+     */
+    prepare?: boolean;
 }
 
 
@@ -98,6 +104,7 @@ export function DatasetCreateRequestFromJSONTyped(json: any, ignoreDiscriminator
         'capability': json['capability'] == null ? undefined : json['capability'],
         'intent': json['intent'] == null ? undefined : IntentEnumFromJSON(json['intent']),
         'source': json['source'] == null ? undefined : SourceRequestFromJSON(json['source']),
+        'prepare': json['prepare'] == null ? undefined : json['prepare'],
     };
 }
 
@@ -118,5 +125,6 @@ export function DatasetCreateRequestToJSONTyped(value?: DatasetCreateRequest | n
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),
         'source': SourceRequestToJSON(value['source']),
+        'prepare': value['prepare'],
     };
 }

@@ -4,11 +4,12 @@ from datetime import timedelta
 import pytest
 from conftest import frozen_dataset
 from django.utils import timezone
-from factories import make_project, make_user
+from factories import auth_client, make_capability, make_project, make_user
 from fakes.llm import tool_call
 
 from overbae.core.llms import stream_llm_tools
 from overbae.models import (
+    AssistantInput,
     AssistantThread,
     BillingTelemetry,
     Dataset,
@@ -16,8 +17,8 @@ from overbae.models import (
     ProjectMembership,
 )
 from overbae.services import workspaces
-from overbae.services.assistant import log, threads, turn
-from overbae.services.datasets import lifecycle, list_activity
+from overbae.services.assistant import log, threads, tools, turn
+from overbae.services.datasets import land, lifecycle, list_activity
 from overbae.tasks import assistant as assistant_tasks
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("assistant-turn")]
@@ -203,6 +204,95 @@ def test_one_call_retains_a_pipeline_and_runs_it_and_a_correction_is_its_next_re
     # The corrected script writes nothing: the failed step says why.
     failed = results(thread)[-1]
     assert not failed["ok"] and failed["content"]["error"]
+
+
+def test_a_publish_runs_a_sample_first_and_a_failing_sample_publishes_nothing(
+    fake_llm, user, eager
+):
+    project = make_project(member=user)
+    rows = [{"input": f"q{i}", "expected_output": "a"} for i in range(tools.SAMPLE_ROWS + 1)]
+    thread = threads.open_thread(frozen_dataset(project, rows, user=user))
+    source = thread.dataset.source
+    manifest = {"version": 1, "steps": [{"name": "Break", "entrypoint": "break.py"}]}
+    files = {"manifest.json": json.dumps(manifest), "break.py": "raise SystemExit('broken')\n"}
+    call = {"summary": "Publishing", "source_cell": str(source.pk), "mode": "publish"}
+    fake_llm.stream_rounds(
+        [([tool_call("run_pipeline", {**call, "name": "Break", "files": files})], ""), ([], "")]
+    )
+    say(thread, user, "Prepare it.")
+
+    (failed,) = results(thread)
+    assert not failed["ok"] and failed["content"]["sample"] and failed["content"]["error"]
+    (run,) = DatasetPipeline.objects.get().datasetpipelinerun_set.all()
+    assert (run.mode, run.state) == ("preview", "failed")
+    thread.dataset.refresh_from_db()
+    assert thread.dataset.active_cell == source
+
+
+def test_the_first_message_carries_each_versions_fit_profile_and_the_capability_contract(user):
+    project = make_project(member=user)
+    capability = make_capability(
+        project,
+        "Support",
+        improvement_metadata={"capability_card": {"system_prompt": "Answer tickets."}},
+    )
+    reply = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]
+    rows = [{"messages": reply, "queue": "billing"}] * 2 + [
+        {"messages": reply[:1] + [{"role": "assistant", "content": "Bye"}], "queue": "tech"}
+    ]
+    dataset = frozen_dataset(project, rows, user=user, capability=capability)
+    brief = threads.brief(threads.open_thread(dataset))
+
+    assert brief["capability"]["system_prompt"] == "Answer tickets."
+    source = brief["source"]
+    assert source["fit"]["sft"]["ok"] and not source["fit"]["decision"]["ok"]
+    assert source["duplicate_rows"] == 1
+    queue = next(column for column in source["columns"] if column["name"] == "queue")
+    assert queue["distinct"] == 2 and queue["top"][0] == {"value": "billing", "count": 2}
+
+
+def test_a_dataset_made_with_an_intent_queues_one_first_pass_and_a_split_one_for_both(user):
+    project = make_project(member=user)
+    client = auth_client(user)
+    body = {
+        "project": str(project.pk),
+        "name": "Tickets",
+        "brief": "Keep the tone.",
+        "prepare": True,
+        "source": {"rows": [{"text": f"t{i}"} for i in range(4)]},
+    }
+    made = client.post("/api/datasets/", {**body, "intent": "train"}, format="json").data
+    (message,) = AssistantInput.objects.filter(thread__dataset_id=made["id"])
+    assert message.text == f"{threads.FIRST_PASS['train']}\n\nKeep the tone."
+    assert message.state == AssistantInput.State.QUEUED
+
+    plain = client.post("/api/datasets/", {**body, "prepare": False}, format="json").data
+    assert not AssistantThread.objects.filter(dataset_id=plain["id"]).exists()
+
+    split = {**body, "name": "Pair", "eval_percent": 50, "position": "tail"}
+    pair = client.post("/api/datasets/split/", split, format="json").data
+    (first,) = AssistantInput.objects.filter(thread__dataset_id=pair["train"]["id"])
+    assert first.text.startswith(threads.SPLIT_PASS)
+    assert not AssistantThread.objects.filter(dataset_id=pair["eval"]["id"]).exists()
+
+
+def test_a_first_pass_waits_through_a_failed_import_for_a_landed_source(
+    user, woken, django_capture_on_commit_callbacks
+):
+    project = make_project(member=user)
+    dataset = Dataset.objects.create(
+        project=project, name="t", intent="train", state=Dataset.State.ERROR
+    )
+    message = threads.queue_first_pass(dataset, user)
+    thread = message.thread
+    turn.run(thread.pk)
+    message.refresh_from_db()
+    assert message.state == AssistantInput.State.QUEUED and not thread.events.exists()
+
+    land.land_rows(dataset, [{"text": "a"}])
+    with django_capture_on_commit_callbacks(execute=True):
+        turn.wake_dataset(dataset.pk)
+    assert woken == [str(thread.pk)]
 
 
 def test_a_kernel_that_restarted_is_told_to_the_model(fake_llm, user, thread):

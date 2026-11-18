@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from overbae.services.datasets import paths, store
+from overbae.services.datasets import lineage, paths, store
 from overbae.services.datasets.examples import missing, normalize_record
-from overbae.services.datasets.partition import contamination_keys
 
 
 class RowStoreError(RuntimeError):
@@ -126,18 +125,18 @@ def contamination(train, evaluation) -> dict:
     group_by = set(train.dataset.source_spec.get("split", {}).get("group_by", []))
     group_by.update(evaluation.dataset.source_spec.get("split", {}).get("group_by", []))
     keys = set()
-    for record in store.iter_rows(frame_path(evaluation)):
-        keys.update(contamination_keys(record, group_by))
+    for _, row_keys in lineage.with_groups(evaluation, group_by):
+        keys.update(row_keys)
     count = 0
     examples = []
-    for index, record in enumerate(store.iter_rows(frame_path(train))):
-        shared = contamination_keys(record, group_by) & keys
+    for index, (source_row, row_keys) in enumerate(lineage.with_groups(train, group_by)):
+        shared = row_keys & keys
         if shared:
             count += 1
             if len(examples) < 20:
                 examples.append(
                     {
-                        "row": record.get(store.SOURCE_ROW, index),
+                        "row": index if source_row is None else source_row,
                         "matches": sorted({key[0] for key in shared}),
                     }
                 )
@@ -165,15 +164,9 @@ def sample_rows(dataset: Any, limit: int) -> list[DatasetRow]:
     return [row_from_record(i, rec) for i, rec in enumerate(sample_records(dataset, limit))]
 
 
-def sample_expected_outputs(dataset: Any, limit: int) -> list[Any]:
-    out = [rec.get("expected_output") for rec in sample_records(dataset, limit * 2)]
-    return [v for v in out if v not in (None, "")][:limit]
-
-
 EMPTY_STATS = {
     "num_examples": 0,
     "has_tool_calling": False,
-    "has_multi_turn_tool_calls": False,
     "max_token_length": 0,
     "avg_input_chars": 0,
     "avg_output_chars": 0,

@@ -43,7 +43,7 @@ class TransferInputSerializer(TransferFileInputSerializer):
     files = TransferFileInputSerializer(many=True, required=False, min_length=1, max_length=100)
     dataset = serializers.UUIDField(required=False)
     capability = serializers.UUIDField(required=False)
-    intent = serializers.ChoiceField(choices=["train", "eval", "explore"], required=False)
+    intent = serializers.ChoiceField(choices=["train", "eval"], required=False)
     brief = serializers.CharField(default="", allow_blank=True, max_length=10000)
     split = serializers.IntegerField(min_value=1, max_value=99, required=False)
     split_position = serializers.ChoiceField(choices=["head", "tail", "random"], default="tail")

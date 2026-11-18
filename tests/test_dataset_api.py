@@ -7,7 +7,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from conftest import EVAL_ROWS, import_version, review_fixture
+from conftest import EVAL_ROWS, import_version
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -211,7 +211,6 @@ def test_preparation_names_an_optimizer_experiment_by_its_capability():
         intent="eval",
         capability=str(capability.id),
     )
-    review_fixture(dataset)
     cell = use.use(dataset, "eval")
     experiment = OptimizerExperiment.objects.create(
         project=project, capability=capability, dataset=dataset, cell=cell, entrypoint="answer"
@@ -233,7 +232,6 @@ def test_delete_refused_while_a_version_is_used():
     project = _project()
     client = _client(project)
     dataset = _create(client, project, rows=[dict(r) for r in EVAL_ROWS], intent="eval")
-    review_fixture(dataset)
     use.use(dataset, "eval")
     res = client.delete(f"/api/datasets/{dataset.id}/")
     assert res.status_code == 409 and res.data["code"] == "dataset_referenced"
@@ -280,3 +278,13 @@ def test_another_project_reads_and_writes_nothing():
     res = outsider.get("/api/datasets/", {"project": str(project.id)})
     assert res.status_code == 200 and res.data["results"] == []
     assert Dataset.objects.filter(pk=dataset.pk, name="ds").exists()
+
+
+def test_an_intent_only_patch_keeps_the_training_format():
+    project = _project()
+    client = _client(project)
+    dataset = _create(client, project)
+    url = f"/api/datasets/{dataset.id}/"
+    client.patch(url, {"intent": "train", "train_format": "decision"}, format="json")
+    assert client.patch(url, {"intent": "train"}, format="json").data["train_format"] == "decision"
+    assert client.patch(url, {"intent": "eval"}, format="json").data["train_format"] == ""

@@ -68,7 +68,6 @@ def test_pipeline_poll_and_replay_keep_examples_in_drilldown_not_status(mode):
         assert len(json.dumps(response).encode()) < 48000
     assert job["progress"]["steps"][0]["output_rows"] == 5
     assert job["progress"]["seconds"] > 0
-    assert "input_examples" not in job["progress"]["steps"][0]["impact"]
     assert job["details"]["evidence_resource"]["uri"] == job["resource"]["uri"]
 
     async def evidence():
@@ -276,7 +275,7 @@ def test_pipeline_job_exposes_measured_stage_and_completion_counts():
                 "request_key": "progress",
             },
         )
-    impact = workbench.review.impact_files
+    impact = workbench.measure.describe_frame
     observations = []
 
     def inspect_impact(*args, **kwargs):
@@ -285,9 +284,9 @@ def test_pipeline_job_exposes_measured_stage_and_completion_counts():
         )
         return impact(*args, **kwargs)
 
-    with patch.object(workbench.review, "impact_files", side_effect=inspect_impact):
+    with patch.object(workbench.measure, "describe_frame", side_effect=inspect_impact):
         workbench.execute(run["run"]["id"], script_executor=execute_fixture)
-    assert observations[0]["progress"]["stage"] == "measuring_impact"
+    assert observations[0]["progress"]["stage"] == "step_1_measuring"
     assert observations[0]["progress"]["source_rows"] == 2
     assert observations[0]["progress"]["output_rows"] == 1
     completed = call(context, "get_job", {"kind": "dataset_pipeline", "id": run["run"]["id"]})
@@ -406,7 +405,7 @@ def test_interrupted_worker_cannot_publish_over_a_newer_queued_run(interruption)
         "request_key": "interrupted",
     }
     replacement = []
-    impact = workbench.review.impact_files
+    impact = workbench.measure.describe_frame
 
     def interrupt(*positional, **keyword):
         if interruption == "cancel":
@@ -426,7 +425,7 @@ def test_interrupted_worker_cannot_publish_over_a_newer_queued_run(interruption)
 
     with patch("overbae.tasks.datasets.execute_pipeline.delay"):
         first = call(context, "run_dataset_pipeline", args)
-        with patch.object(workbench.review, "impact_files", side_effect=interrupt):
+        with patch.object(workbench.measure, "describe_frame", side_effect=interrupt):
             workbench.execute(first["run"]["id"], script_executor=execute_fixture)
     dataset.refresh_from_db()
     assert dataset.active_cell.pk == source.pk and dataset.state == "running"
@@ -587,7 +586,7 @@ def test_landing_and_pipeline_preserve_scalar_values_without_lossy_coercion(valu
         assert json.dumps(actual) == json.dumps(values)
         frame_values = store.read_frame(paths.cell_path(dataset.pk, cell.pk))["value"].tolist()
         assert json.dumps(frame_values) == json.dumps(values)
-        batches = store.iter_frames(paths.cell_path(dataset.pk, cell.pk), batch_size=10000)
+        batches = store.iter_frames(paths.cell_path(dataset.pk, cell.pk))
         assert json.dumps(
             [value for frame in batches for value in frame["value"].tolist()]
         ) == json.dumps(values)

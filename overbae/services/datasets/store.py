@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import itertools
 import json
 import math
 import pickle
+import re
 import tempfile
 import threading
 from collections.abc import Iterable
@@ -21,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import orjson
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -29,6 +32,8 @@ from django.conf import settings
 from overbae.services.datasets.statistics import StatisticsUnavailableError, profile
 
 SOURCE_ROW = "source_row"
+# Where a document row came from (file, page, element) and how its text was read.
+EVIDENCE = "_overmind_evidence"
 ROW_GROUP_SIZE = 10_000
 ROW_GROUP_BYTES = 16 * 1024 * 1024
 _MANIFEST_KEY = b"overmind.columns"
@@ -78,14 +83,66 @@ def json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
 
 
+_LONG_DIGITS = re.compile(r"\d{19}")
+
+
+def json_loads(text: str) -> Any:
+    """orjson for speed. The standard library decodes what orjson refuses (NaN, Infinity)
+    and any text with a 19-digit run, since orjson turns integers beyond 64 bits into floats."""
+    if _LONG_DIGITS.search(text):
+        return json.loads(text)
+    try:
+        return orjson.loads(text)
+    except orjson.JSONDecodeError:
+        return json.loads(text)
+
+
+def json_loads_finite(text: str | bytes) -> Any:
+    """``json_loads`` that refuses NaN and Infinity."""
+    if isinstance(text, bytes):
+        text = text.decode()
+    if _LONG_DIGITS.search(text):
+        return json.loads(text, parse_constant=_refuse_constant, parse_float=_finite_float)
+    return orjson.loads(text)
+
+
+def _refuse_constant(name):
+    raise ValueError(f"{name} is not a finite JSON value.")
+
+
+def _finite_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text} is not a finite JSON value.")
+    return value
+
+
+def finite(value: Any) -> bool:
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, dict):
+        return all(finite(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return all(finite(item) for item in value)
+    return True
+
+
+class _Json(str):
+    """A nested value already encoded by ``json_dumps`` while a row was buffered."""
+
+
 def _coerce(value: Any, kind: str) -> Any:
     if _is_missing(value):
         return None
     if kind == "json":
+        if isinstance(value, _Json):
+            return str(value)
         if hasattr(value, "tolist"):
             value = value.tolist()
         return json_dumps(value)
     if kind == "string":
+        if isinstance(value, _Json):
+            return str(value)
         if isinstance(value, (dict, list)):
             return json_dumps(value)
         if isinstance(value, bytes):
@@ -118,13 +175,6 @@ def _coerce(value: Any, kind: str) -> Any:
     return value
 
 
-def _infer_kind(values: list[Any]) -> str:
-    builder = ManifestBuilder()
-    for value in values:
-        builder.add({"value": value})
-    return builder.manifest()[0]["type"] if values else "string"
-
-
 class ManifestBuilder:
     def __init__(self):
         self.kinds = {}
@@ -136,7 +186,7 @@ class ManifestBuilder:
             kinds = self.kinds.setdefault(name, set())
             if _is_missing(value):
                 continue
-            if isinstance(value, (dict, list, tuple)):
+            if isinstance(value, (dict, list, tuple, _Json)):
                 kinds.add("json")
             elif isinstance(value, bool):
                 kinds.add("boolean")
@@ -167,25 +217,6 @@ class ManifestBuilder:
         return result
 
 
-def manifest_from_frame(df: pd.DataFrame) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    for name in df.columns:
-        series = df[name]
-        if pd.api.types.is_bool_dtype(series):
-            kind = "boolean"
-        elif pd.api.types.is_integer_dtype(series):
-            maximum = series.max()
-            kind = "json" if pd.notna(maximum) and maximum >= 2**63 else "integer"
-        elif pd.api.types.is_float_dtype(series):
-            kind = "number"
-        elif pd.api.types.is_datetime64_any_dtype(series):
-            kind = "datetime"
-        else:
-            kind = _infer_kind(series.tolist())
-        out.append({"name": str(name), "type": kind})
-    return out
-
-
 def _table_from_columns(columns: dict[str, list[Any]], manifest: list[dict[str, str]]) -> pa.Table:
     arrays = []
     fields = []
@@ -198,18 +229,21 @@ def _table_from_columns(columns: dict[str, list[Any]], manifest: list[dict[str, 
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
-def _row_batches(rows, batch_size):
-    if batch_size < 1:
-        raise ValueError("batch_size must be positive.")
+def _row_batches(rows):
+    """Row groups of at most ROW_GROUP_SIZE rows or about ROW_GROUP_BYTES. Nested values
+    are encoded once here, which is also how their size is known."""
     batch, size = [], 0
     for row in rows:
-        record = dict(row)
-        encoded_size = len(pickle.dumps(record, protocol=pickle.HIGHEST_PROTOCOL))
-        if batch and (len(batch) >= batch_size or size + encoded_size > ROW_GROUP_BYTES):
+        record = {}
+        for name, value in row.items():
+            if isinstance(value, (dict, list, tuple)):
+                value = _Json(json_dumps(value))
+            record[str(name)] = value
+            size += len(value) if isinstance(value, (str, bytes)) else 8
+        batch.append(record)
+        if len(batch) >= ROW_GROUP_SIZE or size >= ROW_GROUP_BYTES:
             yield batch
             batch, size = [], 0
-        batch.append(record)
-        size += encoded_size
     if batch:
         yield batch
 
@@ -217,13 +251,14 @@ def _row_batches(rows, batch_size):
 def write_rows(
     path: Path, rows: Iterable[dict[str, Any]], manifest: list[dict[str, str]] | None = None
 ) -> list[dict[str, str]]:
+    """Writes rows under ``manifest``, or under the manifest inferred from every row: then
+    row groups wait in a private spool until the last row fixes each column's kind."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".parquet.tmp")
-    # Infer over every row before writing Arrow's fixed schema, without retaining the corpus.
     with tempfile.TemporaryFile() if manifest is None else nullcontext() as spool:
         if manifest is None:
             builder = ManifestBuilder()
-            for batch in _row_batches(rows, ROW_GROUP_SIZE):
+            for batch in _row_batches(rows):
                 for record in batch:
                     builder.add(record)
                 pickle.dump(batch, spool, protocol=pickle.HIGHEST_PROTOCOL)
@@ -239,7 +274,7 @@ def write_rows(
 
             pending = batches()
         else:
-            pending = _row_batches(rows, ROW_GROUP_SIZE)
+            pending = _row_batches(rows)
         schema = _table_from_columns({c["name"]: [] for c in manifest}, manifest).schema
         try:
             with pq.ParquetWriter(temporary, schema, compression="zstd") as writer:
@@ -251,20 +286,6 @@ def write_rows(
         finally:
             temporary.unlink(missing_ok=True)
     return manifest
-
-
-def write_frame(path: Path, df: pd.DataFrame) -> list[dict[str, str]]:
-    manifest = manifest_from_frame(df)
-    columns = {spec["name"]: df[spec["name"]].tolist() for spec in manifest}
-    _write_table(path, _table_from_columns(columns, manifest))
-    return manifest
-
-
-def _write_table(path: Path, table: pa.Table) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".parquet.tmp")
-    pq.write_table(table, tmp, row_group_size=ROW_GROUP_SIZE, compression="zstd")
-    tmp.replace(path)
 
 
 def file_sha256(path: Path) -> str:
@@ -312,7 +333,7 @@ def _decode(value: Any, kind: str) -> Any:
         return None
     if kind == "json":
         try:
-            return json.loads(value)
+            return json_loads(value)
         except (TypeError, ValueError):
             return value
     if kind == "datetime":
@@ -337,27 +358,46 @@ def read_frame(path: Path) -> pd.DataFrame:
     return df
 
 
-def iter_rows(path: Path, batch_size: int = 256):
-    """Decoded dict rows, streaming by row group."""
-    manifest = read_manifest(path)
-    kinds = {spec["name"]: spec["type"] for spec in manifest}
+def iter_rows(path: Path, batch_size: int = 1024, columns: list[str] | None = None):
+    """Decoded dict rows, streaming by row group; only ``columns`` when given."""
+    kinds = {spec["name"]: spec["type"] for spec in read_manifest(path)}
     pf = pq.ParquetFile(path)
-    for batch in pf.iter_batches(batch_size=batch_size):
-        for record in batch.to_pylist():
-            yield {k: _decode(v, kinds.get(k, "string")) for k, v in record.items()}
+    if columns is not None:
+        columns = [name for name in columns if name in kinds]
+    for batch in pf.iter_batches(batch_size=batch_size, columns=columns):
+        names = batch.schema.names
+        if not names:
+            yield from ({} for _ in range(batch.num_rows))
+            continue
+        decoded = [
+            [_decode(v, kinds.get(name, "string")) for v in batch.column(name).to_pylist()]
+            for name in names
+        ]
+        for values in zip(*decoded, strict=True):
+            yield dict(zip(names, values, strict=True))
 
 
-def iter_frames(path: Path, batch_size: int = ROW_GROUP_SIZE):
+def frame(rows, manifest) -> pd.DataFrame:
+    """Decoded rows as a DataFrame that keeps JSON values and nullable integers as objects."""
+    columns = {}
+    for spec in manifest:
+        values = [row.get(spec["name"]) for row in rows]
+        preserve_scalars = spec["type"] == "json" or (
+            spec["type"] == "integer" and any(value is None for value in values)
+        )
+        columns[spec["name"]] = pd.Series(values, dtype=object if preserve_scalars else None)
+    return pd.DataFrame(columns)
+
+
+def iter_frames(path: Path):
+    """One frame per stored row group, which the writer bounds by rows and by bytes."""
     manifest = read_manifest(path)
-    for batch in _row_batches(iter_rows(path), batch_size):
-        columns = {}
-        for spec in manifest:
-            values = [row.get(spec["name"]) for row in batch]
-            preserve_scalars = spec["type"] == "json" or (
-                spec["type"] == "integer" and any(value is None for value in values)
-            )
-            columns[spec["name"]] = pd.Series(values, dtype=object if preserve_scalars else None)
-        yield pd.DataFrame(columns)
+    rows = iter_rows(path)
+    metadata = pq.read_metadata(path)
+    for group in range(metadata.num_row_groups):
+        batch = list(itertools.islice(rows, metadata.row_group(group).num_rows))
+        if batch:
+            yield frame(batch, manifest)
 
 
 def read_rows(path: Path, indices: list[int]) -> list[dict[str, Any]]:
@@ -540,11 +580,19 @@ def page(
     return {"rows": rows, "total": int(total), "columns": manifest}
 
 
-def column_stats(path: Path, *, top: int = 5, fingerprint: str = "") -> list[dict[str, Any]]:
+def frame_profile(
+    path: Path, *, top: int = 5, fingerprint: str = "", duplicates: bool = False
+) -> dict[str, Any]:
     try:
-        return profile(path, read_manifest(path), fingerprint=fingerprint, top=top)
-    except StatisticsUnavailableError as exc:
+        return profile(
+            path, read_manifest(path), fingerprint=fingerprint, top=top, duplicates=duplicates
+        )
+    except (StatisticsUnavailableError, OSError) as exc:
         raise StoreError(str(exc)) from exc
+
+
+def column_stats(path: Path, *, top: int = 5, fingerprint: str = "") -> list[dict[str, Any]]:
+    return frame_profile(path, top=top, fingerprint=fingerprint)["columns"]
 
 
 def connect_sandboxed(**tables: Path) -> duckdb.DuckDBPyConnection:

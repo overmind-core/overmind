@@ -19,6 +19,7 @@ from typing import Any
 
 from modal_shared.decisions import decision_line
 from overbae.models import Cell, Dataset
+from overbae.services.datasets import lineage
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.contract import training_line
 from overbae.services.datasets.examples import normalize_record
@@ -74,7 +75,7 @@ def validate_decision_rows(rows) -> ValidationResult:
     for count, row in enumerate(rows, 1):
         try:
             decision_line(row)
-        except (ValueError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError) as exc:
             if len(errors) < 20:
                 errors.append(f"Example {count}: {exc}")
     if not count:
@@ -140,6 +141,7 @@ def _validate_native_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
+                lineage=lineage.stream(checkpoint),
             )
             result.stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"
@@ -148,6 +150,10 @@ def _validate_native_dataset(
         except ValueError as exc:
             result.valid = False
             result.errors.append(str(exc))
+        except OSError:
+            # A version from before key files writes its key file on first read.
+            result.valid = False
+            result.errors.append("The version's lineage could not be read. Retry the check.")
     return result
 
 
@@ -238,6 +244,7 @@ def validate_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
+                lineage=lineage.stream(checkpoint),
             )
             split_stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"
@@ -246,6 +253,10 @@ def validate_dataset(
         except ValueError as exc:
             result.valid = False
             result.errors.append(str(exc))
+        except OSError:
+            # A version from before key files writes its key file on first read.
+            result.valid = False
+            result.errors.append("The version's lineage could not be read. Retry the check.")
     result.stats.update(split_stats)
     return result
 

@@ -240,7 +240,9 @@ COVERAGE_MAP: dict[str, Entry] = {
         "A turn runs from a message to the reply and saves every step: a turn that stopped "
         "moving is marked interrupted and writes nothing more, a stop ends it at the next "
         "step, a question ends it, and a dataset's deletion removes its copies from the "
-        "workspace.",
+        "workspace. A publish runs its package on a sample first and publishes nothing when "
+        "the sample fails; the first message carries each version's fit and profile; a "
+        "dataset made with an intent or a brief queues one first pass, one for a split.",
     ),
     "assistant-api": Entry(
         S1,

@@ -16,7 +16,7 @@ import { userFacingJobError } from "@/components/finetuning/train/model-config";
 import { CreditsAmount } from "@/components/ui/credits";
 import { DateTime } from "@/components/ui/datetime";
 import { DeltaChip, fromScore } from "@/components/ui/delta-chip";
-import { datasetDetailQuery, INTENT_LABEL, intentOf } from "@/hooks/use-datasets";
+import { datasetDetailQuery, intentLabel, intentOf } from "@/hooks/use-datasets";
 import { jobCostUsd } from "@/lib/finetuning-cost";
 import { StatusBadge } from "@/lib/job-status";
 import { scorePct } from "@/lib/utils";
@@ -94,7 +94,7 @@ export function DatasetCard({ id, name }: { id: string; name: string }) {
       subtitle={data.activeVersion ? `version ${data.activeVersion}` : "no version yet"}
     >
       <Row label="Rows">{(data.rows ?? 0).toLocaleString()}</Row>
-      <Row label="Intent">{INTENT_LABEL[intentOf(data)]}</Row>
+      <Row label="Intent">{intentLabel(intentOf(data), data.trainFormat)}</Row>
       <Row label="Source">{SOURCE_KIND_LABEL[data.sourceKind] ?? data.sourceKind}</Row>
       <Row label="Created">{data.createdAt ? <DateTime value={data.createdAt} /> : null}</Row>
     </EntityCardShell>

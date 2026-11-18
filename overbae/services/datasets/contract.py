@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import json
 import math
-import random
 import re
 from collections import Counter
 from typing import Any
@@ -18,7 +17,6 @@ from modal_shared.decisions import (
     decision_line,
     decision_reference,
 )
-from overbae.services.datasets import store
 from overbae.services.datasets.examples import identifier_only, normalize_record
 from overbae.services.datasets.text import approx_tokens
 from overbae.services.finetuning_tool_validation import tool_schema_errors
@@ -26,7 +24,6 @@ from overbae.services.finetuning_tool_validation import tool_schema_errors
 TRAIN = "train"
 EVAL = "eval"
 PENDING = "pending"
-EXPLORE = "explore"
 _LEGACY_INTENT = {"ft": TRAIN, "unstructured": EVAL}
 _FAILURE_SAMPLES = 10
 
@@ -34,7 +31,7 @@ _FAILURE_SAMPLES = 10
 def public_intent(value: str | None) -> str:
     """``ft`` → train, ``unstructured`` → eval; leftover rows were never rewritten."""
     raw = (value or "").strip()
-    if raw in (TRAIN, EVAL, PENDING, EXPLORE):
+    if raw in (TRAIN, EVAL, PENDING):
         return raw
     return _LEGACY_INTENT.get(raw, PENDING)
 
@@ -141,12 +138,22 @@ def training_line(record: dict[str, Any]) -> dict[str, Any]:
     return line
 
 
-def _train_check(df: pd.DataFrame) -> dict[str, Any]:
+def _train_check(df: pd.DataFrame, decision_problems=None) -> dict[str, Any]:
     # The validator also imports training_line for the shared export contract.
-    from overbae.services.finetuning_validator import validate_rows
+    from overbae.services.finetuning_validator import ValidationResult, validate_rows
 
     if "decision" in df.columns:
-        result = validate_rows(df[["decision"]].to_dict("records"))
+        if decision_problems is None:
+            result = validate_rows(df[["decision"]].to_dict("records"))
+        else:
+            errors = [
+                f"Example {number}: {problem}"
+                for number, problem in enumerate(decision_problems, 1)
+                if problem is not None
+            ][:20]
+            result = ValidationResult(
+                valid=not errors, format="decision", num_examples=len(df), errors=errors
+            )
         semantics = Counter(
             value.get("target_semantics") or "unspecified_distribution"
             for value in df["decision"]
@@ -209,10 +216,35 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
     if "expected_output" in df.columns:
         reference_rows = sum(1 for v in df["expected_output"].tolist() if not _missing(v))
     if not reference_rows:
+        # A frame of a batched output reports its types and its native decisions with
+        # no reference: references in other frames clear only "no expected_output".
+        # Tool schemas do not depend on references, so they fail here as in one frame.
+        tool_failures = [
+            {"row": index, "reason": reason}
+            for index, value in enumerate(inputs)
+            if isinstance(payload := normalize_record({"input": _as_obj(value)})["input"], dict)
+            and "messages" in payload
+            for reason in tool_schema_errors(payload.get("tools"))
+        ]
+        if tool_failures:
+            return {
+                "ok": False,
+                "reason": tool_failures[0]["reason"],
+                "failures": tool_failures[:_FAILURE_SAMPLES],
+                "input_type": input_type,
+                "input_types": dict(types),
+                "has_reference": False,
+            }
         return {
             "ok": False,
             "reason": "no expected_output values",
             "input_type": input_type,
+            "input_types": dict(types),
+            "unreferenced_decisions": sum(
+                isinstance(payload := normalize_record({"input": _as_obj(value)})["input"], dict)
+                and "decision" in payload
+                for value in inputs
+            ),
             "has_reference": False,
         }
     failures = []
@@ -234,6 +266,8 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
             "ok": False,
             "reason": failures[0]["reason"],
             "failures": failures[:_FAILURE_SAMPLES],
+            "input_type": input_type,
+            "input_types": dict(types),
             "has_reference": True,
         }
     return {
@@ -252,8 +286,9 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def measure(df: pd.DataFrame) -> dict[str, Any]:
-    """``{rows, train: {ok, reason, …}, eval: {ok, reason, …}}``."""
+def measure(df: pd.DataFrame, decision_problems=None) -> dict[str, Any]:
+    """``{rows, train: {ok, reason, …}, eval: {ok, reason, …}}``. ``decision_problems``
+    holds each row's decision-column problem when the caller already checked it."""
     rows = int(len(df))
     if rows == 0:
         return {
@@ -261,21 +296,29 @@ def measure(df: pd.DataFrame) -> dict[str, Any]:
             "train": {"ok": False, "reason": "no rows"},
             "eval": {"ok": False, "reason": "no rows"},
         }
-    report = {"rows": rows, "train": _train_check(df), "eval": _eval_check(df)}
+    report = {
+        "rows": rows,
+        "train": _train_check(df, decision_problems),
+        "eval": _eval_check(df),
+    }
     if not (report["train"]["ok"] or report["eval"]["ok"]) and not _has_text(df):
         for shape in (report["train"], report["eval"]):
             shape["fixable"] = False
     return report
 
 
-def measure_path(path):
+def measure_frames(frames, columns):
+    """``measure`` over consecutive ``(frame, decision_problems)`` pairs, merged as one
+    report."""
     result = None
     offset = 0
     types = Counter()
     semantics = Counter()
     references = 0
-    for df in store.iter_frames(path):
-        part = measure(df)
+    unreferenced = 0
+    for df, decision_problems in frames:
+        part = measure(df, decision_problems)
+        unreferenced += part["eval"].get("unreferenced_decisions", 0)
         semantics.update(part["train"].get("target_semantics", {}))
         evaluation = part["eval"]
         references += evaluation.get("reference_rows", 0)
@@ -304,7 +347,7 @@ def measure_path(path):
                     target.pop("fixable", None)
         offset += len(df)
     if result is None:
-        return measure(pd.DataFrame(columns=[c["name"] for c in store.read_manifest(path)]))
+        return measure(pd.DataFrame(columns=columns))
     evaluation = result["eval"]
     if semantics:
         result["train"].update(
@@ -317,7 +360,12 @@ def measure_path(path):
         evaluation["has_reference"] = True
         evaluation["reference_rows"] = references
         if evaluation.get("reason") == "no expected_output values":
-            evaluation.update(ok=True, reason="")
+            evaluation.update(
+                ok=not unreferenced,
+                reason=f"{unreferenced} decision inputs have no expected_output"
+                if unreferenced
+                else "",
+            )
     if types:
         evaluation.update(input_types=dict(types), input_type=types.most_common(1)[0][0])
     return result
@@ -338,12 +386,6 @@ def _has_text(df: pd.DataFrame) -> bool:
     return False
 
 
-def stats(df: pd.DataFrame) -> dict[str, Any]:
-    """The six numbers training planners read. Input is ``messages`` when
-    present, else ``input``; output is ``expected_output``."""
-    return stats_rows(df.to_dict(orient="records"), set(df.columns))
-
-
 class RowStatistics:
     def __init__(self, columns):
         self.in_col = (
@@ -357,9 +399,7 @@ class RowStatistics:
         )
         self.out_col = "expected_output" if "expected_output" in columns else None
         self.n = self.total_in = self.total_out = self.max_tokens = 0
-        self.tool_calling = self.multi_turn = False
-        self.lengths = []
-        self.rng = random.Random(0)
+        self.tool_calling = False
 
     def observe(self, record):
         self.n += 1
@@ -372,38 +412,17 @@ class RowStatistics:
         )
         self.total_in += len(in_str)
         self.total_out += len(out_str)
-        length = approx_tokens(in_str + out_str)
-        self.max_tokens = max(self.max_tokens, length)
-        if len(self.lengths) < 10000:
-            self.lengths.append(length)
-        else:
-            index = self.rng.randrange(self.n)
-            if index < len(self.lengths):
-                self.lengths[index] = length
-        turns = _tool_call_turns(inp)
-        self.tool_calling |= turns > 0
-        self.multi_turn |= turns > 1
+        self.max_tokens = max(self.max_tokens, approx_tokens(in_str + out_str))
+        self.tool_calling |= _tool_call_turns(inp) > 0
 
     def result(self):
         return {
             "num_examples": self.n,
             "has_tool_calling": self.tool_calling,
-            "has_multi_turn_tool_calls": self.multi_turn,
             "max_token_length": self.max_tokens,
-            "p95_token_length": sorted(self.lengths)[math.ceil(len(self.lengths) * 0.95) - 1]
-            if self.lengths
-            else 0,
-            "length_profile_method": "deterministic_reservoir_10000_character_estimate",
             "avg_input_chars": round(self.total_in / self.n) if self.n else 0,
             "avg_output_chars": round(self.total_out / self.n) if self.n else 0,
         }
-
-
-def stats_rows(records, columns) -> dict[str, Any]:
-    statistics = RowStatistics(columns)
-    for record in records:
-        statistics.observe(record)
-    return statistics.result()
 
 
 def _tool_call_turns(inp: Any) -> int:

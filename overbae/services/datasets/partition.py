@@ -24,6 +24,8 @@ _IDENTITY = {
     "origin_trace_id",
     "conversation_id",
     "_overmind_provenance",
+    # Where a document row came from is lineage, not content: repeated text is a duplicate.
+    "_overmind_evidence",
 }
 
 
@@ -82,26 +84,35 @@ def present(value) -> bool:
     )
 
 
-def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
-    keys = {("content", content_key(row))}
-    for column in {
-        "trace_id",
-        "source_trace_id",
-        "origin_trace_id",
-        "span_id",
-        "conversation_id",
-        "group_id",
-        "document_id",
-        "_overmind_document_id",
-        *group_by,
-    }:
+IDENTITY_COLUMNS = (
+    "trace_id",
+    "source_trace_id",
+    "origin_trace_id",
+    "span_id",
+    "conversation_id",
+    "group_id",
+    "document_id",
+    "_overmind_document_id",
+)
+
+
+def group_keys(row: dict, columns) -> set[tuple[str, str]]:
+    keys = set()
+    for column in set(columns):
+        # A plain name the row lacks has no value: field_value would only raise.
+        if column not in row and "." not in column:
+            continue
         try:
             value = field_value(row, column)
         except ValueError:
             continue
         if present(value):
-            kind = GROUP_ALIASES.get(column, column)
-            keys.add((kind, _canonical(value)))
+            keys.add((GROUP_ALIASES.get(column, column), _canonical(value)))
+    return keys
+
+
+def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
+    keys = {("content", content_key(row))} | group_keys(row, {*IDENTITY_COLUMNS, *group_by})
     for value in input_objects(row):
         for column in ("packet_id", "onboarding_packet_id", "case_id", "example_id"):
             if present(value.get(column)) and isinstance(value[column], (str, int)):
@@ -118,19 +129,6 @@ def contamination_keys(row: dict, group_by=()) -> set[tuple[str, str]]:
             for kind, value in provenance.get(f"{prefix}_group_keys", []):
                 keys.add((str(kind), str(value)))
     return keys
-
-
-def preserve_lineage(row: dict, *, group_by=(), keys=None) -> dict:
-    provenance = row.get("_overmind_provenance")
-    if isinstance(provenance, str):
-        with suppress(ValueError):
-            provenance = json.loads(provenance)
-    keys = contamination_keys(row, group_by) if keys is None else keys
-    return {
-        **(provenance if isinstance(provenance, dict) else {}),
-        "source_content_keys": sorted(value for kind, value in keys if kind == "content"),
-        "source_group_keys": sorted([kind, value] for kind, value in keys if kind != "content"),
-    }
 
 
 def split_rows(

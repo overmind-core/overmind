@@ -152,12 +152,12 @@ describe("schemas", () => {
     it("round-trips every filter a shared datasets link carries", () => {
       const result = datasetsSearchSchema.parse({
         ds_capability: "capability-1",
-        ds_role: "training",
+        ds_role: "sft",
         ds_search: "golden",
         projectId: "proj-1",
       });
       expect(result.ds_capability).toBe("capability-1");
-      expect(result.ds_role).toBe("training");
+      expect(result.ds_role).toBe("sft");
       expect(result.ds_search).toBe("golden");
       expect(result.projectId).toBe("proj-1");
     });

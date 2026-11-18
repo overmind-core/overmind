@@ -537,9 +537,8 @@ def reconcile():
     return {"processed": processed}
 
 
-def _read_parts(run, targets):
-    source = run.inputs["source"]
-    split = run.inputs.get("split")
+def _landing_progress(run, targets):
+    """Each target's landing stage and counters, throttled, while this attempt owns it."""
 
     def progress(detail):
         for target in targets:
@@ -557,7 +556,12 @@ def _read_parts(run, targets):
                     target.pk, {"type": "land_progress", "dataset_id": str(target.pk), **detail}
                 )
 
-    progress = ProgressThrottle(progress)
+    return ProgressThrottle(progress)
+
+
+def _read_parts(run, targets, progress):
+    source = run.inputs["source"]
+    split = run.inputs.get("split")
     extraction = {
         "project_id": run.dataset.project_id,
         "ocr_languages": source.get("ocr_languages", []),
@@ -699,7 +703,8 @@ def execute(task_id, inputs):
                 }
             )
             events.publish(target.pk, {"type": "land_started", "dataset_id": str(target.pk)})
-        parts, state = _read_parts(run, targets)
+        progress = _landing_progress(run, targets)
+        parts, state = _read_parts(run, targets, progress)
         prepared = [
             (
                 target,
@@ -709,6 +714,8 @@ def execute(task_id, inputs):
                     path=stage / f"{target.pk}.parquet",
                     state=state,
                     infer_capability=run.inputs.get("infer_capability", True),
+                    # Each half of a split counts its own rows.
+                    on_progress=_landing_progress(run, [target]),
                 ),
             )
             for target, part in parts

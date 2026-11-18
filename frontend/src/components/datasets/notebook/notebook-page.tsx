@@ -18,7 +18,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LoadingState } from "@/components/ui/spinner";
+import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { useAssistantThread } from "@/hooks/use-assistant-thread";
 import {
   activeCellOf,
@@ -28,7 +28,7 @@ import {
   intentOf,
   invalidateDataset,
   isBusy,
-  rankOf,
+  SPLIT_LABEL,
   useCancelDatasetMutation,
   useDatasetEvents,
   useDatasetPreparationQuery,
@@ -36,19 +36,12 @@ import {
   useDatasetWorkbenchQuery,
   usePatchDatasetMutation,
   useResumeDatasetImportMutation,
+  workText,
 } from "@/hooks/use-datasets";
-import { useProjectCapabilitiesQuery } from "@/hooks/use-evaluations";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { notify } from "@/lib/notify";
 import type { Cell } from "@/openapi";
-
-const PARTITIONS: Record<string, string> = {
-  calibration: "Calibration data",
-  development: "Development data",
-  final: "Final evaluation data",
-  train: "Training data",
-};
 
 export function DatasetNotebook({
   datasetId,
@@ -70,9 +63,7 @@ export function DatasetNotebook({
     cellParam,
     dataset?.updatedAt?.getTime()
   );
-  const capabilitiesQuery = useProjectCapabilitiesQuery(projectId);
   const assistant = useAssistantThread(datasetId);
-  const capabilities = capabilitiesQuery.data?.results ?? [];
 
   const patch = usePatchDatasetMutation(datasetId);
   const cancel = useCancelDatasetMutation(datasetId);
@@ -135,9 +126,11 @@ export function DatasetNotebook({
   const edges = useMemo(
     () =>
       (preparationQuery.data?.edges ?? []).map((edge) => ({
-        ...edge,
+        data: { kind: edge.kind, value: edge.value },
         id: `${edge.source}:${edge.target}`,
+        source: edge.source,
         style: { stroke: "var(--muted-foreground)", strokeWidth: 1.5 },
+        target: edge.target,
         type: "cell",
       })),
     [preparationQuery.data]
@@ -145,6 +138,15 @@ export function DatasetNotebook({
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
   const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
+  // A first landing shows its stage in the source cell; added files show it here.
+  const busyText =
+    dataset?.state === "landing"
+      ? ((cells.some((cell) => cell.state === "ok")
+          ? extractionStatus(dataset.sourceSpec)
+          : undefined) ?? "Importing")
+      : dataset?.work
+        ? workText(dataset.work)
+        : "Running";
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
 
@@ -205,12 +207,6 @@ export function DatasetNotebook({
     );
   }
 
-  const rank = rankOf(dataset);
-  const capabilityChoices = [
-    ...rank.map((r) => ({ id: r.capability_id, name: r.name, score: r.score })),
-    ...capabilities.map((c) => ({ id: c.id, name: c.name })),
-  ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
-
   const latestRun = workbenchQuery.data?.runs[0];
   const repairSource = latestRun?.state === "failed" ? latestRun.sourceCell : undefined;
   const actionCellId = cells.some((cell) => cell.id === repairSource) ? repairSource : active?.id;
@@ -238,16 +234,8 @@ export function DatasetNotebook({
     const local = owner === datasetId;
     return (
       <div>
-        {node && (node.role || !local) && (
-          <div className="mb-2 text-sm text-muted-foreground">
-            <Link params={{ datasetId: owner }} search={{ projectId }} to="/datasets/$datasetId">
-              {PARTITIONS[node.role] || node.role || node.datasetName}
-            </Link>
-          </div>
-        )}
         <NotebookCell
           actions={{
-            onCapability: guard((id: string | null) => patch.mutate({ capability: id })),
             onExport: (fmt) =>
               void downloadExport(
                 owner,
@@ -255,19 +243,30 @@ export function DatasetNotebook({
                 fmt,
                 `${datasetDisplayName(dataset)}-${cell.version || "source"}`
               ).catch((e) => notify.error(e, "Export failed")),
-            onIntent: guard((next: "train" | "eval") => patch.mutate({ intent: next })),
+            onIntent: guard((next: "train" | "eval", format?: "sft" | "decision") =>
+              patch.mutate({ intent: next, trainFormat: format ?? "" })
+            ),
             onUse: guard(handOff),
           }}
           active={cell.id === active?.id}
-          capabilities={capabilityChoices}
           capabilityName={dataset.capabilityName ?? ""}
           cell={cell}
           datasetId={owner}
           editable={editable && local}
           intent={node?.intent ?? intent}
+          // The server locks intent on the edited dataset's own used versions.
+          intentLocked={
+            nodes?.some(
+              (other) => other.cell.frozen && (other.dataset ?? datasetId) === datasetId
+            ) ?? false
+          }
           key={cell.id}
+          member={
+            node && !local
+              ? { datasetId: owner, label: SPLIT_LABEL[node.role] || node.role || node.datasetName }
+              : undefined
+          }
           onSelect={() => setSelectedId(cell.id)}
-          partition={PARTITIONS[node?.role ?? ""] || node?.role}
           preparationActions={cell.id === actionCellId ? preparationControls(cell) : undefined}
           selected={cell.id === selectedId}
           sourceDetails={
@@ -279,6 +278,7 @@ export function DatasetNotebook({
               />
             ) : undefined
           }
+          trainFormat={node ? node.trainFormat : (dataset.trainFormat ?? "")}
         />
       </div>
     );
@@ -288,16 +288,23 @@ export function DatasetNotebook({
     <div className="relative flex h-full min-h-0 flex-col">
       <div className="assistant-notices pointer-events-none absolute bottom-16 z-10 max-h-48 overflow-y-auto">
         <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
+          {/* Mounted while idle too, so the first status is announced. */}
+          <span className="sr-only" role="status">
+            {busy ? busyText : ""}
+          </span>
           {busy && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
-              <span>Workshop operation running</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <Spinner size="sm" />
+                <span className="truncate tabular-nums">{busyText}</span>
+              </span>
               <Button
                 disabled={cancel.isPending}
                 onClick={() => cancel.mutate()}
                 size="sm"
                 variant="secondary"
               >
-                Stop operation
+                Stop
               </Button>
             </div>
           )}
@@ -355,11 +362,11 @@ export function DatasetNotebook({
             cells={cells}
             edges={edges}
             focus={focus}
+            key={datasetId}
             motions={motions}
             onMotionComplete={complete}
             renderCell={renderCell}
             showMinimap={showMinimap}
-            storageKey={`workshop-flow:layers:${projectId}:${datasetId}`}
           />
         )}
         <AssistantDock

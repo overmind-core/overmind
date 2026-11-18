@@ -214,7 +214,12 @@ def complete(transfer):
             transfer.user,
             name + (" train" if spec.get("split") else ""),
             source,
-            "train" if spec.get("split") else spec.get("intent"),
+            # A reservation made before intent lost "explore" lands with no intent.
+            "train"
+            if spec.get("split")
+            else spec.get("intent")
+            if spec.get("intent") in ("train", "eval")
+            else None,
             capability,
             spec.get("brief", ""),
         )

@@ -18,15 +18,13 @@
  * * `development` - development
  * * `calibration` - calibration
  * * `evaluation` - evaluation
- * * `source` - source
  * @export
  */
 export const RolesEnum = {
     training: 'training',
     development: 'development',
     calibration: 'calibration',
-    evaluation: 'evaluation',
-    source: 'source'
+    evaluation: 'evaluation'
 } as const;
 export type RolesEnum = typeof RolesEnum[keyof typeof RolesEnum];
 

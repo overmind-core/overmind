@@ -1,6 +1,10 @@
 import type { Dataset } from "@/openapi";
 
-export function datasetWorkspaces(datasets: Dataset[]): Dataset[] {
+/** A workspace row. ``useFormat`` is the training format its training member declares,
+ *  for a root whose own intent is not set. */
+export type WorkspaceDataset = Dataset & { useFormat?: string };
+
+export function datasetWorkspaces(datasets: Dataset[]): WorkspaceDataset[] {
   const byId = new Map(datasets.map((dataset) => [dataset.id, dataset]));
   const groups = new Map<string, Dataset[]>();
   for (const dataset of datasets) {
@@ -19,6 +23,9 @@ export function datasetWorkspaces(datasets: Dataset[]): Dataset[] {
       ...root,
       roles: [...new Set(members.flatMap((member) => member.roles))],
       updatedAt: latest.updatedAt,
+      useFormat:
+        members.find((member) => member.intent === "train" && member.trainFormat)?.trainFormat ??
+        "",
       ...(busy ? { work: busy.work } : {}),
     };
   });

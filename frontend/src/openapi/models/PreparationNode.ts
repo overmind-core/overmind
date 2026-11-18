@@ -56,6 +56,12 @@ export interface PreparationNode {
      * @type {string}
      * @memberof PreparationNode
      */
+    trainFormat: string;
+    /**
+     *
+     * @type {string}
+     * @memberof PreparationNode
+     */
     role: string;
 }
 
@@ -67,6 +73,7 @@ export function instanceOfPreparationNode(value: object): value is PreparationNo
     if (!('dataset' in value) || value['dataset'] === undefined) return false;
     if (!('datasetName' in value) || value['datasetName'] === undefined) return false;
     if (!('intent' in value) || value['intent'] === undefined) return false;
+    if (!('trainFormat' in value) || value['trainFormat'] === undefined) return false;
     if (!('role' in value) || value['role'] === undefined) return false;
     return true;
 }
@@ -85,6 +92,7 @@ export function PreparationNodeFromJSONTyped(json: any, ignoreDiscriminator: boo
         'dataset': json['dataset'],
         'datasetName': json['dataset_name'],
         'intent': json['intent'],
+        'trainFormat': json['train_format'],
         'role': json['role'],
     };
 }
@@ -104,6 +112,7 @@ export function PreparationNodeToJSONTyped(value?: PreparationNode | null, ignor
         'dataset': value['dataset'],
         'dataset_name': value['datasetName'],
         'intent': value['intent'],
+        'train_format': value['trainFormat'],
         'role': value['role'],
     };
 }

@@ -4,7 +4,7 @@ import json
 import logging
 
 from django.conf import settings
-from django.db import connections
+from django.db import connections, transaction
 from django.db.models import Prefetch
 from django.http import FileResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -29,6 +29,7 @@ from overbae.api.dataset_serializers import (
 from overbae.api.scoping import project_ids_for
 from overbae.api.workbench import WorkbenchActions
 from overbae.models import Capability, Cell, Dataset, DatasetTransfer, Project
+from overbae.services.assistant import threads
 from overbae.services.datasets import diff as diff_svc
 from overbae.services.datasets import (
     dispatch,
@@ -150,16 +151,19 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         data = body.validated_data
         project, capability, source = self._create_target(request, data)
         try:
-            dataset = dispatch.create_dataset(
-                project=project,
-                user=request.user if request.user.is_authenticated else None,
-                name=data["name"].strip(),
-                source=source,
-                brief=data["brief"],
-                intent=data.get("intent"),
-                capability=capability,
-                infer_capability="capability" not in data,
-            )
+            with transaction.atomic():
+                dataset = dispatch.create_dataset(
+                    project=project,
+                    user=request.user if request.user.is_authenticated else None,
+                    name=data["name"].strip(),
+                    source=source,
+                    brief=data["brief"],
+                    intent=data.get("intent"),
+                    capability=capability,
+                    infer_capability="capability" not in data,
+                )
+                if data["prepare"] and source and request.user.is_authenticated:
+                    threads.queue_first_pass(dataset, request.user)
         except lifecycle.DatasetError as exc:
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
         return Response(DatasetSerializer(dataset).data, status=status.HTTP_201_CREATED)
@@ -176,20 +180,23 @@ class DatasetViewSet(WorkbenchActions, viewsets.ModelViewSet):
         data = body.validated_data
         project, capability, source = self._create_target(request, data)
         try:
-            train, evaluation = dispatch.create_split(
-                project=project,
-                user=request.user if request.user.is_authenticated else None,
-                name=data["name"].strip(),
-                source=source,
-                brief=data["brief"],
-                eval_percent=data["eval_percent"],
-                position=data["position"],
-                group_by=data["group_by"],
-                stratify_by=data["stratify_by"],
-                deduplicate=data["deduplicate"],
-                capability=capability,
-                infer_capability="capability" not in data,
-            )
+            with transaction.atomic():
+                train, evaluation = dispatch.create_split(
+                    project=project,
+                    user=request.user if request.user.is_authenticated else None,
+                    name=data["name"].strip(),
+                    source=source,
+                    brief=data["brief"],
+                    eval_percent=data["eval_percent"],
+                    position=data["position"],
+                    group_by=data["group_by"],
+                    stratify_by=data["stratify_by"],
+                    deduplicate=data["deduplicate"],
+                    capability=capability,
+                    infer_capability="capability" not in data,
+                )
+                if data["prepare"] and request.user.is_authenticated:
+                    threads.queue_first_pass(train, request.user, split=True)
         except lifecycle.DatasetError as exc:
             raise ValidationError({"detail": exc.detail, "code": exc.code}) from exc
         return Response(

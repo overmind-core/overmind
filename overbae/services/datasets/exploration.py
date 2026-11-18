@@ -10,9 +10,18 @@ from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
 from overbae.models import Cell, DataExploration, Dataset, Project
-from overbae.services.datasets import events, land, paths, profile, rows, sampling, store, use
+from overbae.services.datasets import (
+    events,
+    land,
+    lineage,
+    paths,
+    profile,
+    rows,
+    sampling,
+    store,
+    use,
+)
 from overbae.services.datasets.examples import native_decision
-from overbae.services.datasets.partition import preserve_lineage
 
 logger = logging.getLogger(__name__)
 PROFILE_VERSION = 4
@@ -137,17 +146,6 @@ def advance(identifier):
                 }
 
         else:
-
-            def records():
-                for index, record in enumerate(store.iter_rows(path)):
-                    lineage = preserve_lineage(record)
-                    lineage["derived_from"] = {
-                        "cell": str(op.source_cell_id),
-                        "fingerprint": op.source_fingerprint,
-                        "row": index,
-                    }
-                    yield {**record, "_overmind_provenance": lineage}
-
             with transaction.atomic():
                 source = op.source_cell.dataset
                 derived, _ = Dataset.objects.get_or_create(
@@ -157,13 +155,18 @@ def advance(identifier):
                         "name": op.name,
                         "brief": source.brief,
                         "intent": source.intent,
+                        "train_format": source.train_format,
                         "capability_id": source.capability_id,
                     },
                 )
                 if not derived.active_cell:
                     land.commit(
                         derived,
-                        land.Landing(records(), spec={"derived_from": report["source"]}),
+                        land.Landing(
+                            store.iter_rows(path),
+                            spec={"derived_from": report["source"]},
+                            inherited=lineage.stream(op.source_cell),
+                        ),
                         infer_capability=False,
                     )
                 rows.verify(derived.active_cell)

@@ -84,12 +84,13 @@ from overbae.services.activity import asset, record
 from overbae.services.capabilities import identity as capability_identity
 from overbae.services.datasets import exploration as dataset_exploration
 from overbae.services.datasets import land as dataset_land
+from overbae.services.datasets import lineage as dataset_lineage
 from overbae.services.datasets import measure as dataset_measure
 from overbae.services.datasets import partition_plans
 from overbae.services.datasets import paths as dataset_paths
-from overbae.services.datasets import review as dataset_review
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import store as dataset_store
+from overbae.services.datasets.pipeline_execution import Parents, carry
 
 User = get_user_model()
 NOW = timezone.now().replace(minute=0, second=0, microsecond=0)
@@ -2503,19 +2504,17 @@ class Command(BaseCommand):
             previous = ds.active_cell
             cell = Cell.objects.create(dataset=ds, position=ds.cells.count(), title=title)
             output = dataset_paths.cell_path(ds.pk, cell.pk)
-            dataset_store.write_rows(output, records)
             source = dataset_paths.cell_path(ds.pk, previous.pk)
-            dataset_review.preserve_file_provenance(source, output, output)
+            parents = Parents([(source, dataset_lineage.read(previous))], ())
+            inherited = []
+            dataset_store.write_rows(output, carry(records, parents, inherited))
             dataset_measure.frame(
                 ds,
                 cell,
                 output,
+                inherited=inherited,
                 input_fingerprint=previous.fingerprint,
-                review={
-                    "kind": "external",
-                    "execution": "external_attributed",
-                    **dataset_review.impact_files(source, output),
-                },
+                review={"kind": "external", "execution": "external_attributed"},
             )
             Dataset.objects.filter(pk=ds.pk).update(active=cell, state="idle")
             ds.refresh_from_db()

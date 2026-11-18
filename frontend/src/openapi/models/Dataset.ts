@@ -41,13 +41,6 @@ import {
     IntentEnumToJSON,
     IntentEnumToJSONTyped,
 } from './IntentEnum';
-import type { DatasetReadiness } from './DatasetReadiness';
-import {
-    DatasetReadinessFromJSON,
-    DatasetReadinessFromJSONTyped,
-    DatasetReadinessToJSON,
-    DatasetReadinessToJSONTyped,
-} from './DatasetReadiness';
 import type { DatasetStateEnum } from './DatasetStateEnum';
 import {
     DatasetStateEnumFromJSON,
@@ -158,6 +151,12 @@ export interface Dataset {
      * @type {string}
      * @memberof Dataset
      */
+    trainFormat?: DatasetTrainFormatEnum;
+    /**
+     *
+     * @type {string}
+     * @memberof Dataset
+     */
     active?: string | null;
     /**
      *
@@ -171,18 +170,6 @@ export interface Dataset {
      * @memberof Dataset
      */
     readonly rows: number;
-    /**
-     *
-     * @type {DatasetReadiness}
-     * @memberof Dataset
-     */
-    readonly readiness: DatasetReadiness | null;
-    /**
-     *
-     * @type {{ [key: string]: any; }}
-     * @memberof Dataset
-     */
-    readonly preparationPlan: { [key: string]: any; } | null;
     /**
      *
      * @type {{ [key: string]: any; }}
@@ -228,6 +215,16 @@ export interface Dataset {
 }
 
 
+/**
+ * @export
+ */
+export const DatasetTrainFormatEnum = {
+    sft: 'sft',
+    decision: 'decision',
+    empty: ''
+} as const;
+export type DatasetTrainFormatEnum = typeof DatasetTrainFormatEnum[keyof typeof DatasetTrainFormatEnum];
+
 
 /**
  * Check if a given object implements the Dataset interface.
@@ -246,8 +243,6 @@ export function instanceOfDataset(value: object): value is Dataset {
     if (!('capabilityRank' in value) || value['capabilityRank'] === undefined) return false;
     if (!('activeVersion' in value) || value['activeVersion'] === undefined) return false;
     if (!('rows' in value) || value['rows'] === undefined) return false;
-    if (!('readiness' in value) || value['readiness'] === undefined) return false;
-    if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
     if (!('operation' in value) || value['operation'] === undefined) return false;
     if (!('state' in value) || value['state'] === undefined) return false;
     if (!('error' in value) || value['error'] === undefined) return false;
@@ -282,11 +277,10 @@ export function DatasetFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'capabilityName': json['capability_name'],
         'capabilityRank': json['capability_rank'],
         'intent': json['intent'] == null ? undefined : IntentEnumFromJSON(json['intent']),
+        'trainFormat': json['train_format'] == null ? undefined : json['train_format'],
         'active': json['active'] == null ? undefined : json['active'],
         'activeVersion': json['active_version'],
         'rows': json['rows'],
-        'readiness': DatasetReadinessFromJSON(json['readiness']),
-        'preparationPlan': json['preparation_plan'],
         'operation': json['operation'],
         'state': DatasetStateEnumFromJSON(json['state']),
         'error': json['error'],
@@ -301,7 +295,7 @@ export function DatasetToJSON(json: any): Dataset {
     return DatasetToJSONTyped(json, false);
 }
 
-export function DatasetToJSONTyped(value?: Omit<Dataset, 'work'|'roles'|'workspace_id'|'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'readiness'|'preparation_plan'|'operation'|'state'|'error'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function DatasetToJSONTyped(value?: Omit<Dataset, 'work'|'roles'|'workspace_id'|'id'|'project'|'brief'|'source_kind'|'source_spec'|'capability_name'|'capability_rank'|'active_version'|'rows'|'operation'|'state'|'error'|'cells'|'created_by'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -312,6 +306,7 @@ export function DatasetToJSONTyped(value?: Omit<Dataset, 'work'|'roles'|'workspa
         'ocr_languages': value['ocrLanguages'],
         'capability': value['capability'],
         'intent': IntentEnumToJSON(value['intent']),
+        'train_format': value['trainFormat'],
         'active': value['active'],
     };
 }

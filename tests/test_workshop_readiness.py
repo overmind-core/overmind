@@ -16,9 +16,6 @@ from overbae.models import (
     User,
 )
 from overbae.services.datasets import alignment, land, review, use
-from overbae.services.datasets.context import context_fingerprint
-from overbae.services.mcp.contracts.datasets import serialize_dataset_detail
-from overbae.services.mcp.errors import mcp_cell_contract
 from overbae.services.training_preparation import request_preparation
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
@@ -52,12 +49,6 @@ def capability():
             }
         },
     )
-
-
-def complete_review(dataset, *, failed=None, unknown=None):
-    from conftest import review_fixture
-
-    return review_fixture(dataset, failed=failed, unknown=unknown)
 
 
 def make_dataset(capability, *, intent="eval", evidence=True, case_id="case1"):
@@ -118,46 +109,6 @@ def test_worker_prompt_reports_capability_mismatch(capability, frame_of):
     assert not report["ok"] and "system turn differs" in report["reason"]
 
 
-@pytest.mark.parametrize("failure", [None, "input_evidence", "answer_support"])
-def test_missing_or_failed_review_warns_without_blocking_use(capability, failure):
-    ds = make_dataset(capability)
-    if failure:
-        complete_review(ds, failed=failure)
-    assert review.warnings(ds, ds.active_cell)
-    assert use.use(ds, "eval").used_at is not None
-    detail = serialize_dataset_detail(ds)
-    assert detail.next_actions[0].tool == "check_evaluation_readiness"
-    assert any(action.tool == "check_evaluation_readiness" for action in detail.next_actions)
-    assert not detail.cells[0].readiness["quality_passed"]
-    contract = mcp_cell_contract(ds, ds.active_cell, "eval")
-    assert contract.fits and contract.warnings
-
-
-def test_sampled_or_unknown_answer_support_cannot_pass(capability):
-    ds = make_dataset(capability)
-    complete_review(ds, unknown="answer_support")
-    assert "Answer support: unknown" in "; ".join(review.warnings(ds, ds.active_cell))
-    assert use.use(ds, "eval").used_at is not None
-
-
-def test_context_changes_make_review_stale_without_blocking_use(capability):
-    ds = make_dataset(capability)
-    complete_review(ds)
-    assert review.readiness(ds, ds.active_cell)["quality_passed"]
-    assert use.check(ds, "eval").used_at is None
-    assert use.use(ds, "eval").used_at is not None
-    before = context_fingerprint(capability)
-    capability.improvement_metadata["capability_card"]["output_schema"]["required_keys"].append(
-        "evidence"
-    )
-    capability.save(update_fields=["improvement_metadata"])
-    ds.refresh_from_db()
-    assert context_fingerprint(capability) != before
-    assert not review.readiness(ds, ds.active_cell)["quality_passed"]
-    assert review.warnings(ds, ds.active_cell)
-    assert use.use(ds, "eval").used_at is not None
-
-
 def test_unreviewed_data_can_start_model_preprocessing(capability, settings):
     settings.FINETUNING_BACKEND = "modal"
     ds = make_dataset(capability, intent="train")
@@ -178,7 +129,6 @@ def test_unbound_data_still_uses_dataset_quality_contract(capability):
 def test_training_create_allows_warnings_and_freezes_pair_atomically(capability):
     train = make_dataset(capability, intent="train")
     evaluation = make_dataset(capability)
-    complete_review(train)
     user = User.objects.create_user(email="validation@example.com", password="test")
     ProjectMembership.objects.create(user=user, project=capability.project)
     eval_set = EvalSet.objects.create(project=capability.project, name="Screening")
@@ -217,9 +167,7 @@ def test_training_create_allows_warnings_and_freezes_pair_atomically(capability)
     job = serializer.save(triggered_by=user)
     assert job.eval_cell_id == evaluation.active_cell.id
     assert job.cell.used_at and job.eval_cell.used_at
-    assert review.warnings(evaluation, job.eval_cell)
     replacement = make_dataset(capability, case_id="new-eval")
-    complete_review(replacement)
     update = FinetuningJobSerializer(job, data={"eval_dataset": str(replacement.id)}, partial=True)
     assert not update.is_valid() and "eval_dataset" in update.errors
     assert replacement.active_cell.used_at is None

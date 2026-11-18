@@ -4,7 +4,7 @@ import weakref
 import pytest
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import files, land, paths, store
+from overbae.services.datasets import files, land, lineage, paths, store
 
 pytestmark = pytest.mark.covers("data-logic")
 
@@ -84,7 +84,7 @@ def test_landing_measures_every_row_without_full_frame_reads(tmp_path, settings,
     rows = store.iter_rows(paths.cell_path(dataset.id, source.id))
     first = next(rows)
     assert first["source_row"] == 0
-    assert first["_overmind_provenance"]["source_content_keys"]
+    assert lineage.read(source)[0][1]
     last = None
     for last in rows:  # noqa: B007 — inspect the final streamed row
         pass
@@ -93,7 +93,7 @@ def test_landing_measures_every_row_without_full_frame_reads(tmp_path, settings,
 
 
 @pytest.mark.django_db
-def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkeypatch):
+def test_batch_cell_and_export_are_file_backed(tmp_path, settings, monkeypatch):
     from conftest import import_version
 
     from overbae.services.datasets import use
@@ -104,7 +104,6 @@ def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkey
     records = [{"text": f"case {i}", "target": [0.25, 0.75]} for i in range(20_003)]
     land.land_rows(dataset, records)
     source = dataset.source
-    original = store.head(paths.cell_path(dataset.id, source.id), 1)[0]
 
     def forbid(*args, **kwargs):
         raise AssertionError("Whole-frame read in the batch lifecycle")
@@ -125,15 +124,10 @@ def test_batch_cell_impact_and_export_are_file_backed(tmp_path, settings, monkey
         if r["source_row"] % 3 != 1
     ]
     cell = import_version(dataset, selected, name="Native")
-    assert cell.review["rows_removed"] == 6668
-    assert cell.review["identity_preserved"]
     assert dataset.state == "idle", dataset.error
     assert cell.rows == 13_335 and cell.intent_report["train"]["ok"]
     first = store.head(paths.cell_path(dataset.id, cell.id), 1)[0]
-    assert all(
-        first["_overmind_provenance"][k] == v for k, v in original["_overmind_provenance"].items()
-    )
-    assert first["_overmind_provenance"]["parents"][0]["row"] == original["source_row"]
+    assert lineage.read(source)[0][1] <= lineage.read(cell)[0][1]
     assert first["decision"]["target_probabilities"] == [0.25, 0.75]
     assert use.check(dataset, "train", cell=cell).id == cell.id
 
@@ -227,7 +221,7 @@ def test_attached_files_and_replay_never_materialize_existing_frame(
 
     settings.MEDIA_ROOT = tmp_path
     project = Project.objects.create(name="Attachment streaming", slug="attachment-streaming")
-    dataset = Dataset.objects.create(project=project, name="Source", intent="explore")
+    dataset = Dataset.objects.create(project=project, name="Source")
     land.land_rows(dataset, [{"text": f"evidence {i}", "group_id": str(i)} for i in range(3000)])
     dataset.refresh_from_db()
     source = dataset.source

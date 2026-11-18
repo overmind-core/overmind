@@ -19,8 +19,11 @@ class Dataset(models.Model):
     class Intent(models.TextChoices):
         TRAIN = "train"
         EVAL = "eval"
-        EXPLORE = "explore"
         PENDING = "pending"
+
+    class TrainFormat(models.TextChoices):
+        SFT = "sft"
+        DECISION = "decision"
 
     class State(models.TextChoices):
         LANDING = "landing"
@@ -50,7 +53,8 @@ class Dataset(models.Model):
     # [{capability_id, name, score, reason}] best first, computed at landing.
     capability_rank = models.JSONField(default=list, blank=True)
     intent = models.CharField(max_length=8, choices=Intent.choices, default=Intent.PENDING)
-    preparation_plan = models.JSONField(default=dict, blank=True)
+    # Which training a train dataset is for; blank until a person or a consumer decides.
+    train_format = models.CharField(max_length=8, choices=TrainFormat.choices, blank=True)
     preparation_pipeline = models.ForeignKey(
         "overbae.DatasetPipeline",
         on_delete=models.SET_NULL,
@@ -225,11 +229,9 @@ class Cell(models.Model):
     intent_report = models.JSONField(default=dict, blank=True)
     # {ok, rows, rows_ok, reason} against the dataset's capability.
     capability_report = models.JSONField(default=dict, blank=True)
-    # The six numbers training planners read; see contract.stats.
+    # The numbers training planners read, and decision analytics; see measure.describe_frame.
     stats = models.JSONField(default=dict, blank=True)
     review = models.JSONField(default=dict, blank=True)
-    quality_report = models.JSONField(default=dict, blank=True)
-    preparation_plan = models.JSONField(default=dict, blank=True)
     seconds = models.FloatField(default=0.0)
     used_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -267,8 +269,6 @@ class Cell(models.Model):
 
     def fits(self, intent: str) -> tuple[bool, str]:
         """Whether a consumer can read this version; quality findings are advisory."""
-        if intent == Dataset.Intent.EXPLORE:
-            return False, "Data exploration has no training or evaluation format."
         if intent not in (Dataset.Intent.TRAIN, Dataset.Intent.EVAL):
             return False, "The intent is still pending. Choose train or eval."
         if not self.ran:
@@ -277,6 +277,30 @@ class Cell(models.Model):
         if not shape.get("ok"):
             return False, str(shape.get("reason") or f"the table is not a {intent} table")
         return True, ""
+
+    def fit(self) -> dict[str, dict]:
+        """For each use, whether this version's rows fit it and why not."""
+        report = self.intent_report or {}
+        if not report:
+            unmeasured = {"ok": False, "reason": "This version has not been measured."}
+            return {use: dict(unmeasured) for use in ("sft", "decision", "eval")}
+        train, evaluation = report.get("train") or {}, report.get("eval") or {}
+        decision = train.get("format") == "decision"
+
+        def use(ok, reason):
+            return {"ok": bool(ok), "reason": "" if ok else str(reason or "")}
+
+        return {
+            Dataset.TrainFormat.SFT: use(
+                train.get("ok") and not decision,
+                train.get("reason") or "The rows are decisions, not conversations.",
+            ),
+            Dataset.TrainFormat.DECISION: use(
+                train.get("ok") and decision,
+                train.get("reason") or "The rows have no decision.",
+            ),
+            Dataset.Intent.EVAL: use(evaluation.get("ok"), evaluation.get("reason")),
+        }
 
 
 class DatasetHistory(models.Model):

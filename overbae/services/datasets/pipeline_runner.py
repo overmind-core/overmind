@@ -8,13 +8,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
 import redis
 from django.conf import settings
-from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
 from overbae.models import DatasetPipelineRunner
-from overbae.services.datasets import store, workbench
+from overbae.services.datasets import store
 from sandbox import packages
 from sandbox.protocol import FramingError, HeaderReader, header_bytes
 
@@ -114,7 +115,17 @@ def _refusal(response) -> str:
     )
 
 
+BUSY_SECONDS = 2
+# How long a step waits for a full sandbox before the run fails as unstarted.
+BUSY_LIMIT_SECONDS = QUEUE_SECONDS
+# Columns that carry platform lineage, not data the script transforms.
+# Platform lineage: scripts never see it, and carry() restores what rows inherit.
+HIDDEN = ("_overmind_parent_rows", "_overmind_provenance", store.EVIDENCE)
+MAX_LINE = 4 * 1024 * 1024
+
+
 def execute_script(run, index, source, directory, step, files, progress):
+    """Runs the step's entrypoint on ``source`` in the sandbox and yields its output rows."""
     if not settings.SANDBOX_URL or not settings.SANDBOX_TOKEN:
         raise RuntimeUnavailableError("The isolated sandbox is not configured.")
     manifest = run.pipeline.package.manifest
@@ -122,6 +133,7 @@ def execute_script(run, index, source, directory, step, files, progress):
         raise RuntimeUnavailableError(
             "The pinned runtime is unavailable. Save a new package revision with the advertised sandbox runtime identity."
         )
+    io = step.get("io", "jsonl")
     receipt = run.result["steps"][index]
     started, checkpoint, stage = time.monotonic(), time.monotonic(), None
     timings = {}
@@ -151,45 +163,70 @@ def execute_script(run, index, source, directory, step, files, progress):
         payload.write_text(json.dumps(files, ensure_ascii=False))
         if payload.stat().st_size > packages.MAX_PACKAGE_BYTES:
             raise RuntimeUnavailableError("The encoded package exceeds 20 MiB.")
-        incoming, output = root / "input.jsonl", root / "output.jsonl"
         phase("input_transfer")
-        with incoming.open("wb") as stream:
-            for row in store.iter_rows(source):
-                row.pop("_overmind_parent_rows", None)
-                stream.write(
-                    (
-                        json.dumps(row, ensure_ascii=False, allow_nan=False, cls=DjangoJSONEncoder)
-                        + "\n"
-                    ).encode()
-                )
-                if stream.tell() > packages.MAX_OUTPUT_BYTES:
-                    raise RuntimeUnavailableError(
-                        "The input exceeds 2 GiB. Declare batch_rows for independent rows."
-                    )
+        incoming = root / "input.parquet"
+        parquet = pq.ParquetFile(source)
+        columns = [name for name in parquet.schema_arrow.names if name not in HIDDEN]
+        schema = pa.schema(
+            [parquet.schema_arrow.field(name) for name in columns],
+            metadata=parquet.schema_arrow.metadata,
+        )
+        # One stored row group at a time: those are bounded by bytes, so the worker never
+        # holds more than one.
+        with pq.ParquetWriter(incoming, schema, compression="zstd") as writer:
+            for group in range(parquet.num_row_groups):
+                writer.write_table(parquet.read_row_group(group, columns=columns))
+        metadata = pq.read_metadata(incoming)
         header = {
             "mode": "package",
+            "rows": metadata.num_rows,
+            **({"batch_rows": step["batch_rows"]} if step.get("batch_rows") else {}),
             "input_bytes": incoming.stat().st_size,
+            "expanded_bytes": sum(
+                metadata.row_group(group).total_byte_size
+                for group in range(metadata.num_row_groups)
+            ),
             "package_bytes": payload.stat().st_size,
             "runtime": manifest["runtime"],
             "entrypoint": step["entrypoint"],
             "parameters": run.specification["parameters"],
             "limits": manifest.get("limits", {}),
+            "io": io,
         }
+        output = root / f"output.{io}"
+        receipt["submission_started_at"] = timezone.now().isoformat()
+        result = _submit(header, (payload, incoming), output, phase, receipt)
+        receipt["exit_code"] = result.get("exit_code")
+        receipt["runtime"].update(result.get("runtime") or {})
+        receipt["runtime"]["execution_seconds"] = result.get("seconds")
+        (directory / f"{index}-stdout.log").write_text(result.get("stdout", ""))
+        (directory / f"{index}-stderr.log").write_text(result.get("error", ""))
+        if not result.get("ok"):
+            progress()
+            raise RuntimeUnavailableError(result.get("error") or "The sandbox package failed.")
+        phase("output_reading")
+        if io == "parquet":
+            yield from _parquet_rows(output, result.get("segments") or [output.stat().st_size])
+        else:
+            yield from _jsonl_rows(output)
+        phase("completed")
 
-        def body():
-            yield header_bytes(header)
-            for path in (payload, incoming):
-                with path.open("rb") as stream:
-                    while chunk := stream.read(64 * 1024):
-                        yield chunk
 
+def _submit(header, parts, output, phase, receipt) -> dict:
+    """The sandbox's final reply, with the output written to ``output``. A busy sandbox
+    has read nothing yet, so the request is sent again until it has room."""
+
+    def body():
+        yield header_bytes(header)
+        for path in parts:
+            with path.open("rb") as stream:
+                while chunk := stream.read(64 * 1024):
+                    yield chunk
+
+    waited_until = time.monotonic() + BUSY_LIMIT_SECONDS
+    while True:
         reader = HeaderReader()
         try:
-            receipt["submission_started_at"] = timezone.now().isoformat()
-            if not progress():
-                raise RuntimeUnavailableError(
-                    "Publication was cancelled before sandbox submission."
-                )
             with (
                 httpx.stream(
                     "POST",
@@ -201,40 +238,80 @@ def execute_script(run, index, source, directory, step, files, progress):
                 ) as response,
                 output.open("wb") as stream,
             ):
+                if response.status_code == 503:
+                    if time.monotonic() > waited_until:
+                        raise RuntimeUnavailableError(
+                            "The sandbox stayed full for 15 minutes; the step did not start."
+                        )
+                    phase("waiting_for_sandbox")
+                    time.sleep(BUSY_SECONDS)
+                    continue
                 if response.status_code != 200:
                     raise RuntimeUnavailableError(_refusal(response))
                 for chunk in response.iter_bytes():
                     pending = reader.feed(chunk)
                     while reader.header is not None and "progress" in reader.header:
+                        if "batches" in reader.header["progress"]:
+                            receipt["batches"] = reader.header["progress"]["batches"]
                         phase("script_execution")
                         reader = HeaderReader()
                         pending = reader.feed(pending)
                     if stream.tell() + len(pending) > packages.MAX_OUTPUT_BYTES:
                         raise RuntimeUnavailableError("The sandbox output exceeds 2 GiB.")
                     stream.write(pending)
-                result = reader.finish()
-            receipt["exit_code"] = result.get("exit_code")
-            receipt["runtime"].update(result.get("runtime") or {})
-            receipt["runtime"]["execution_seconds"] = result.get("seconds")
-            (directory / f"{index}-stdout.log").write_text(result.get("stdout", ""))
-            (directory / f"{index}-stderr.log").write_text(result.get("error", ""))
-            if not result.get("ok"):
-                progress()
-                raise RuntimeUnavailableError(result.get("error") or "The sandbox package failed.")
-            phase("output_reading")
-            with output.open("rb") as rows:
-                for line in iter(lambda: rows.readline(4 * 1024 * 1024 + 1), b""):
-                    if len(line) > 4 * 1024 * 1024:
-                        raise RuntimeUnavailableError("An output row exceeds 4 MiB.")
-                    row = json.loads(line)
-                    if not isinstance(row, dict) or len(row) > 200:
-                        raise RuntimeUnavailableError(
-                            "Every output line must be an object with at most 200 columns."
-                        )
-                    workbench.digest(row)
-                    yield row
-            phase("completed")
+                return reader.finish()
         except (httpx.TransportError, FramingError) as exc:
             raise RuntimeUnavailableError(
                 "The sandbox result is unconfirmed. No script was replayed."
             ) from exc
+
+
+def _checked(row):
+    if not isinstance(row, dict) or len(row) > 200:
+        raise RuntimeUnavailableError(
+            "Every output line must be an object with at most 200 columns."
+        )
+    return row
+
+
+def _jsonl_rows(path):
+    with path.open("rb") as rows:
+        for line in iter(lambda: rows.readline(MAX_LINE + 1), b""):
+            if len(line) > MAX_LINE:
+                raise RuntimeUnavailableError("An output row exceeds 4 MiB.")
+            try:
+                row = store.json_loads_finite(line)
+            except ValueError as exc:
+                raise RuntimeUnavailableError(
+                    "Every output line must be one finite JSON object."
+                ) from exc
+            yield _checked(row)
+
+
+def _parquet_rows(path, segments):
+    """Rows of each batch's output.parquet, which arrive one after another in ``path``."""
+    with path.open("rb") as combined:
+        for size in segments:
+            part = path.with_suffix(".part.parquet")
+            with part.open("wb") as stream:
+                remaining = size
+                while remaining:
+                    chunk = combined.read(min(remaining, 1 << 20))
+                    if not chunk:
+                        raise RuntimeUnavailableError("The sandbox output ended early.")
+                    stream.write(chunk)
+                    remaining -= len(chunk)
+            try:
+                parquet = pq.ParquetFile(part)
+            except (OSError, pa.ArrowException) as exc:
+                raise RuntimeUnavailableError(
+                    "output.parquet is not a readable Parquet file."
+                ) from exc
+            if len(parquet.schema_arrow.names) > 200:
+                raise RuntimeUnavailableError("The output has more than 200 columns.")
+            for batch in parquet.iter_batches(batch_size=1024):
+                for row in batch.to_pylist():
+                    if not store.finite(row):
+                        raise RuntimeUnavailableError("Provide finite values in output.parquet.")
+                    yield row
+            part.unlink()

@@ -94,7 +94,7 @@ def test_intent_first_then_source_keeps_the_original_request(
     source = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
     assert any("three days" in value for value in source["text"])
     assert all(source["_overmind_document_id"])
-    assert all(source["_overmind_provenance"].map(lambda value: bool(value["evidence"])))
+    assert all(source["_overmind_evidence"].map(lambda value: bool(value["evidence"])))
     again = client.post(
         f"/api/datasets/{dataset.id}/source/", {"rows": [{"text": "replacement"}]}, format="json"
     )
@@ -203,12 +203,12 @@ def test_type3_native_text_survives_landing_without_ocr_replacement(workshop):
         native = [
             row
             for row in rows
-            if row["_overmind_provenance"]["extraction"]["method"] == "pdfium-native-text"
+            if row["_overmind_evidence"]["extraction"]["method"] == "pdfium-native-text"
         ]
         assert native
         width, height = (612, 792) if page in (1, 3) else (792, 612)
         for row in native:
-            box = row["_overmind_provenance"]["evidence"][0]["regions"][0]["bbox"]
+            box = row["_overmind_evidence"]["evidence"][0]["regions"][0]["bbox"]
             assert box["coord_origin"] == "TOPLEFT"
             assert 0 <= box["l"] < box["r"] <= width
             assert 0 <= box["t"] < box["b"] <= height
@@ -235,7 +235,7 @@ def test_scanned_pdf_upload_lands_with_page_evidence_and_original_bytes(workshop
         rows = frame[frame["page"] == page]
         assert "Returns are accepted for thirty days." in " ".join(rows["text"])
         for _, row in rows.iterrows():
-            evidence = row["_overmind_provenance"]["evidence"][0]
+            evidence = row["_overmind_evidence"]["evidence"][0]
             assert evidence["document_id"] == artifact["sha256"]
             assert evidence["page"] == page
             assert evidence["regions"][0]["page"] == page
@@ -246,11 +246,11 @@ def test_scanned_pdf_upload_lands_with_page_evidence_and_original_bytes(workshop
         ocr_rows = [
             row
             for row in rows.to_dict("records")
-            if row["_overmind_provenance"]["extraction"]["method"] == "tesseract-ocr"
+            if row["_overmind_evidence"]["extraction"]["method"] == "tesseract-ocr"
         ]
         assert ocr_rows
         assert all(
-            0 <= row["_overmind_provenance"]["extraction"]["confidence"] <= 100 for row in ocr_rows
+            0 <= row["_overmind_evidence"]["extraction"]["confidence"] <= 100 for row in ocr_rows
         )
     if name == "mixed":
         assert list(frame["page"]) == sorted(frame["page"])
@@ -335,7 +335,7 @@ def test_image_upload_extracts_text_with_upright_evidence_and_original_download(
     assert extraction["ocr"]["image"]["coordinate_space"] == "exif-oriented-pixels"
     if format == "WEBP":
         assert extraction["ocr"]["image"]["ocr_width"] < 1224
-    for provenance in frame["_overmind_provenance"]:
+    for provenance in frame["_overmind_evidence"]:
         evidence = provenance["evidence"][0]
         assert evidence["document_id"] == artifact["sha256"]
         assert evidence["filename"] == f"policy.{extension}"
@@ -414,7 +414,7 @@ def test_image_without_text_lands_as_an_empty_recorded_part_of_a_batch(workshop)
     assert dataset.source is not None, dataset.error
     frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
     assert "Returns are accepted for thirty days." in " ".join(frame["text"])
-    assert {p["evidence"][0]["filename"] for p in frame["_overmind_provenance"]} == {"policy.png"}
+    assert {p["evidence"][0]["filename"] for p in frame["_overmind_evidence"]} == {"policy.png"}
     by_name = {source["filename"]: source for source in dataset.source_spec["sources"]}
     assert by_name["blank.png"]["rows"] == 0
     assert by_name["blank.png"]["extraction"]["status"] == "no_text"
@@ -444,7 +444,7 @@ def test_photographed_page_falls_back_to_single_block_ocr(workshop, monkeypatch,
     assert dataset.source is not None, dataset.error
     frame = store.read_frame(paths.cell_path(dataset.id, dataset.source.id))
     assert "Returns are accepted for thirty days." in " ".join(frame["text"])
-    assert {p["extraction"]["psm"] for p in frame["_overmind_provenance"]} == {6}
+    assert {p["extraction"]["psm"] for p in frame["_overmind_evidence"]} == {6}
 
 
 def test_image_can_be_added_to_an_existing_workshop(workshop, django_capture_on_commit_callbacks):
@@ -555,7 +555,6 @@ def test_source_upload_merges_after_existing_cells_and_preserves_frozen_versions
     assert frame["text"].tolist() == ["cleaned", "new"]
     assert frame["source_row"].is_unique
     assert frame.iloc[1]["category"] == "example"
-    assert frame.iloc[1]["_overmind_provenance"]["file"]["filename"] == "more.csv"
     assert paths.cell_path(dataset.id, dataset.source.id).read_bytes() == original_bytes
     assert paths.cell_path(dataset.id, transformed.id).read_bytes() == frozen_bytes
     artifact = dataset.source_spec["sources"][0]
@@ -603,7 +602,7 @@ def test_source_attachment_batch_is_atomic_and_can_be_retried(
     dataset.refresh_from_db()
     assert dataset.active_cell.rows == 2
     frame = store.read_frame(paths.cell_path(dataset.id, dataset.active_cell.id))
-    assert frame.iloc[1]["_overmind_provenance"]["evidence"]
+    assert frame.iloc[1]["_overmind_evidence"]["evidence"]
 
 
 def test_source_attachment_busy_scope_and_duplicate_delivery(

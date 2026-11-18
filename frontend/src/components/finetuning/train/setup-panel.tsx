@@ -178,7 +178,7 @@ export function SetupPanel({
                       <span className="text-xs text-muted-foreground">
                         {d.activeVersion} · {count(d.rows ?? 0, "row")}
                       </span>
-                      <IntentBadge intent={d.intent} />
+                      <IntentBadge intent={d.intent} trainFormat={d.trainFormat} />
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -333,7 +333,7 @@ export function SetupPanel({
                           <span className="text-xs text-muted-foreground">
                             {d.activeVersion} · {count(d.rows ?? 0, "row")}
                           </span>
-                          <IntentBadge intent={d.intent} />
+                          <IntentBadge intent={d.intent} trainFormat={d.trainFormat} />
                         </SelectItem>
                       ))}
                     </SelectContent>

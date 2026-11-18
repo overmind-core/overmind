@@ -55,8 +55,8 @@ export function TablePagination({
           </>
         ) : pagination.count > 0 ? (
           <>
-            {pagination.startItem}–{pagination.endItem} of {pagination.total}{" "}
-            {pagination.total === 1 ? "row" : "rows"}
+            {pagination.startItem.toLocaleString()}–{pagination.endItem.toLocaleString()} of{" "}
+            {pagination.total.toLocaleString()} {pagination.total === 1 ? "row" : "rows"}
           </>
         ) : (
           "0 rows"
@@ -84,7 +84,7 @@ export function TablePagination({
           </Select>
         </div>
         <div className="whitespace-nowrap tabular-nums">
-          Page {page} of {pagination.totalPages}
+          Page {page.toLocaleString()} of {pagination.totalPages.toLocaleString()}
         </div>
         <div className="flex items-center gap-1">
           <Button

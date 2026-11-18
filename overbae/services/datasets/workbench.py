@@ -26,6 +26,7 @@ from overbae.services import activity, operational_progress
 from overbae.services.datasets import (
     events,
     lifecycle,
+    lineage,
     measure,
     operations,
     paths,
@@ -33,13 +34,17 @@ from overbae.services.datasets import (
     pipeline_graph,
     pipeline_packages,
     preparation,
-    review,
     rows,
     store,
 )
 from overbae.services.datasets.lifecycle import DatasetError
+from overbae.services.datasets.pipeline_execution import Parents
 
 logger = logging.getLogger(__name__)
+# Seconds between row counts while a step's output is written and measured.
+ROW_REPORT_SECONDS = 2.0
+SCRATCH_BYTES = 8 * 1024**3
+SCRATCH_FREE_BYTES = 512 * 1024**2
 
 
 def digest(value):
@@ -357,13 +362,30 @@ def execute(run_id, *, script_executor=None):
     receipts = []
     local_files = ExitStack()
 
+    rows_done = None
+    # Cell files copied into place; removed again unless their transaction commits.
+    placed = []
+
     def progress(next_stage, *, heartbeat=False, measurement=None):
-        nonlocal checkpoint, stage, stage_started_at
+        nonlocal checkpoint, stage, stage_started_at, rows_done
+        if next_stage != stage:
+            rows_done = None
         now = time.monotonic()
         if stage is not None:
             stage_seconds[stage] = round(stage_seconds.get(stage, 0) + now - checkpoint, 3)
         if next_stage != stage:
             stage_started_at = timezone.now().isoformat()
+            if stage is not None:
+                logger.info(
+                    "Pipeline stage finished",
+                    extra={
+                        "run": str(run.pk),
+                        "dataset": str(run.dataset_id),
+                        "stage": stage,
+                        "seconds": stage_seconds[stage],
+                        "source_rows": run.source.rows,
+                    },
+                )
         checkpoint, stage = now, next_stage
         run.result = {
             "stage": stage,
@@ -374,6 +396,7 @@ def execute(run_id, *, script_executor=None):
             "stage_seconds": dict(stage_seconds),
             "seconds": round(now - started, 3),
             "steps": receipts,
+            **({"rows_done": rows_done} if rows_done is not None else {}),
             "mode": run.mode,
             "attempt": str(run.attempt),
             "revision_fingerprint": run.pipeline.fingerprint if run.pipeline_id else None,
@@ -418,12 +441,35 @@ def execute(run_id, *, script_executor=None):
             )
         return changed
 
+    reported_at = 0.0
+
+    def counting(next_stage, done):
+        # A count every few seconds: each report is one write to the run row.
+        nonlocal rows_done, reported_at
+        now = time.monotonic()
+        if next_stage != stage or now - reported_at >= ROW_REPORT_SECONDS:
+            # One run must not fill the worker's volume for every other run on it.
+            used = sum(item.stat().st_size for item in directory.rglob("*") if item.is_file())
+            if used > SCRATCH_BYTES or shutil.disk_usage(directory).free < SCRATCH_FREE_BYTES:
+                raise ValueError("Workshop scratch capacity reached; no version was published.")
+            if next_stage != stage and not progress(next_stage):
+                raise ValueError("The run stopped; no version was published.")
+            rows_done, reported_at = done, now
+            if not progress(next_stage, heartbeat=True):
+                raise ValueError("The run stopped; no version was published.")
+
+    def written(rows, index):
+        # The script's rows arrive once its sandbox run ended: writing them is a stage.
+        for done, row in enumerate(rows):
+            if done % measure.PROGRESS_ROWS == 0:
+                counting(f"step_{index + 1}_writing", done)
+            yield row
+
     try:
         if not progress("verifying_source"):
             return
         if run.source.fingerprint != run.source_fingerprint:
             raise ValueError("The pinned source fingerprint changed before execution.")
-        rows.verify(run.source)
         if run.pipeline_id:
             recipe = run.pipeline
             expected = digest(
@@ -457,6 +503,8 @@ def execute(run_id, *, script_executor=None):
             rows.verify(run.artifact)
         directory = local_files.enter_context(scratch())
         input_path = directory / f"{run.source_id}.parquet"
+        if shutil.disk_usage(directory).free - source_path.stat().st_size < SCRATCH_FREE_BYTES:
+            raise ValueError("Workshop scratch capacity reached; no version was published.")
         shutil.copyfile(source_path, input_path)
         if store.file_sha256(input_path) != run.source_fingerprint:
             raise ValueError("The copied source does not match its pinned fingerprint.")
@@ -476,6 +524,13 @@ def execute(run_id, *, script_executor=None):
         flow = pipeline_graph.describe(steps, files=package_files)
         step_inputs = {"source": input_path}
         outputs = []
+        group_by = run.dataset.source_spec.get("split", {}).get("group_by", [])
+        # Outputs are measured for the intent publication gives the dataset.
+        pinned = (run.dataset.intent, run.dataset.capability_id)
+        for field, value in declared_intent(run.dataset, steps[-1].get("consumer")).items():
+            setattr(run.dataset, field, value)
+        # A preview reads only the key rows of its sample.
+        step_keys = {"source": lineage.head(run.source, store.row_count(input_path))}
         for index, step in enumerate(steps):
             node = flow["nodes"][index]
             parent_paths = [step_inputs[identity] for identity in node["inputs"]]
@@ -495,6 +550,18 @@ def execute(run_id, *, script_executor=None):
                         f"Step {node['id']} has incompatible columns or types across inputs. "
                         "Normalize each branch explicitly before merging; no values were coerced."
                     )
+                identities = [
+                    {
+                        row[store.SOURCE_ROW]
+                        for row in store.iter_rows(path, columns=[store.SOURCE_ROW])
+                    }
+                    for path in parent_paths
+                ]
+                if len(set().union(*identities)) != sum(map(len, identities)):
+                    raise ValueError(
+                        f"Step {node['id']} has overlapping source_row identities across inputs. "
+                        "Use disjoint branches; no rows were deduplicated or published."
+                    )
                 input_path = directory / f"{index}-inputs.parquet"
                 store.write_rows(
                     input_path,
@@ -503,18 +570,17 @@ def execute(run_id, *, script_executor=None):
                     if not any(store.row_count(path) for path in parent_paths)
                     else None,
                 )
-                with review.indexed_rows(input_path) as (_, tracked):
-                    if not tracked:
-                        raise ValueError(
-                            f"Step {node['id']} has overlapping source_row identities across inputs. "
-                            "Use disjoint branches; no rows were deduplicated or published."
-                        )
-            raw, output = directory / f"{index}-raw.parquet", directory / f"{uuid.uuid4()}.parquet"
+            parents = Parents(
+                [(step_inputs[identity], step_keys[identity]) for identity in node["inputs"]],
+                group_by,
+            )
+            output = directory / f"{uuid.uuid4()}.parquet"
+            fingerprints = {path: store.file_sha256(path) for path in {input_path, *parent_paths}}
             receipt = {
                 "index": index,
                 "name": step.get("name", step.get("operation", "Transformation")),
                 "state": "running",
-                "input_fingerprint": store.file_sha256(input_path),
+                "input_fingerprint": fingerprints[input_path],
                 "input_rows": store.row_count(input_path),
                 "started_at": timezone.now().isoformat(),
                 "step_id": node["id"],
@@ -523,7 +589,7 @@ def execute(run_id, *, script_executor=None):
                 "inputs": [
                     {
                         "step": identity,
-                        "fingerprint": store.file_sha256(path),
+                        "fingerprint": fingerprints[path],
                         "rows": store.row_count(path),
                     }
                     for identity, path in zip(node["inputs"], parent_paths, strict=True)
@@ -539,20 +605,13 @@ def execute(run_id, *, script_executor=None):
             if not progress(f"step_{index + 1}_executing"):
                 return
             step_started = time.monotonic()
-            manifest = store.read_manifest(input_path)
             if package_files is not None:
-                missing = set(step.get("input_schema", {})) - {
-                    column["name"] for column in manifest
-                }
-                if missing:
-                    raise ValueError(
-                        f"Missing required input columns: {', '.join(sorted(missing))}."
-                    )
-                for _ in pipeline_packages.check_rows(
-                    store.iter_rows(input_path), step.get("input_schema", {})
-                ):
-                    pass
-                records = pipeline_execution.execute_rows(
+                violation = pipeline_execution.contract_violation(
+                    input_path, step.get("input_schema", {})
+                )
+                if violation:
+                    raise ValueError(violation)
+                records = script_executor(
                     run,
                     index,
                     input_path,
@@ -560,26 +619,40 @@ def execute(run_id, *, script_executor=None):
                     step,
                     package_files,
                     lambda index=index: progress(f"step_{index + 1}_executing", heartbeat=True),
-                    script_executor,
                 )
                 records = pipeline_packages.check_rows(
                     external_rows(records), step.get("output_schema", {})
                 )
                 script = package_files[step["entrypoint"]]
-                manifest = None
             else:
                 records = external_rows(
                     store.iter_rows(paths.cell_path(run.artifact.dataset_id, run.artifact_id))
                     if run.artifact_id
                     else run.specification["rows"]
                 )
-                script, manifest = "", None
-            store.write_rows(raw, records, manifest)
-            if step.get("consumer"):
-                if not progress(f"step_{index + 1}_validating_consumer"):
-                    return
-                receipt["consumer_check"] = pipeline_execution.check_consumer(raw, step["consumer"])
-            count = store.row_count(raw)
+                script = ""
+            inherited = []
+            store.write_rows(
+                output, pipeline_execution.carry(written(records, index), parents, inherited)
+            )
+            count = store.row_count(output)
+            if not count:
+                store.write_rows(
+                    output,
+                    [],
+                    [
+                        {
+                            "name": name,
+                            "type": kind
+                            if kind in {"string", "integer", "number", "boolean"}
+                            else "json",
+                        }
+                        for name, kind in {
+                            **step.get("output_schema", {}),
+                            store.SOURCE_ROW: "integer",
+                        }.items()
+                    ],
+                )
             receipt["output_rows"] = count
             checks = step.get("checks", {})
             check_results = {"passed": {}, "failed": {}, "deferred": {}}
@@ -609,84 +682,30 @@ def execute(run_id, *, script_executor=None):
                 raise ValueError(
                     f"Step {node['id']} row checks failed: {json.dumps(check_results['failed'])}."
                 )
-            if not progress(f"step_{index + 1}_preserving_lineage"):
+            if not progress(f"step_{index + 1}_measuring"):
                 return
-            last_validation_update = 0.0
-
-            def validation_progress(phase, completed, total, receipt=receipt):
-                nonlocal last_validation_update
-                now = time.monotonic()
-                if now - last_validation_update < 2 and completed != total:
-                    return
-                last_validation_update = now
-                receipt["validation"] = {
-                    "phase": phase,
-                    "completed": completed,
-                    "total": total,
-                    "unit": "rows",
-                    "updated_at": timezone.now().isoformat(),
-                }
-                used = sum(item.stat().st_size for item in directory.rglob("*") if item.is_file())
-                if used > 8 * 1024**3 or shutil.disk_usage(directory).free < 512 * 1024**2:
-                    raise ValueError(
-                        "Workshop scratch capacity reached; source versions remain unchanged."
-                    )
-                if not progress(stage, measurement=receipt["validation"]):
-                    raise ValueError("Publication was cancelled during validation.")
-
-            with review.indexed_rows(
-                input_path,
-                parent_paths=parent_paths,
-                progress=validation_progress,
-                scratch=directory,
-            ) as source_index:
-                if count:
-                    review.preserve_file_provenance(
-                        input_path,
-                        raw,
-                        output,
-                        group_by=review.group_columns(run.dataset, run.source),
-                        parent_paths=parent_paths,
-                        index=source_index,
-                        strip_review=not run.pipeline_id or package_files is not None,
-                        progress=validation_progress,
-                    )
-                else:
-                    empty_manifest = manifest or [
-                        {
-                            "name": name,
-                            "type": kind
-                            if kind in {"string", "integer", "number", "boolean"}
-                            else "json",
-                        }
-                        for name, kind in {
-                            **step.get("output_schema", {}),
-                            store.SOURCE_ROW: "integer",
-                        }.items()
-                    ]
-                    store.write_rows(
-                        output,
-                        [],
-                        [column for column in empty_manifest if column["name"] != "human_reviewed"],
-                    )
-                if not progress("measuring_impact"):
-                    return
-                impact = review.impact_files(
-                    input_path, output, index=source_index, progress=validation_progress
+            measured = measure.describe_frame(
+                run.dataset,
+                output,
+                inherited=inherited,
+                on_progress=lambda done, index=index: counting(f"step_{index + 1}_measuring", done),
+            )
+            if step.get("consumer"):
+                receipt["consumer_check"] = pipeline_execution.check_consumer(
+                    measured["intent_report"], step["consumer"]
                 )
             receipt.update(
                 state="completed",
-                output_rows=count,
-                output_fingerprint=store.file_sha256(output),
+                output_fingerprint=measured["fingerprint"],
                 seconds=round(time.monotonic() - step_started, 3),
-                impact=impact,
                 checks=checks,
                 completed_at=timezone.now().isoformat(),
             )
             if run.mode == "preview":
                 receipt["sample"] = bounded_sample(output)
-            outputs.append((output, script, receipt))
+            outputs.append((output, script, receipt, measured))
             step_inputs[node["id"]] = output
+            step_keys[node["id"]] = lineage.load(output)
         if run.mode == "preview":
             with transaction.atomic():
                 Dataset.objects.select_for_update().get(pk=run.dataset_id)
@@ -707,11 +726,6 @@ def execute(run_id, *, script_executor=None):
         if outputs:
             if not progress("publishing"):
                 return
-            measured = {}
-            for output, _, _ in outputs:
-                measured[output.stem] = measure.describe_frame(run.dataset, output)
-                if not progress("publishing"):
-                    return
             with transaction.atomic():
                 binding = None
                 if run.binding_id:
@@ -719,10 +733,7 @@ def execute(run_id, *, script_executor=None):
                         pk=run.binding_id
                     )
                 dataset = Dataset.objects.select_for_update().get(pk=run.dataset_id)
-                if (dataset.intent, dataset.capability_id) != (
-                    run.dataset.intent,
-                    run.dataset.capability_id,
-                ):
+                if (dataset.intent, dataset.capability_id) != pinned:
                     raise ValueError(
                         "The dataset settings changed during publication. Run the pinned recipe again."
                     )
@@ -731,7 +742,7 @@ def execute(run_id, *, script_executor=None):
                     return
                 position = (dataset.cells.aggregate(n=Max("position"))["n"] or 0) + 1
                 input_cells = {"source": str(run.source_id)}
-                for index, (output, script, receipt) in enumerate(outputs):
+                for index, (output, script, receipt, measured) in enumerate(outputs):
                     receipt["input_cells"] = [
                         input_cells[identity] for identity in receipt["input_steps"]
                     ]
@@ -749,7 +760,9 @@ def execute(run_id, *, script_executor=None):
                     )
                     destination = paths.cell_path(dataset.pk, cell.pk)
                     destination.parent.mkdir(parents=True, exist_ok=True)
+                    placed.extend([destination, lineage.keys_path(destination)])
                     shutil.copyfile(output, destination)
+                    shutil.copyfile(lineage.keys_path(output), lineage.keys_path(destination))
                     report = {
                         "kind": "pipeline" if run.pipeline_id else "external",
                         "status": "accepted",
@@ -761,9 +774,8 @@ def execute(run_id, *, script_executor=None):
                         if package_files
                         else "external_attributed",
                         **receipt,
-                        **receipt["impact"],
                     }
-                    Cell.objects.filter(pk=cell.pk).update(**measured[output.stem], review=report)
+                    Cell.objects.filter(pk=cell.pk).update(**measured, review=report)
                     cell.refresh_from_db()
                     receipt["output_cell"] = str(cell.pk)
                     input_cells[receipt["step_id"]] = str(cell.pk)
@@ -774,16 +786,17 @@ def execute(run_id, *, script_executor=None):
                     result={
                         **run.result,
                         "rows": cell.rows,
-                        "impact": receipts[-1]["impact"],
                         "seconds": round(time.monotonic() - started, 3),
-                        "semantic_quality": "unmeasured",
-                        "analytics": cell.stats["analytics"],
                     },
                     lease_until=None,
                     updated_at=timezone.now(),
                 )
                 Dataset.objects.filter(pk=dataset.pk).update(
-                    active=cell, state=Dataset.State.IDLE, error="", updated_at=timezone.now()
+                    active=cell,
+                    state=Dataset.State.IDLE,
+                    error="",
+                    updated_at=timezone.now(),
+                    **declared_intent(dataset, steps[-1].get("consumer")),
                 )
                 activity.record(
                     key=f"mcp-task:{dataset.project_id}:dataset_pipeline:{run.pk}",
@@ -802,6 +815,7 @@ def execute(run_id, *, script_executor=None):
                 transaction.on_commit(
                     lambda: events.publish(dataset.pk, {"type": "dataset_changed"})
                 )
+            placed.clear()
     except (ValueError, rows.RowStoreError, DatasetError) as exc:
         fail(run_id, str(exc)[:1000])
     except Exception:
@@ -811,7 +825,27 @@ def execute(run_id, *, script_executor=None):
             "Transformation failed. Inspect the recipe and source columns; no version was published.",
         )
     finally:
+        for path in placed:
+            path.unlink(missing_ok=True)
         local_files.close()
+
+
+CONSUMER_INTENTS = {
+    "chat_train": (Dataset.Intent.TRAIN, Dataset.TrainFormat.SFT),
+    "decision_train": (Dataset.Intent.TRAIN, Dataset.TrainFormat.DECISION),
+    "model_eval": (Dataset.Intent.EVAL, ""),
+    "decision_eval": (Dataset.Intent.EVAL, ""),
+}
+
+
+def declared_intent(dataset, consumer) -> dict:
+    """The intent a published consumer states, for a dataset no person has given one."""
+    if consumer not in CONSUMER_INTENTS or dataset.intent != Dataset.Intent.PENDING:
+        return {}
+    if dataset.frozen_before >= 0:
+        return {}
+    intent, train_format = CONSUMER_INTENTS[consumer]
+    return {"intent": intent, "train_format": train_format}
 
 
 def bounded_sample(path):
@@ -830,7 +864,8 @@ def external_rows(records):
         yield {
             key: value
             for key, value in record.items()
-            if key not in {"human_reviewed", "_overmind_provenance", "_overmind_document_id"}
+            # Platform lineage comes from the bound parents (carry), never from the output.
+            if key not in {"_overmind_provenance", "_overmind_document_id", store.EVIDENCE}
         }
 
 
@@ -946,8 +981,11 @@ def update_dataset(dataset, **fields):
         dataset.save(update_fields=["ocr_languages", "updated_at"])
     if "name" in fields:
         lifecycle.rename(dataset, fields["name"])
-    if "intent" in fields:
-        lifecycle.set_intent(dataset, fields["intent"])
+    if "intent" in fields or "train_format" in fields:
+        intent = fields.get("intent", dataset.intent)
+        # A format survives a request that keeps the intent train and does not name one.
+        kept = dataset.train_format if intent == Dataset.Intent.TRAIN else ""
+        lifecycle.set_intent(dataset, intent, fields.get("train_format", kept))
     if "capability" in fields:
         lifecycle.set_capability(dataset, fields["capability"])
     if "active" in fields:

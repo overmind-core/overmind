@@ -133,6 +133,8 @@ def _reply(outcome: execute.Outcome) -> dict[str, Any]:
     }
     if outcome.extraction is not None:
         reply["extraction"] = outcome.extraction
+    if outcome.segments is not None:
+        reply["segments"] = outcome.segments
     return reply
 
 
@@ -169,7 +171,7 @@ async def run(request: Request) -> Response:
         shutil.rmtree(scratch, ignore_errors=True)
         execute.release(slot)
 
-    source = scratch / ("input.jsonl" if header["mode"] == "package" else "document")
+    source = scratch / ("input.parquet" if header["mode"] == "package" else "document")
     try:
         parts = [(source, header["input_bytes"])]
         if header["mode"] == "extract" and header.get("cache_bytes"):

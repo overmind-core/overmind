@@ -322,7 +322,7 @@ def test_native_agent_imports_declared_mean_without_inventing_probabilities(sett
     assert next(store.iter_rows(paths.cell_path(dataset.pk, source.pk))) == original
 
 
-def test_changing_an_existing_mean_records_semantic_impact_and_preserves_source():
+def test_changing_an_existing_mean_publishes_a_version_and_preserves_source():
 
     project = Project.objects.create(name="Mean review", slug="mean-review")
     dataset = Dataset.objects.create(project=project, name="Means", intent="train")
@@ -343,7 +343,6 @@ def test_changing_an_existing_mean_records_semantic_impact_and_preserves_source(
     assert next(rows.iter_rows(dataset.source)).extra["decision"]["target_mean"] == 0.4
     assert next(rows.iter_rows(dataset.active_cell)).extra["decision"]["target_mean"] == 0.9
     assert dataset.active_cell.review["execution"] == "external_attributed"
-    assert dataset.active_cell.review["decision_changes"] == 1
 
 
 def test_demo_model_workflows_remain_terminal_and_reset_without_provider_work():

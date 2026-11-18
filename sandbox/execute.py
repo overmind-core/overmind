@@ -18,7 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from sandbox import packages
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from sandbox import packages, script_io
 
 GIB = 1024**3
 EXTRACT_CPU_SECONDS = 1200
@@ -57,6 +60,8 @@ class Outcome:
     extraction: dict | None = None
     exit_code: int | None = None
     runtime: dict | None = None
+    # Bytes of each batch's output, in order, when the output holds several.
+    segments: list[int] | None = None
 
 
 def gib(value: float) -> str:
@@ -91,9 +96,24 @@ def memory_budget() -> int:
 
 def need_for(header: dict) -> int:
     if header["mode"] == "package":
-        # Keep main's measured dataframe expansion allowance when admitting JSONL packages.
-        return max(GIB, int(header["input_bytes"] * 5.5) + 256 * 1024**2 + header["package_bytes"])
+        expanded = max(header["input_bytes"], header.get("expanded_bytes", 0))
+        # The whole input and the finished outputs wait on the tmpfs between batches.
+        retained = header["input_bytes"] + expanded if _batched(header) else 0
+        return max(GIB // 2, _child_need(header) + retained)
     return max(2 * GIB, 4 * int(header["input_bytes"])) + 3 * header.get("cache_bytes", 0)
+
+
+def _batched(header: dict) -> bool:
+    return bool(header.get("batch_rows") and header.get("rows"))
+
+
+def _child_need(header: dict) -> int:
+    """One script process: the decoded rows it holds, about 5.5 times their uncompressed
+    size (one batch with batch_rows), and its package."""
+    expanded = max(header["input_bytes"], header.get("expanded_bytes", 0))
+    if _batched(header):
+        expanded = expanded * min(1.0, header["batch_rows"] / header["rows"])
+    return int(expanded * 5.5) + 256 * 1024**2 + header["package_bytes"]
 
 
 def refusal(header: dict, need: int, budget: int) -> str:
@@ -552,6 +572,86 @@ def spawn(
     return Outcome(ok=True, stdout=stdout, seconds=seconds, exit_code=0, runtime=facts)
 
 
+# What every batch of a run shares; anything else a batch leaves behind is removed.
+_RUN_FILES = {"package", "parameters.json", "request.json"}
+
+
+def _reset(scratch: Path) -> None:
+    for path in scratch.iterdir():
+        if path.name in _RUN_FILES:
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+
+
+def _run_batches(header, child, scratch, slot, stop, on_progress) -> Outcome:
+    """Runs the script once per batch of ``batch_rows`` rows, one batch at a time, in fresh
+    processes under one reservation. The whole input and the finished outputs wait where
+    the script cannot read them."""
+    name = f"output.{header.get('io', 'jsonl')}"
+    held = Path(tempfile.mkdtemp(prefix="held_", dir=scratch.parent))
+    try:
+        rows = held / "rows.parquet"
+        (scratch / "input.parquet").replace(rows)
+        parquet = pq.ParquetFile(rows)
+        size = header.get("batch_rows") or max(parquet.metadata.num_rows, 1)
+        total = max(1, -(-parquet.metadata.num_rows // size))
+        combined = (held / "output").open("w+b")
+        segments, seconds, outcome = [], 0.0, Outcome(ok=True)
+        metadata = parquet.schema_arrow.metadata or {}
+        kinds = {
+            column["name"]: column["type"]
+            for column in json.loads(metadata.get(script_io.MANIFEST_KEY, b"[]"))
+        }
+        batches = parquet.iter_batches(batch_size=size)
+        for number in range(total):
+            if stop is not None and stop.is_set():
+                outcome = Outcome(ok=False, error="The run was cancelled.")
+                break
+            batch = next(batches, None) or pa.RecordBatch.from_pylist([], parquet.schema_arrow)
+            if header.get("io", "jsonl") == "jsonl":
+                script_io.write_jsonl(batch, kinds, scratch / "input.jsonl")
+            else:
+                pq.write_table(pa.Table.from_batches([batch]), scratch / "input.parquet")
+            outcome = spawn(child, scratch, slot, stop)
+            seconds += outcome.seconds
+            if not outcome.ok:
+                break
+            output = claim(scratch / name, packages.MAX_OUTPUT_BYTES)
+            if output is None:
+                outcome.ok = False
+                outcome.error = f"The package did not produce a readable regular {name}."
+                break
+            # The 2 GiB output limit holds before a batch is copied, separator included.
+            if combined.tell() + os.fstat(output.fileno()).st_size + 1 > packages.MAX_OUTPUT_BYTES:
+                output.close()
+                outcome.ok, outcome.error = False, "The package output exceeds 2 GiB."
+                break
+            with output:
+                start = combined.tell()
+                shutil.copyfileobj(output, combined)
+                # A JSONL batch without a final newline must not join the next batch's line.
+                if name == "output.jsonl" and combined.tell() > start:
+                    combined.seek(-1, os.SEEK_END)
+                    if combined.read(1) != b"\n":
+                        combined.write(b"\n")
+                segments.append(combined.tell() - start)
+            _reset(scratch)
+            if on_progress is not None:
+                on_progress({"batches": {"completed": number + 1, "total": total}})
+        outcome.seconds = round(seconds, 3)
+        if outcome.ok:
+            combined.seek(0)
+            outcome.output, outcome.segments = combined, segments
+        else:
+            combined.close()
+        return outcome
+    finally:
+        shutil.rmtree(held, ignore_errors=True)
+
+
 def run(
     header: dict,
     scratch: Path,
@@ -571,13 +671,7 @@ def run(
             wall_seconds=limits.get("seconds", 300),
             scratch_bytes=limits.get("scratch_mb", 2048) * 1024**2,
         )
-        outcome = spawn(child, scratch, slot, stop)
-        if outcome.ok:
-            outcome.output = claim(scratch / "output.jsonl", packages.MAX_OUTPUT_BYTES)
-            if outcome.output is None:
-                outcome.ok = False
-                outcome.error = "The package did not produce a readable regular output.jsonl."
-        return outcome
+        return _run_batches(header, child, scratch, slot, stop, on_progress)
     child = Child(
         argv=[
             str(Path(__file__).with_name("documents") / "child.py"),

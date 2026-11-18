@@ -108,6 +108,7 @@ def _build_training_jsonl(version) -> tuple[str, int]:
 
 def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str | None, int, dict]:
     """Returns ``(training_path, validation_path | None, num_train_rows, event_metadata)``."""
+    from overbae.services.datasets import lineage
     from overbae.services.datasets import rows as row_store
     from overbae.services.finetuning_split import split_datapoint_ids
 
@@ -145,6 +146,7 @@ def _resolve_train_val_paths(job, supports_validation: bool) -> tuple[str, str |
         method=job.split_method,
         group_by=version.dataset.source_spec.get("split", {}).get("group_by", []),
         stratify_by=version.dataset.source_spec.get("split", {}).get("stratify_by"),
+        lineage=(keys for _, keys in lineage.read(version)),
     )
     train_ids, val_ids = set(train_ids), set(val_ids)
     training_path, num_train = _write_rows(

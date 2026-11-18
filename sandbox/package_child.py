@@ -21,6 +21,7 @@ def main():
         os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[: request["cpus"]])
     root = Path.cwd()
     entrypoint = root / "package" / request["entrypoint"]
+    suffix = request["io"]
     # Python's isolated mode leaves this file's folder off the import path.
     sys.path.insert(0, str(Path(__file__).parent))
     from kernel import confine
@@ -31,8 +32,8 @@ def main():
     sys.path.insert(0, str(root / "package"))
     sys.argv = [
         str(entrypoint),
-        str(root / "input.jsonl"),
-        str(root / "output.jsonl"),
+        str(root / f"input.{suffix}"),
+        str(root / f"output.{suffix}"),
         str(root / "parameters.json"),
     ]
     runpy.run_path(str(entrypoint), run_name="__main__")

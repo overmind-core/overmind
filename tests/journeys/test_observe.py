@@ -386,7 +386,7 @@ def show_agent_changes_without_reload(console, mcp, project):
     console._browser.call(console._page.evaluate, "window.activityDocument = 'unchanged'")
     dataset = mcp.call(
         "start_dataset",
-        {"name": "Live agent source", "brief": "Review live agent changes", "intent": "explore"},
+        {"name": "Live agent source", "brief": "Review live agent changes"},
     )["dataset"]["id"]
     console.sees("Live agent source")
     mcp.call("update_dataset", {"dataset": dataset, "name": "Renamed live source"})

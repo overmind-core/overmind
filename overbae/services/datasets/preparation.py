@@ -30,6 +30,7 @@ def describe(dataset, *, cell=None):
             "dataset": str(current.dataset_id),
             "dataset_name": current.dataset.name,
             "intent": current.dataset.intent,
+            "train_format": current.dataset.train_format,
             "role": role,
         }
         member = (
@@ -49,7 +50,8 @@ def describe(dataset, *, cell=None):
             edges[(str(parent.pk), identity)] = {
                 "source": str(parent.pk),
                 "target": identity,
-                "label": member.role,
+                "kind": "split",
+                "value": member.role,
             }
             add_members(member.plan)
             return
@@ -72,7 +74,8 @@ def describe(dataset, *, cell=None):
             edges[(str(parent.pk), identity)] = {
                 "source": str(parent.pk),
                 "target": identity,
-                "label": "Derived source",
+                "kind": "derived",
+                "value": "",
             }
             return
         if (current.review or {}).get("kind") == "attachment" and current.input_fingerprint:
@@ -92,7 +95,8 @@ def describe(dataset, *, cell=None):
                 edges[(str(parent.pk), identity)] = {
                     "source": str(parent.pk),
                     "target": identity,
-                    "label": "Added sources",
+                    "kind": "attachment",
+                    "value": "",
                 }
             return
         try:
@@ -134,7 +138,8 @@ def describe(dataset, *, cell=None):
                 edges[(str(parent.pk), identity)] = {
                     "source": str(parent.pk),
                     "target": identity,
-                    "label": step.get("condition", ""),
+                    "kind": "condition" if step.get("condition") else "step",
+                    "value": step.get("condition", ""),
                 }
         if current.pk == run.output_id and run.pk not in visited_runs:
             visited_runs.add(run.pk)

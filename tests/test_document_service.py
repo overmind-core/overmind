@@ -34,7 +34,7 @@ def test_parser_reports_ocr_progress_and_retained_identity():
     assert metadata["ocr"]["pages"] == [1]
     assert any(event.get("stage") == "ocr" for event in progress)
     assert rows[0]["_overmind_document_id"]
-    assert rows[0]["_overmind_provenance"]["evidence"][0]["filename"] == "scanned.pdf"
+    assert rows[0]["_overmind_evidence"]["evidence"][0]["filename"] == "scanned.pdf"
 
 
 def test_parser_configuration_has_no_in_process_fallback(settings, tmp_path):
@@ -121,7 +121,7 @@ def test_default_english_and_explicit_french_ocr(tmp_path):
     rows, metadata = documents.extract(path, filename=path.name, ocr_languages=["fra"])
     assert metadata["ocr"]["languages"] == ["fra"]
     assert "facture" in " ".join(row["text"] for row in rows)
-    assert all(row["_overmind_provenance"]["extraction"]["languages"] == ["fra"] for row in rows)
+    assert all(row["_overmind_evidence"]["extraction"]["languages"] == ["fra"] for row in rows)
 
 
 def test_ocr_worker_budget_stays_bounded(monkeypatch):

@@ -28,13 +28,6 @@ export interface ColumnInfo {
   null_rate?: number;
 }
 
-export interface CapabilityRank {
-  capability_id: string;
-  name: string;
-  score: number;
-  reason: string;
-}
-
 /** A page of the grid: `marks` says which rows are new and which values changed. */
 export interface RowsPage {
   rows: Array<Record<string, unknown> & { _index: number }>;
@@ -104,12 +97,28 @@ export function traceSelectionBody(selection: TraceSelectionSpec) {
   };
 }
 
+// One vocabulary for what a dataset is for: the cell, the table, the dialog and the canvas.
 export const INTENT_LABEL: Record<string, string> = {
   eval: "Eval",
-  explore: "Data exploration",
-  pending: "Pending",
+  pending: "Not set",
   train: "Train",
 };
+
+/** The role a partition gives its member dataset. */
+export const SPLIT_LABEL: Record<string, string> = {
+  calibration: "Calib",
+  development: "Dev",
+  final: "Test",
+  train: "Train",
+};
+
+/** The intent as the Console names it, with the training format when one is set. */
+export const TRAIN_FORMAT_LABEL: Record<string, string> = { decision: "Decision", sft: "SFT" };
+
+export const intentLabel = (intent: string, trainFormat?: string | null): string =>
+  intent === "train" && trainFormat
+    ? `Train · ${TRAIN_FORMAT_LABEL[trainFormat] ?? trainFormat}`
+    : (INTENT_LABEL[intent] ?? intent);
 
 export const intentOf = (dataset: Dataset | null | undefined): Intent =>
   (dataset?.intent ?? "pending") as Intent;
@@ -120,6 +129,7 @@ export const cellsOf = (dataset: Dataset | null | undefined): Cell[] =>
 export const isVisibleDatasetColumn = (column: { name: string }): boolean =>
   column.name !== "source_row" &&
   column.name !== "_overmind_provenance" &&
+  column.name !== "_overmind_evidence" &&
   column.name !== "_overmind_document_id";
 
 export const columnsOf = (cell: Cell | null | undefined): ColumnInfo[] =>
@@ -130,9 +140,6 @@ export const fitOf = (cell: Cell | null | undefined): { ok: boolean; reason: str
     ? (cell.fits as { ok: boolean; reason: string })
     : { ok: false, reason: "" };
 
-export const rankOf = (dataset: Dataset | null | undefined): CapabilityRank[] =>
-  Array.isArray(dataset?.capabilityRank) ? (dataset.capabilityRank as CapabilityRank[]) : [];
-
 export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null => {
   const ran = cellsOf(dataset).filter((c) => c.state === "ok" && c.fingerprint);
   if (dataset?.active) {
@@ -140,6 +147,26 @@ export const activeCellOf = (dataset: Dataset | null | undefined): Cell | null =
     if (chosen) return chosen;
   }
   return ran.at(-1) ?? null;
+};
+
+/** A count as a table shows it: exact below 10,000, then 48.2K and 1.3M. */
+export const compactCount = (value: number): string => {
+  if (value < 10_000) return value.toLocaleString();
+  const [scaled, suffix] = value < 1_000_000 ? [value / 1_000, "K"] : [value / 1_000_000, "M"];
+  return `${Number(scaled.toFixed(1)).toLocaleString()}${suffix}`;
+};
+
+/** The work a dataset is doing, with its measured counter: "Transforming · 12 of 500 batches". */
+export const workText = (
+  work: NonNullable<Dataset["work"]>,
+  { compact = false }: { compact?: boolean } = {}
+): string => {
+  const { completed, label, total, unit } = work;
+  if (typeof completed !== "number" || unit === "bytes") return label;
+  const number = compact ? compactCount : (value: number) => value.toLocaleString();
+  const count =
+    typeof total === "number" ? `${number(completed)} of ${number(total)}` : number(completed);
+  return `${label} · ${count}${unit ? ` ${unit}` : ""}`;
 };
 
 export const isBusy = (ds: Dataset | null | undefined): boolean =>
@@ -339,6 +366,8 @@ export interface CreateDatasetInput {
   intent?: Intent;
   capabilityId?: string | null;
   source?: SourceRequest;
+  /** Queue the assistant's first pass, which starts once the source lands. */
+  prepare?: boolean;
 }
 
 export function useCreateDatasetMutation() {
@@ -351,6 +380,7 @@ export function useCreateDatasetMutation() {
           capability: input.capabilityId,
           intent: input.intent,
           name: input.name,
+          prepare: input.prepare,
           project: input.projectId,
           source: input.source,
         },
@@ -372,6 +402,7 @@ export interface CreateDatasetSplitInput {
   groupBy?: string[];
   stratifyBy?: string;
   deduplicate?: boolean;
+  prepare?: boolean;
 }
 
 /** One source landed as `<name> train` and `<name> eval`. */
@@ -388,6 +419,7 @@ export function useCreateDatasetSplitMutation() {
           groupBy: input.groupBy,
           name: input.name,
           position: input.position,
+          prepare: input.prepare,
           project: input.projectId,
           source: input.source,
           stratifyBy: input.stratifyBy,
@@ -411,6 +443,7 @@ export interface DatasetPatch {
   name?: string;
   capability?: string | null;
   intent?: Intent;
+  trainFormat?: "sft" | "decision" | "";
   active?: string | null;
 }
 

@@ -19,7 +19,7 @@ from django.conf import settings
 from django.db.models import Q
 
 from overbae.core.errors import InputValidationError
-from overbae.models import AssistantThread, Cell, DatasetPipeline
+from overbae.models import AssistantThread, Cell, DatasetPipeline, DatasetPipelineRun
 from overbae.services import workspaces
 from overbae.services.assistant import presentation
 from overbae.services.assistant.threads import data_name
@@ -48,6 +48,8 @@ MAX_CODE_CHARS = 64_000
 RESULT_CHARS = 24_000
 # A job a call started is waited for within the turn, to this limit.
 JOB_SECONDS = 25 * 60
+# Rows a publish runs first, so a broken package fails in seconds and publishes nothing.
+SAMPLE_ROWS = 200
 POLL_SECONDS = 2
 
 OWN_TOOLS = {
@@ -80,8 +82,10 @@ OWN_TOOLS = {
     "run_pipeline": (
         "Retain a transformation and run it on one dataset version; the result comes back "
         "when the run ends. `files` is the package: manifest.json and its entrypoints, as "
-        "the package contract says. Mode publish runs every row and adds the result to the "
-        "dataset as new versions. Mode preview runs the first rows and changes nothing. To "
+        "the package contract says. Mode publish first runs the package on the first "
+        f"{SAMPLE_ROWS} rows; when that fails it returns the error and publishes nothing, "
+        "otherwise it runs every row and adds the result to the dataset as new versions. "
+        "Mode preview runs the first rows and changes nothing. To "
         "correct a pipeline, pass its id as `pipeline` with the new files; that saves its "
         "next revision. To run a saved pipeline again, pass `pipeline` and no files. The "
         "platform sets the manifest's `runtime`: leave it out.",
@@ -358,21 +362,48 @@ def _run_pipeline(turn: Turn, arguments) -> Outcome:
     run = {
         "dataset": dataset,
         "pipeline": revision,
-        "mode": arguments.get("mode"),
         "parameters": arguments.get("parameters") or {},
-        "request_key": turn.key("run"),
         **pinned,
     }
+    mode = arguments.get("mode")
+    if mode == "publish" and (source.rows or 0) > SAMPLE_ROWS:
+        sample = {**run, "mode": "preview", "preview_rows": SAMPLE_ROWS}
+        ok, finished = _run(turn, {**sample, "request_key": turn.key("sample")})
+        if not ok and not _empty(finished):
+            return Outcome(False, {**content, "sample": finished, "error": _error(finished)})
+        # Stop lets started jobs finish; the full run has not started.
+        if not turn.alive():
+            return Outcome(False, {**content, "error": "The user stopped the conversation."})
+    ok, finished = _run(turn, {**run, "mode": mode, "request_key": turn.key("run")})
+    if ok:
+        return Outcome(True, {**content, "run": finished})
+    return Outcome(False, {**content, "run": finished, "error": _error(finished)})
+
+
+def _run(turn: Turn, run: dict) -> tuple[bool, dict]:
     ran = _invoke(turn, "run_dataset_pipeline", run)
     if ran.isError:
-        return Outcome(False, {**content, **ran.structuredContent})
+        return False, ran.structuredContent
     receipt = ran.structuredContent["job"]
-    finished = _wait(turn, receipt)
-    if finished.get("status") == "completed":
-        return Outcome(True, {**content, "run": finished})
+    finished = {**_wait(turn, receipt), "id": receipt["id"]}
+    return finished.get("status") == "completed", finished
+
+
+def _empty(finished: dict) -> bool:
+    """A sample whose script ran but kept none of the first rows says nothing about the
+    rest: the full run decides."""
+    run = DatasetPipelineRun.objects.filter(pk=finished.get("id"), state="failed").first()
+    steps = (run.result or {}).get("steps") or [] if run else []
+    return bool(steps) and steps[-1].get("exit_code") == 0 and steps[-1].get("output_rows") == 0
+
+
+def _error(finished: dict) -> str:
     # The reader sees a failed step by its error, wherever the run recorded it.
-    error = (finished.get("details") or {}).get("error") or f"The run is {finished.get('status')}."
-    return Outcome(False, {**content, "run": finished, "error": error})
+    return (
+        finished.get("error", {}).get("message")
+        if isinstance(finished.get("error"), dict)
+        else (finished.get("details") or {}).get("error")
+    ) or f"The run is {finished.get('status')}."
 
 
 def image_path(thread: AssistantThread, name: str) -> Path:
