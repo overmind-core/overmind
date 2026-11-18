@@ -1452,10 +1452,7 @@ def interface_resource():
     from overbae.services.mcp.catalog import CATALOG
 
     context = get_context()
-    manifest = [
-        tool.model_dump(mode="json")
-        for tool in CATALOG.tools(frozenset(context.token.scope.get("permission", [])))
-    ]
+    manifest = [tool.model_dump(mode="json") for tool in CATALOG.visible_to(context)]
     parsed = urlparse(context.inference_base_url)
     origin = (
         f"{parsed.scheme}://{parsed.netloc}"

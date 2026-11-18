@@ -225,7 +225,8 @@ def test_transfer_preflight_does_not_register_an_agent_or_obscure_codex():
 
 @asgi_db
 def test_ping_is_protocol_level_and_catalog_lists_curated_tools():
-    raw, _ = _token()
+    raw, token = _token()
+    User.objects.filter(pk=token.user_id).update(agent_feedback=True)
     with TestClient(_application()) as client:
         response = _post(client, raw, _rpc("tools/list"))
         ping = _post(client, raw, _rpc("ping"))
@@ -273,7 +274,8 @@ def test_slow_tool_does_not_block_another_callers_authenticated_request(monkeypa
 @asgi_db
 def test_tools_list_is_permission_filtered_and_stays_within_manifest_budget():
     read_raw, _ = _token(permission=["read"])
-    full_raw, _ = _token()
+    full_raw, full_token = _token()
+    User.objects.filter(pk=full_token.user_id).update(agent_feedback=True)
     with TestClient(_application()) as client:
         read_response = _post(client, read_raw, _rpc("tools/list"))
         full_response = _post(client, full_raw, _rpc("tools/list"))

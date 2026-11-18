@@ -13,13 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
-import type { FeedbackCreateCategoryEnum } from './FeedbackCreateCategoryEnum';
+import type { FeedbackKindEnum } from './FeedbackKindEnum';
 import {
-    FeedbackCreateCategoryEnumFromJSON,
-    FeedbackCreateCategoryEnumFromJSONTyped,
-    FeedbackCreateCategoryEnumToJSON,
-    FeedbackCreateCategoryEnumToJSONTyped,
-} from './FeedbackCreateCategoryEnum';
+    FeedbackKindEnumFromJSON,
+    FeedbackKindEnumFromJSONTyped,
+    FeedbackKindEnumToJSON,
+    FeedbackKindEnumToJSONTyped,
+} from './FeedbackKindEnum';
+import type { FeedbackAreaEnum } from './FeedbackAreaEnum';
+import {
+    FeedbackAreaEnumFromJSON,
+    FeedbackAreaEnumFromJSONTyped,
+    FeedbackAreaEnumToJSON,
+    FeedbackAreaEnumToJSONTyped,
+} from './FeedbackAreaEnum';
 
 /**
  *
@@ -29,16 +36,34 @@ import {
 export interface FeedbackCreateRequest {
     /**
      *
-     * @type {FeedbackCreateCategoryEnum}
+     * @type {FeedbackKindEnum}
      * @memberof FeedbackCreateRequest
      */
-    category?: FeedbackCreateCategoryEnum;
+    kind: FeedbackKindEnum;
+    /**
+     *
+     * @type {FeedbackAreaEnum}
+     * @memberof FeedbackCreateRequest
+     */
+    area?: FeedbackAreaEnum;
     /**
      *
      * @type {string}
      * @memberof FeedbackCreateRequest
      */
-    feedback: string;
+    message: string;
+    /**
+     *
+     * @type {string}
+     * @memberof FeedbackCreateRequest
+     */
+    project?: string | null;
+    /**
+     *
+     * @type {string}
+     * @memberof FeedbackCreateRequest
+     */
+    page?: string;
 }
 
 
@@ -47,7 +72,8 @@ export interface FeedbackCreateRequest {
  * Check if a given object implements the FeedbackCreateRequest interface.
  */
 export function instanceOfFeedbackCreateRequest(value: object): value is FeedbackCreateRequest {
-    if (!('feedback' in value) || value['feedback'] === undefined) return false;
+    if (!('kind' in value) || value['kind'] === undefined) return false;
+    if (!('message' in value) || value['message'] === undefined) return false;
     return true;
 }
 
@@ -61,8 +87,11 @@ export function FeedbackCreateRequestFromJSONTyped(json: any, ignoreDiscriminato
     }
     return {
 
-        'category': json['category'] == null ? undefined : FeedbackCreateCategoryEnumFromJSON(json['category']),
-        'feedback': json['feedback'],
+        'kind': FeedbackKindEnumFromJSON(json['kind']),
+        'area': json['area'] == null ? undefined : FeedbackAreaEnumFromJSON(json['area']),
+        'message': json['message'],
+        'project': json['project'] == null ? undefined : json['project'],
+        'page': json['page'] == null ? undefined : json['page'],
     };
 }
 
@@ -77,7 +106,10 @@ export function FeedbackCreateRequestToJSONTyped(value?: FeedbackCreateRequest |
 
     return {
 
-        'category': FeedbackCreateCategoryEnumToJSON(value['category']),
-        'feedback': value['feedback'],
+        'kind': FeedbackKindEnumToJSON(value['kind']),
+        'area': FeedbackAreaEnumToJSON(value['area']),
+        'message': value['message'],
+        'project': value['project'],
+        'page': value['page'],
     };
 }

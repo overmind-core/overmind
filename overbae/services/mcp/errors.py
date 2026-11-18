@@ -88,6 +88,7 @@ ErrorCode = Literal[
     "staged_change_conflict",
     "invalid_filter",
     "embedding_unavailable",
+    "rate_limited",
     "internal_error",
 ]
 
@@ -108,6 +109,8 @@ _NEXT_ACTIONS = {
     "dataset_busy": ["inspect_dataset", "get_job"],
     "insufficient_credits": ["get_credit_balance"],
     "deployment_not_ready": ["get_job"],
+    "internal_error": ["submit_feedback"],
+    "invalid_output": ["submit_feedback"],
 }
 
 

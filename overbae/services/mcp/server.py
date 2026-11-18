@@ -78,6 +78,8 @@ mcp_server = Server(
         "Declare the final step consumer (decision_train, decision_eval, chat_train or model_eval) so previews validate nested targets. Use batch_rows only for row-independent steps; sorting, grouping and deduplication require the full population. Preserve evidenced target semantics and structured provenance; never remove them to bypass a validator. Preview defers absolute min_rows/max_rows bounds to publication; lineage and preserve_rows checks remain enforced. Inspect deferred checks before publishing. Follow poll_after_seconds; queued work alone is not a failure or reason to resubmit. Report format compatibility separately from task suitability, which remains unmeasured without attributable evidence. "
         "Author explicit step IDs and input dependencies. Converge intended branches with inputs=[earlier IDs]; disjoint rows concatenate in declared order, overlapping source_row identities fail. The last step is the output: inspect flow.unconsumed_steps before publication. Training preparation should end in trainable examples with review metadata, not disconnected inspection tables; never invent targets or treat flags as resolved. Script conditions cite their entrypoint line and describe code, not independently verified semantics. Receipts record actual parent cells, counts and fingerprints. Pin sources and use stable request keys. "
         "Use author-dataset-transformation for conditional authoring, retrieval and adaptation. inspect_dataset_workbench(pipeline=revision ID) retrieves an exact recipe and its family history. Only retained packages execute in the approved isolated runtime; other code and semantic/provider work stay in the native environment. Technical format checks do not prove semantic quality or exhaustive/exclusive branches. "
+        "When submit_feedback is listed and an Overmind operation fails, contradicts its "
+        "description or needs repeated attempts, report it once with submit_feedback. "
         "Local scanning, file transfers, credentials and repository execution use the CLI "
         "handoffs in the relevant resources/prompts. The server does not edit local files. "
         "When a user wants a visual view, open the ordinary Console for this project; "
@@ -88,10 +90,7 @@ mcp_server = Server(
 
 @mcp_server.list_tools()
 async def _list_tools() -> list[types.Tool]:
-    context = get_context()
-    scope = context.token.scope if isinstance(context.token.scope, dict) else {}
-    permissions = frozenset(scope.get("permission", []))
-    return CATALOG.tools(permissions)
+    return CATALOG.visible_to(get_context())
 
 
 @mcp_server.call_tool(validate_input=False)

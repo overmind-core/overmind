@@ -362,6 +362,9 @@ SPECTACULAR_SETTINGS = {
         "SpanTypeEnum": "overbae.models.traces.Span.SpanType",
         "FinetuningJobStatusEnum": "overbae.models.finetuning.FinetuningJob.Status",
         "SignOnMethodEnum": "overbae.models.iam.SignOnMethod",
+        "FeedbackKindEnum": "overbae.models.feedback.Feedback.Kind",
+        "FeedbackAreaEnum": "overbae.models.feedback.Feedback.Area",
+        "PublicModelCategoryEnum": [("open-weight", "open-weight"), ("frontier", "frontier")],
         "ModelRefProviderEnum": "overbae.models.innermind.ModelRef.Provider",
         # EvalRun.Status is absent on purpose: its members match another status
         # enum and it reuses that component.
@@ -605,6 +608,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
+# Overwatch base URL for links in feedback messages; blank leaves the link out.
+OVERWATCH_URL = os.environ.get("OVERWATCH_URL", "")
 # Dedicated read-only analytics service credential, never shared with the dashboard.
 OVERWATCH_SERVICE_TOKEN = os.environ.get("OVERWATCH_SERVICE_TOKEN", "")
 

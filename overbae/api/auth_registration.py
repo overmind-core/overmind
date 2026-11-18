@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.api.serializers import UserOnboardingSerializer
 from overbae.auth import clerk_enabled
 from overbae.models import SignOnMethod, Subscription, User, UserOnboarding
+from overbae.services.feedback import set_agent_feedback
 
 
 class ClerkRequired(PermissionDenied):
@@ -54,9 +55,13 @@ class UserMeSerializer(serializers.ModelSerializer):
             "plan",
             "credits_usd",
             "subscription_end",
+            "agent_feedback",
+            "agent_feedback_at",
         ]
         extra_kwargs = {
             "is_guest": {"read_only": True},
+            "agent_feedback": {"read_only": True},
+            "agent_feedback_at": {"read_only": True},
             # Opaque Clerk id — same distinct_id the Console uses in PostHog.
             "clerk_user_id": {"read_only": True},
         }
@@ -181,13 +186,31 @@ class LocalSessionView(APIView):
         )
 
 
-@extend_schema(
-    summary="Current user profile",
-    description="Returns the authenticated user's profile.",
-    responses={200: UserMeSerializer},
-)
+class UserPreferencesSerializer(serializers.Serializer):
+    agent_feedback = serializers.BooleanField()
+
+
 class UserMeView(APIView):
+    @extend_schema(
+        summary="Current user profile",
+        description="Returns the authenticated user's profile.",
+        responses={200: UserMeSerializer},
+    )
     def get(self, request):
+        return Response(UserMeSerializer(request.user).data)
+
+    @extend_schema(
+        summary="Update account preferences",
+        description="Records whether the user's coding agents may send friction reports.",
+        request=UserPreferencesSerializer,
+        responses={200: UserMeSerializer},
+    )
+    def patch(self, request):
+        if request.user.is_guest:
+            raise PermissionDenied("Sign up to choose account preferences.")
+        serializer = UserPreferencesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        set_agent_feedback(request.user, serializer.validated_data["agent_feedback"])
         return Response(UserMeSerializer(request.user).data)
 
 

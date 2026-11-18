@@ -47,3 +47,17 @@ def posthog_url(host: str, path: str, *, ingest: bool = False) -> str:
     if host not in allowed:
         raise ValueError("unapproved_posthog_host")
     return host + path
+
+
+_URL = re.compile(r"\bhttps?://\S+")
+_HOME = re.compile(r"(?:~/|/home/|/Users/|[A-Za-z]:\\Users\\)\S+")
+_IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+def report_text(text: str) -> str:
+    """Keep what a coding agent says about the platform; drop what identifies the customer."""
+    text = _CREDENTIAL.sub("[credential removed]", text)
+    text = EMAIL.sub("[email]", text)
+    text = _URL.sub("[link]", text)
+    text = _HOME.sub("[path]", text)
+    return _IPV4.sub("[ip]", text)

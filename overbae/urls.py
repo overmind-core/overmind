@@ -150,6 +150,8 @@ urlpatterns = []
 if settings.SALES_DASHBOARD_TOKEN:
     from overbae.api.overwatch_dashboard import (
         ActivationView,
+        FeedbackDetailView,
+        FeedbackListView,
         OverviewView,
         ProductUsageView,
         UserActivityView,
@@ -173,6 +175,16 @@ if settings.SALES_DASHBOARD_TOKEN:
             "api/internal/overwatch/users/<int:pk>/",
             UserActivityView.as_view(),
             name="overwatch-user-activity",
+        ),
+        path(
+            "api/internal/overwatch/feedback/",
+            FeedbackListView.as_view(),
+            name="overwatch-feedback",
+        ),
+        path(
+            "api/internal/overwatch/feedback/<uuid:pk>/",
+            FeedbackDetailView.as_view(),
+            name="overwatch-feedback-detail",
         ),
     ]
 

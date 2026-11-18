@@ -364,15 +364,26 @@ class UserOnboardingAdmin(admin.ModelAdmin):
 
 @admin.register(Feedback)
 class FeedbackAdmin(admin.ModelAdmin):
-    list_display = ["user", "category", "short_feedback", "read", "created_at"]
-    list_filter = ["category", "read", "created_at"]
-    search_fields = ["user__email", "feedback"]
-    readonly_fields = ["id", "user", "category", "feedback", "created_at"]
-    list_display_links = ["short_feedback"]
-
-    @admin.display(description="Feedback")
-    def short_feedback(self, obj):
-        return obj.feedback[:80] + ("…" if len(obj.feedback) > 80 else "")
+    list_display = ["title", "source", "kind", "area", "severity", "user", "read", "created_at"]
+    list_filter = ["source", "kind", "area", "severity", "outcome", "read", "created_at"]
+    search_fields = ["title", "message", "fingerprint"]
+    readonly_fields = [
+        "id",
+        "source",
+        "user",
+        "project",
+        "kind",
+        "area",
+        "severity",
+        "outcome",
+        "title",
+        "message",
+        "detail",
+        "environment",
+        "fingerprint",
+        "created_at",
+        "updated_at",
+    ]
 
     def has_add_permission(self, request):
         return False

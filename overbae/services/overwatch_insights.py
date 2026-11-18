@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import requests
@@ -170,3 +170,42 @@ def product_usage(days: int) -> dict[str, Any]:
         }
     except (requests.RequestException, KeyError, TypeError, ValueError, IndexError):
         return {"available": False, "reason": "PostHog usage data could not be loaded."}
+
+
+TRAIL_MINUTES = 60
+TRAIL_LIMIT = 100
+
+
+def mcp_calls_before(distinct_id: str, until: datetime) -> dict[str, Any]:
+    """The tool calls PostHog recorded for one identity in the hour before a report."""
+    if not settings.POSTHOG_PERSONAL_API_KEY or not settings.POSTHOG_PROJECT_ID:
+        return {"available": False, "reason": "PostHog read access is not configured."}
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", distinct_id or ""):
+        return {"available": False, "reason": "This account has no analytics identity."}
+    start = until - timedelta(minutes=TRAIL_MINUTES)
+    stamp = "%Y-%m-%d %H:%M:%S"
+    query = (
+        "SELECT timestamp, properties.$mcp_tool_name, toBool(properties.$mcp_is_error), "
+        "properties.error_code FROM events WHERE event = '$mcp_tool_call' "
+        f"AND distinct_id = '{distinct_id}' "
+        f"AND timestamp >= toDateTime('{start.strftime(stamp)}', 'UTC') "
+        f"AND timestamp <= toDateTime('{until.strftime(stamp)}', 'UTC') "
+        f"ORDER BY timestamp LIMIT {TRAIL_LIMIT}"
+    )
+    try:
+        rows = _query(query, require_complete=False)
+        return {
+            "available": True,
+            "window_minutes": TRAIL_MINUTES,
+            "calls": [
+                {
+                    "at": str(at),
+                    "tool": _name(tool, "Unknown tool"),
+                    "is_error": bool(is_error),
+                    "error_code": _name(code, "") if code else "",
+                }
+                for at, tool, is_error, code in rows
+            ],
+        }
+    except (requests.RequestException, KeyError, TypeError, ValueError):
+        return {"available": False, "reason": "PostHog tool calls could not be loaded."}

@@ -69,7 +69,7 @@ def test_read_only_and_read_write_manifests_are_filtered():
         definition.name for definition in CATALOG.definitions() if definition.read_only
     }
 
-    assert read_names == read_definition_names
+    assert read_names == read_definition_names | {"submit_feedback"}
     assert full_names == EXPECTED_TOOL_NAMES
 
 

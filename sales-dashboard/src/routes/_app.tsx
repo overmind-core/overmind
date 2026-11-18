@@ -17,6 +17,7 @@ const NAV = [
   { label: "Overview", to: "/" },
   { label: "Activation", to: "/funnel" },
   { label: "Users", to: "/accounts" },
+  { label: "Feedback", to: "/feedback" },
 ] as const;
 
 export const Route = createFileRoute("/_app")({

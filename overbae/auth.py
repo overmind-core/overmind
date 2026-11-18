@@ -4,6 +4,7 @@ from clerk_backend_api import AuthenticateRequestOptions, Clerk, authenticate_re
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import APIException, AuthenticationFailed
 
@@ -98,12 +99,19 @@ class ClerkAuthentication(BaseAuthentication):
 
         try:
             with transaction.atomic():
+                # The sign-up form records the agent feedback choice in Clerk's metadata.
+                choice = (clerk_user.unsafe_metadata or {}).get("agentFeedback")
                 user = User.objects.create_user(
                     email=email,
                     password=None,
                     clerk_user_id=clerk_user_id,
                     first_name=first_name,
                     last_name=last_name,
+                    **(
+                        {"agent_feedback": choice, "agent_feedback_at": timezone.now()}
+                        if isinstance(choice, bool)
+                        else {}
+                    ),
                 )
         except IntegrityError:
             # Two first-requests raced; the other one won — use its row.

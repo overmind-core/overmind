@@ -13,13 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
-import type { FeedbackCreateCategoryEnum } from './FeedbackCreateCategoryEnum';
+import type { FeedbackKindEnum } from './FeedbackKindEnum';
 import {
-    FeedbackCreateCategoryEnumFromJSON,
-    FeedbackCreateCategoryEnumFromJSONTyped,
-    FeedbackCreateCategoryEnumToJSON,
-    FeedbackCreateCategoryEnumToJSONTyped,
-} from './FeedbackCreateCategoryEnum';
+    FeedbackKindEnumFromJSON,
+    FeedbackKindEnumFromJSONTyped,
+    FeedbackKindEnumToJSON,
+    FeedbackKindEnumToJSONTyped,
+} from './FeedbackKindEnum';
+import type { FeedbackAreaEnum } from './FeedbackAreaEnum';
+import {
+    FeedbackAreaEnumFromJSON,
+    FeedbackAreaEnumFromJSONTyped,
+    FeedbackAreaEnumToJSON,
+    FeedbackAreaEnumToJSONTyped,
+} from './FeedbackAreaEnum';
 
 /**
  *
@@ -35,16 +42,22 @@ export interface FeedbackCreate {
     readonly id: string;
     /**
      *
-     * @type {FeedbackCreateCategoryEnum}
+     * @type {FeedbackKindEnum}
      * @memberof FeedbackCreate
      */
-    category?: FeedbackCreateCategoryEnum;
+    kind: FeedbackKindEnum;
+    /**
+     *
+     * @type {FeedbackAreaEnum}
+     * @memberof FeedbackCreate
+     */
+    area?: FeedbackAreaEnum;
     /**
      *
      * @type {string}
      * @memberof FeedbackCreate
      */
-    feedback: string;
+    message: string;
     /**
      *
      * @type {Date}
@@ -60,7 +73,8 @@ export interface FeedbackCreate {
  */
 export function instanceOfFeedbackCreate(value: object): value is FeedbackCreate {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if (!('feedback' in value) || value['feedback'] === undefined) return false;
+    if (!('kind' in value) || value['kind'] === undefined) return false;
+    if (!('message' in value) || value['message'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     return true;
 }
@@ -76,8 +90,9 @@ export function FeedbackCreateFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
 
         'id': json['id'],
-        'category': json['category'] == null ? undefined : FeedbackCreateCategoryEnumFromJSON(json['category']),
-        'feedback': json['feedback'],
+        'kind': FeedbackKindEnumFromJSON(json['kind']),
+        'area': json['area'] == null ? undefined : FeedbackAreaEnumFromJSON(json['area']),
+        'message': json['message'],
         'createdAt': (new Date(json['created_at'])),
     };
 }
@@ -93,7 +108,8 @@ export function FeedbackCreateToJSONTyped(value?: Omit<FeedbackCreate, 'id'|'cre
 
     return {
 
-        'category': FeedbackCreateCategoryEnumToJSON(value['category']),
-        'feedback': value['feedback'],
+        'kind': FeedbackKindEnumToJSON(value['kind']),
+        'area': FeedbackAreaEnumToJSON(value['area']),
+        'message': value['message'],
     };
 }

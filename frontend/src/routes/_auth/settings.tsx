@@ -5,6 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import * as z from "zod";
 
+import { AgentFeedbackSetting } from "@/components/agent-feedback";
 import { AccountBand } from "@/components/billing/account-band";
 import { BillingLedgerTable } from "@/components/billing/billing-ledger-table";
 import { Icon } from "@/components/ui/icons";
@@ -91,6 +92,12 @@ function SettingsPage() {
           />
         </div>
         <BillingLedgerTable />
+      </section>
+      <section aria-labelledby="privacy-heading" className="mt-10 space-y-4">
+        <h2 className={TITLE.section} id="privacy-heading">
+          Privacy
+        </h2>
+        <AgentFeedbackSetting />
       </section>
     </PageShell>
   );

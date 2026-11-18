@@ -1,7 +1,10 @@
+import { useState } from "react";
+
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { AgentFeedbackCheckbox } from "@/components/agent-feedback";
 import { ConnectionScene } from "@/components/connection-scene";
 import { LocalLoginForm } from "@/components/local-login-form";
 import { AuthenticationLoadingState } from "@/components/route-error";
@@ -34,6 +37,8 @@ function RouteComponent() {
   // The matched login search survives while the next route's code is loading.
   const safeNext = safeNextPath(next);
   const gate = useLoginGate(safeNext);
+  // Clerk copies sign-up metadata to the new user; the API reads it when it creates the account.
+  const [agentFeedback, setAgentFeedback] = useState(true);
   // Clerk ignores our `next` and lands on "/" unless told where to go, and the
   // sign-in/sign-up toggle would drop it.
   const nextQuery = safeNext ? `next=${encodeURIComponent(safeNext)}` : "";
@@ -84,14 +89,24 @@ function RouteComponent() {
     <ConnectionScene>
       <div className="flex w-full max-w-xl flex-col items-center justify-center gap-5">
         {mode === "signup" ? (
-          <SignUp
-            appearance={CLERK_APPEARANCE}
-            fallback={<AuthenticationLoadingState />}
-            forceRedirectUrl={forceRedirectUrl}
-            oauthFlow={oauthFlow}
-            routing="hash"
-            signInUrl={signInUrl}
-          />
+          <>
+            <SignUp
+              appearance={CLERK_APPEARANCE}
+              fallback={<AuthenticationLoadingState />}
+              forceRedirectUrl={forceRedirectUrl}
+              oauthFlow={oauthFlow}
+              routing="hash"
+              signInUrl={signInUrl}
+              unsafeMetadata={{ agentFeedback }}
+            />
+            <div className="w-full max-w-sm rounded-md border border-auth-border bg-auth-panel/90 p-4">
+              <AgentFeedbackCheckbox
+                checked={agentFeedback}
+                onCheckedChange={setAgentFeedback}
+                tone="auth"
+              />
+            </div>
+          </>
         ) : (
           <SignIn
             appearance={CLERK_APPEARANCE}

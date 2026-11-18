@@ -123,6 +123,7 @@ from overbae.models import (
     Span,
     User,
 )
+from overbae.services import feedback as feedback_service
 from overbae.services import native_evaluation as native_evaluation_service
 from overbae.services import training_monitoring
 from overbae.services.datasets.lifecycle import DatasetError
@@ -1498,8 +1499,23 @@ class FeedbackViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = Feedback.objects.none()
 
     def perform_create(self, serializer):
-        user = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(user=user)
+        data = serializer.validated_data
+        project_id = data.get("project")
+        project = (
+            Project.objects.filter(
+                pk=project_id, pk__in=project_ids_for(self.request.user, self.request.auth)
+            ).first()
+            if project_id
+            else None
+        )
+        serializer.instance = feedback_service.record_console_feedback(
+            user=self.request.user,
+            project=project,
+            kind=data["kind"],
+            area=data["area"],
+            message=data["message"].strip(),
+            page=data.get("page", ""),
+        )
 
 
 @extend_schema_view(

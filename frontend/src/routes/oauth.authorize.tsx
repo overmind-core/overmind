@@ -1,16 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import api from "@/client";
+import { AgentFeedbackCheckbox } from "@/components/agent-feedback";
 import { ConnectionPanel, ConnectionScene, connectionHeading } from "@/components/connection-scene";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { useAuthContext } from "@/contexts/auth-context";
+import { useOnboardingStatus } from "@/hooks/use-query";
 
 export const Route = createFileRoute("/oauth/authorize")({
   component: AuthorizeConnection,
@@ -28,11 +30,20 @@ function AuthorizeConnection() {
     queryKey: ["mcp-consent", request],
     retry: false,
   });
+  const me = useOnboardingStatus(ready);
+  const [agentFeedback, setAgentFeedback] = useState<boolean | null>(null);
+  const reports = agentFeedback ?? me.data?.agentFeedback ?? true;
   const decision = useMutation({
-    mutationFn: (approve: boolean) =>
-      api.mcpOauth.mcpOauthConsentCreate({
+    mutationFn: async (approve: boolean) => {
+      // Connecting records the account's agent feedback choice shown on this screen.
+      if (approve && me.data && reports !== me.data.agentFeedback)
+        await api.auth.authMePartialUpdate({
+          patchedUserPreferencesRequest: { agentFeedback: reports },
+        });
+      return api.mcpOauth.mcpOauthConsentCreate({
         consentDecisionRequest: { approve, request: request ?? "" },
-      }),
+      });
+    },
     onSuccess: (result) => window.location.assign(result.redirectUrl),
   });
 
@@ -80,6 +91,9 @@ function AuthorizeConnection() {
                 ) : null}
               </ul>
               <p className="text-muted-foreground">Access continues until revoked.</p>
+            </div>
+            <div className="-mx-5 border-t border-border px-5 pt-4 sm:-mx-7 sm:px-7">
+              <AgentFeedbackCheckbox checked={reports} onCheckedChange={setAgentFeedback} />
             </div>
             <div className="-mx-5 space-y-1 border-t border-border px-5 pt-4 text-xs leading-relaxed sm:-mx-7 sm:px-7">
               <p className="text-muted-foreground">Return address</p>

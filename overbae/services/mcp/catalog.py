@@ -14,6 +14,7 @@ from mcp import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from overbae.services.activity import mcp_succeeded
+from overbae.services.feedback import agent_reports_allowed
 from overbae.services.mcp import mutations
 from overbae.services.mcp.annotations import annotations_for
 from overbae.services.mcp.context import MCPContext, project_context
@@ -38,6 +39,10 @@ _ALLOWED_LIFECYCLE_TOOLS = frozenset(
     }
 )
 _DESTRUCTIVE_TOOLS = frozenset({"cancel_dataset", "delete_eval_matrix_row"})
+# A friction report changes no project state, so read-only connections may send one.
+_READ_CREDENTIAL_WRITES = frozenset({"submit_feedback"})
+# Listed only for a person who allowed their coding agents to report friction.
+_AGENT_FEEDBACK_TOOLS = frozenset({"submit_feedback"})
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -184,6 +189,13 @@ class ToolCatalog:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return tuple(entry.definition for entry in self._entries.values())
 
+    def visible_to(self, context: MCPContext) -> list[types.Tool]:
+        scope = context.token.scope if isinstance(context.token.scope, dict) else {}
+        tools = self.tools(frozenset(scope.get("permission", [])))
+        if agent_reports_allowed(context.user):
+            return tools
+        return [tool for tool in tools if tool.name not in _AGENT_FEEDBACK_TOOLS]
+
     def tools(self, permissions: frozenset[str]) -> list[types.Tool]:
         return [
             entry.definition.as_mcp_tool()
@@ -302,7 +314,8 @@ class ToolCatalog:
 
     @staticmethod
     def _visible(definition: ToolDefinition, permissions: frozenset[str]) -> bool:
-        permission = "read" if definition.read_only else "write"
+        read = definition.read_only or definition.name in _READ_CREDENTIAL_WRITES
+        permission = "read" if read else "write"
         return permission in permissions
 
 
@@ -371,3 +384,7 @@ register_inventory_tools(CATALOG)
 from overbae.services.mcp.tools_monitoring import register_monitoring_tools  # noqa: E402
 
 register_monitoring_tools(CATALOG)
+
+from overbae.services.mcp.tools_feedback import register_feedback_tools  # noqa: E402
+
+register_feedback_tools(CATALOG)
