@@ -91,22 +91,24 @@ def test_reports_keep_platform_behaviour_and_drop_what_identifies_the_customer(s
         summary=(
             "Upload of /home/alice/acme/claims.csv for alice@acme.com failed at "
             "https://acme.internal/upload from 10.2.3.4 with key sk-live-abcdefghijklmnop. "
-            "<!channel> <@U123> please look"
+            "Authorization: Bearer opaque-example-123456. <!channel> <@U123> please look"
         ),
         trail=[
             {
                 "action": "overmind dataset upload",
                 "result": "error",
+                "error_code": "ghp_abcdefghijklmnopqrstu",
                 "note": "token: ghp_abcdefghijklmnopqrstu",
             }
         ],
+        resources=["overmind://project/current?token=ghp_abcdefghijklmnopqrstu"],
     )
     result = call_tool("submit_feedback", leaky, context)
 
     assert not result.isError, result.structuredContent
     stored = Feedback.objects.get()
     saved = json.dumps({"message": stored.message, "detail": stored.detail})
-    for secret in ("alice", "acme", "10.2.3.4", "sk-live", "ghp_"):
+    for secret in ("alice", "acme", "10.2.3.4", "sk-live", "ghp_", "opaque-example"):
         assert secret not in saved
     assert stored.message.startswith("Upload of [path] for [email] failed at [link]")
     [posted] = slack.calls

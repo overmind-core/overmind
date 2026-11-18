@@ -85,7 +85,14 @@ def record_agent_report(
         if report.get(key)
     }
     trail = [
-        {**step, "note": report_text(step["note"])} if step.get("note") else step
+        {
+            **step,
+            **{
+                key: report_text(step[key])
+                for key in ("action", "error_code", "note")
+                if step.get(key)
+            },
+        }
         for step in report.get("trail", [])
     ]
     failed = next((step for step in trail if step["result"] != "ok"), {})
@@ -106,7 +113,7 @@ def record_agent_report(
                 if key in text
             },
             "trail": trail,
-            "resources": report.get("resources", []),
+            "resources": [report_text(uri) for uri in report.get("resources", [])],
             "tool_calls": report.get("tool_calls"),
         },
         "environment": {"reported": reported, "observed": observed},
