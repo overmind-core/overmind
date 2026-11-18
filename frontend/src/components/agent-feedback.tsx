@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DateTime } from "@/components/ui/datetime";
 import { Icon } from "@/components/ui/icons";
 import { Switch } from "@/components/ui/switch";
 import { useAuthContext } from "@/contexts/auth-context";
@@ -118,7 +117,6 @@ export function AgentFeedbackSetting() {
   const me = useOnboardingStatus();
   const choose = useAgentFeedbackChoice();
   const id = useId();
-  const decidedAt = me.data?.agentFeedbackAt;
   return (
     <div className="flex items-start justify-between gap-6 border border-border bg-card p-4">
       <div className="space-y-1">
@@ -128,15 +126,6 @@ export function AgentFeedbackSetting() {
         <p className="text-xs leading-relaxed text-muted-foreground">
           Your coding agents send feedback about Overmind itself, never your code, prompts or data.{" "}
           <DocsLink />
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {decidedAt ? (
-            <>
-              Chosen <DateTime value={decidedAt} />
-            </>
-          ) : (
-            "Not chosen"
-          )}
         </p>
       </div>
       <Switch

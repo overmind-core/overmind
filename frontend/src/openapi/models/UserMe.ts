@@ -85,12 +85,6 @@ export interface UserMe {
      * @memberof UserMe
      */
     readonly agentFeedback: boolean | null;
-    /**
-     *
-     * @type {Date}
-     * @memberof UserMe
-     */
-    readonly agentFeedbackAt: Date | null;
 }
 
 /**
@@ -107,7 +101,6 @@ export function instanceOfUserMe(value: object): value is UserMe {
     if (!('creditsUsd' in value) || value['creditsUsd'] === undefined) return false;
     if (!('subscriptionEnd' in value) || value['subscriptionEnd'] === undefined) return false;
     if (!('agentFeedback' in value) || value['agentFeedback'] === undefined) return false;
-    if (!('agentFeedbackAt' in value) || value['agentFeedbackAt'] === undefined) return false;
     return true;
 }
 
@@ -132,7 +125,6 @@ export function UserMeFromJSONTyped(json: any, ignoreDiscriminator: boolean): Us
         'creditsUsd': json['credits_usd'],
         'subscriptionEnd': (json['subscription_end'] == null ? null : new Date(json['subscription_end'])),
         'agentFeedback': json['agent_feedback'],
-        'agentFeedbackAt': (json['agent_feedback_at'] == null ? null : new Date(json['agent_feedback_at'])),
     };
 }
 
@@ -140,7 +132,7 @@ export function UserMeToJSON(json: any): UserMe {
     return UserMeToJSONTyped(json, false);
 }
 
-export function UserMeToJSONTyped(value?: Omit<UserMe, 'id'|'clerk_user_id'|'has_completed_onboarding'|'is_guest'|'billing_enabled'|'plan'|'credits_usd'|'subscription_end'|'agent_feedback'|'agent_feedback_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function UserMeToJSONTyped(value?: Omit<UserMe, 'id'|'clerk_user_id'|'has_completed_onboarding'|'is_guest'|'billing_enabled'|'plan'|'credits_usd'|'subscription_end'|'agent_feedback'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

@@ -56,12 +56,10 @@ class UserMeSerializer(serializers.ModelSerializer):
             "credits_usd",
             "subscription_end",
             "agent_feedback",
-            "agent_feedback_at",
         ]
         extra_kwargs = {
             "is_guest": {"read_only": True},
             "agent_feedback": {"read_only": True},
-            "agent_feedback_at": {"read_only": True},
             # Opaque Clerk id — same distinct_id the Console uses in PostHog.
             "clerk_user_id": {"read_only": True},
         }
