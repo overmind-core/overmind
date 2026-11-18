@@ -91,6 +91,7 @@ models/CapabilityStatusEnum.ts
 models/CapturedError.ts
 models/CatalogModel.ts
 models/Cell.ts
+models/CellFit.ts
 models/CellStateEnum.ts
 models/CellTransformation.ts
 models/ChangeEnum.ts
@@ -141,7 +142,6 @@ models/DatasetCreateRequest.ts
 models/DatasetOverlapResponse.ts
 models/DatasetPair.ts
 models/DatasetPreparation.ts
-models/DatasetReadiness.ts
 models/DatasetSourceKindEnum.ts
 models/DatasetSplitCreateRequest.ts
 models/DatasetStateEnum.ts
@@ -243,6 +243,7 @@ models/FinetuningRecommendationResponse.ts
 models/FinetuningSkillScore.ts
 models/FinetuningTimeEstimate.ts
 models/FinetuningTrainingMethod.ts
+models/Fit.ts
 models/GraphEdge.ts
 models/GraphEdgeKindEnum.ts
 models/GuestClaimRequest.ts
@@ -367,6 +368,7 @@ models/PlanUsageUnit.ts
 models/PositionEnum.ts
 models/PostResultsRequest.ts
 models/PreparationEdge.ts
+models/PreparationEdgeKindEnum.ts
 models/PreparationNode.ts
 models/Project.ts
 models/ProjectInvite.ts
@@ -435,6 +437,7 @@ models/TraceProviderEnum.ts
 models/TraceStatusEnum.ts
 models/TraceUsage.ts
 models/TracesServicesList200Response.ts
+models/TrainFormatEnum.ts
 models/TrainingCheck.ts
 models/TrainingCheckpoint.ts
 models/TrainingEvidence.ts

@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { PreparationEdgeKindEnum } from './PreparationEdgeKindEnum';
+import {
+    PreparationEdgeKindEnumFromJSON,
+    PreparationEdgeKindEnumFromJSONTyped,
+    PreparationEdgeKindEnumToJSON,
+    PreparationEdgeKindEnumToJSONTyped,
+} from './PreparationEdgeKindEnum';
+
 /**
  *
  * @export
@@ -33,11 +41,19 @@ export interface PreparationEdge {
     target: string;
     /**
      *
+     * @type {PreparationEdgeKindEnum}
+     * @memberof PreparationEdge
+     */
+    kind: PreparationEdgeKindEnum;
+    /**
+     *
      * @type {string}
      * @memberof PreparationEdge
      */
-    label: string;
+    value: string;
 }
+
+
 
 /**
  * Check if a given object implements the PreparationEdge interface.
@@ -45,7 +61,8 @@ export interface PreparationEdge {
 export function instanceOfPreparationEdge(value: object): value is PreparationEdge {
     if (!('source' in value) || value['source'] === undefined) return false;
     if (!('target' in value) || value['target'] === undefined) return false;
-    if (!('label' in value) || value['label'] === undefined) return false;
+    if (!('kind' in value) || value['kind'] === undefined) return false;
+    if (!('value' in value) || value['value'] === undefined) return false;
     return true;
 }
 
@@ -61,7 +78,8 @@ export function PreparationEdgeFromJSONTyped(json: any, ignoreDiscriminator: boo
 
         'source': json['source'],
         'target': json['target'],
-        'label': json['label'],
+        'kind': PreparationEdgeKindEnumFromJSON(json['kind']),
+        'value': json['value'],
     };
 }
 
@@ -78,6 +96,7 @@ export function PreparationEdgeToJSONTyped(value?: PreparationEdge | null, ignor
 
         'source': value['source'],
         'target': value['target'],
-        'label': value['label'],
+        'kind': PreparationEdgeKindEnumToJSON(value['kind']),
+        'value': value['value'],
     };
 }

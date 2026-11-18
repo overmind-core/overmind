@@ -68,6 +68,7 @@ export function PromptAgentActions({
   prompt,
   defaultAgent,
   inverted = false,
+  quiet = false,
   onCopied,
   onCopyFailed,
   onOpenClicked,
@@ -75,6 +76,8 @@ export function PromptAgentActions({
   prompt: string;
   defaultAgent?: string | null;
   inverted?: boolean;
+  /** Outlined, for a page where copying the prompt is a secondary action. */
+  quiet?: boolean;
   onCopied?: () => void;
   onCopyFailed?: () => void;
   onOpenClicked?: (agent: string) => void;
@@ -88,7 +91,12 @@ export function PromptAgentActions({
   const colors = inverted
     ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90"
     : "";
-  const divider = inverted ? "border-l-primary/40" : "border-l-primary-foreground/40";
+  const divider = quiet
+    ? "border-l-border/70"
+    : inverted
+      ? "border-l-primary/40"
+      : "border-l-primary-foreground/40";
+  const variant = quiet ? "outline" : undefined;
 
   async function copyPrompt() {
     try {
@@ -110,10 +118,16 @@ export function PromptAgentActions({
             className={cn("rounded-r-none", colors)}
             onClick={() => void copyPrompt()}
             size="icon-sm"
+            variant={variant}
           >
             <Icon.copy />
           </Button>
-          <Button asChild className={cn("rounded-none", divider, colors)} size="sm">
+          <Button
+            asChild
+            className={cn("rounded-none", divider, colors)}
+            size="sm"
+            variant={variant}
+          >
             <a
               aria-label={`Open in ${agent.label}`}
               href={url}
@@ -129,6 +143,7 @@ export function PromptAgentActions({
           className={cn(!mobile && "rounded-r-none", colors)}
           onClick={() => void copyPrompt()}
           size="sm"
+          variant={variant}
         >
           <Icon.copy />
           Copy prompt
@@ -141,6 +156,7 @@ export function PromptAgentActions({
               aria-label="Choose coding agent"
               className={cn("rounded-l-none", divider, colors)}
               size="icon-sm"
+              variant={variant}
             >
               <Icon.chevronDown />
             </Button>

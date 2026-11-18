@@ -22,8 +22,9 @@ import {
 } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 
+import { Field } from "@/components/datasets/notebook/field";
 import { Icon } from "@/components/ui/icons";
-import { usePersistedState } from "@/hooks/use-persisted-state";
+import { SPLIT_LABEL } from "@/hooks/use-datasets";
 import { notify } from "@/lib/notify";
 import type { Cell } from "@/openapi";
 import { type CellMotion, CellMotionFrame, type CompleteCellMotion } from "./cell-motion";
@@ -39,7 +40,6 @@ type CellNode = Node<
   },
   "cell"
 >;
-const GRID: [number, number] = [20, 20];
 const elk = new ELK();
 
 function CellFrame({ id, data }: NodeProps<CellNode>) {
@@ -52,21 +52,43 @@ function CellFrame({ id, data }: NodeProps<CellNode>) {
 
 const NODE_TYPES = { cell: CellFrame };
 
+const EDGE_LABEL: Record<string, string> = {
+  attachment: "Added files",
+  derived: "Derived",
+};
+
+/** What a connection does: a branch condition, a partition role, a derivation. */
+function EdgeTag({ kind, value }: { kind: string; value: string }) {
+  if (kind === "condition")
+    return (
+      <Field label="If" title={value}>
+        <span className="truncate font-mono">{value}</span>
+      </Field>
+    );
+  if (kind === "split") return <Field label="Split">{SPLIT_LABEL[value] ?? value}</Field>;
+  const label = EDGE_LABEL[kind];
+  return label ? (
+    <span className="inline-flex h-6 items-center rounded-sm border border-border/70 bg-card px-2 text-xs text-muted-foreground">
+      {label}
+    </span>
+  ) : null;
+}
+
 function CellConnector(props: EdgeProps) {
   const [path] = getSmoothStepPath({ ...props, borderRadius: 0, offset: 0 });
+  const data = props.data as { kind: string; value: string } | undefined;
   return (
     <>
       <BaseEdge id={props.id} path={path} style={props.style} />
-      {props.label && (
+      {data && data.kind !== "step" && (
         <EdgeLabelRenderer>
           <div
-            className="absolute max-w-80 truncate rounded-sm border border-input bg-card px-2 py-1 text-xs text-foreground"
+            className="absolute max-w-80"
             style={{
               transform: `translate(-50%, -100%) translate(${props.targetX}px, ${props.targetY - 32}px)`,
             }}
-            title={String(props.label)}
           >
-            {props.label}
+            <EdgeTag kind={data.kind} value={data.value} />
           </div>
         </EdgeLabelRenderer>
       )}
@@ -79,7 +101,6 @@ const EDGE_TYPES = { cell: CellConnector };
 type Props = {
   cells: Cell[];
   edges: Edge[];
-  storageKey: string;
   showMinimap: boolean;
   focus: { id: string; request: number } | null;
   renderCell: (cell: Cell) => ReactNode;
@@ -90,7 +111,6 @@ type Props = {
 function Canvas({
   cells,
   edges,
-  storageKey,
   showMinimap,
   focus,
   renderCell,
@@ -100,7 +120,6 @@ function Canvas({
   const wrapper = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(960);
   const [inset, setInset] = useState(16);
-  const [positions, savePositions] = usePersistedState<Record<string, XYPosition>>(storageKey, {});
   const [nodes, setNodes, onNodesChange] = useNodesState<CellNode>([]);
   const { getNodes, getViewport, setViewport } = useReactFlow<CellNode>();
   const initialized = useNodesInitialized();
@@ -144,7 +163,6 @@ function Canvas({
             motion: motions.get(cell.id),
             ready: previous?.data.ready ?? false,
           },
-          dragHandle: ".workshop-cell-node article > div:first-of-type",
           id: cell.id,
           position: previous?.position ?? { x: 0, y: index * 580 },
           style: { width },
@@ -186,23 +204,19 @@ function Canvas({
         if (cancelled) return;
         const anchor = current.find((node) => node.data.ready);
         const anchorLayout = layout.children?.find((node) => node.id === anchor?.id);
+        // The layout owns every position; a relayout keeps the first placed cell still.
         const offset =
-          anchor && anchorLayout && !positions[anchor.id]
+          anchor && anchorLayout
             ? {
                 x: anchor.position.x - (anchorLayout.x ?? 0),
                 y: anchor.position.y - (anchorLayout.y ?? 0),
               }
             : { x: 0, y: 0 };
         const placedPosition = (id: string): XYPosition => {
-          const saved = positions[id];
           const placed = layout.children?.find((node) => node.id === id);
-          const point =
-            saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
-              ? saved
-              : { x: (placed?.x ?? 0) + offset.x, y: (placed?.y ?? 0) + offset.y };
           return {
-            x: Math.round((point?.x ?? 0) / 20) * 20,
-            y: Math.round((point?.y ?? 0) / 20) * 20,
+            x: Math.round((placed?.x ?? 0) + offset.x),
+            y: Math.round((placed?.y ?? 0) + offset.y),
           };
         };
         const key = focus ? `${focus.id}:${focus.request}` : "";
@@ -234,7 +248,7 @@ function Canvas({
           // Move graph coordinates so connectors follow their cells on every frame.
           setNodes((latest) =>
             latest.map((node) => {
-              if (!ids.has(node.id) || node.dragging) return node;
+              if (!ids.has(node.id)) return node;
               const target = placedPosition(node.id);
               const start = starts.get(node.id) ?? target;
               return {
@@ -291,7 +305,6 @@ function Canvas({
     measurements,
     width,
     inset,
-    positions,
     focus,
     getNodes,
     getViewport,
@@ -317,25 +330,11 @@ function Canvas({
         minZoom={0.25}
         nodes={nodes}
         nodesConnectable={false}
+        nodesDraggable={false}
         nodeTypes={NODE_TYPES}
-        onNodesChange={(changes) => {
-          onNodesChange(changes);
-          const moved = changes.filter(
-            (change) => change.type === "position" && change.position && !change.dragging
-          );
-          if (moved.length)
-            savePositions((previous) => {
-              const next = { ...previous };
-              for (const change of moved)
-                if (change.type === "position" && change.position)
-                  next[change.id] = change.position;
-              return next;
-            });
-        }}
+        onNodesChange={onNodesChange}
         panOnScroll
         proOptions={{ hideAttribution: true }}
-        snapGrid={GRID}
-        snapToGrid
         zoomOnDoubleClick={false}
         zoomOnPinch
         zoomOnScroll
@@ -389,7 +388,7 @@ function Canvas({
 
 export function CellFlow(props: Props) {
   return (
-    <ReactFlowProvider key={props.storageKey}>
+    <ReactFlowProvider>
       <Canvas {...props} />
     </ReactFlowProvider>
   );

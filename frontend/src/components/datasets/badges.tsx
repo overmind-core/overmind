@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
-import { INTENT_LABEL, type UsedVersionInfo } from "@/hooks/use-datasets";
+import { intentLabel, type UsedVersionInfo } from "@/hooks/use-datasets";
 import { cn } from "@/lib/utils";
 
 export const SOURCE_KIND_LABEL: Record<string, string> = {
@@ -15,15 +15,17 @@ export const SOURCE_KIND_LABEL: Record<string, string> = {
 /** `train` / `eval` are what a consumer needs; `pending` is not decided yet. */
 export function IntentBadge({
   intent,
+  trainFormat,
   className,
 }: {
   intent: string | null | undefined;
+  trainFormat?: string | null;
   className?: string;
 }) {
   if (!intent) return null;
   return (
     <Badge className={className} size="chip" variant="outline">
-      {INTENT_LABEL[intent] ?? intent}
+      {intentLabel(intent, trainFormat)}
     </Badge>
   );
 }

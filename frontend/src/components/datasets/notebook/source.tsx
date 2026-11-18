@@ -22,11 +22,22 @@ interface SourceArtifact {
 export function extractionStatus(spec: unknown): string | undefined {
   const progress = (
     spec as {
-      landing_progress?: { filename?: string; stage?: string; completed?: number; total?: number };
+      landing_progress?: {
+        filename?: string;
+        stage?: string;
+        completed?: number;
+        total?: number;
+        rows_done?: number;
+        rows_total?: number | null;
+      };
     } | null
   )?.landing_progress;
   if (!progress) return;
   if (progress.stage === "merging") return "Adding extracted rows";
+  if (progress.stage === "writing" || progress.stage === "measuring")
+    return `${progress.stage === "writing" ? "Writing" : "Measuring"} rows · ${(
+      progress.rows_done ?? 0
+    ).toLocaleString()}${progress.rows_total ? ` of ${progress.rows_total.toLocaleString()}` : ""}`;
   const action = progress.stage === "extracting" ? "Extracting text" : "Reading file";
   const count =
     progress.total && progress.total > 1
@@ -92,9 +103,6 @@ export function SourceDetails({
             >
               <FileTypeIcon className="size-3" filename={source.filename} />
               <span className="min-w-0 max-w-sm truncate">{source.filename}</span>
-              <span className="shrink-0 text-muted-foreground">
-                {source.rows.toLocaleString()} rows
-              </span>
               <Button
                 aria-label={`Download ${source.filename}`}
                 disabled={downloading !== null}

@@ -1,12 +1,10 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
 
-import { SOURCE_KIND_LABEL } from "@/components/datasets/badges";
 import { EntityRef } from "@/components/entity-ref";
 import { FileTypeIcon } from "@/components/file-type-icon";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -25,19 +23,47 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useActivityHighlights } from "@/hooks/use-activity";
-import { datasetDisplayName, useDeleteDatasetMutation } from "@/hooks/use-datasets";
+import {
+  compactCount,
+  datasetDisplayName,
+  intentOf,
+  SPLIT_LABEL,
+  useDeleteDatasetMutation,
+  workText,
+} from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
 import { parseDrfOrdering } from "@/lib/drf-ordering";
 import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { cn } from "@/lib/utils";
 import type { Dataset } from "@/openapi";
 
-const DATASET_ROLES: Record<string, string> = {
-  calibration: "Calibration",
-  development: "Development",
-  evaluation: "Evaluation",
-  source: "Source",
-  training: "Training",
+/** What a dataset is for, from its intent: the one value the Role column shows. */
+export const ROLE_LABEL: Record<string, string> = {
+  decision: "Train · Decision",
+  eval: "Eval",
+  pending: "Not set",
+  sft: "Train · SFT",
+  train: "Train",
+};
+
+const roleOf = (ds: Dataset): string => {
+  const intent = intentOf(ds);
+  return intent === "train" ? ds.trainFormat || "train" : intent;
+};
+
+// In the order a model meets them; a workspace merges its members' uses in any order.
+const USES: [string, string][] = [
+  ["training", "Train"],
+  ["development", "Dev"],
+  ["calibration", "Calib"],
+  ["evaluation", "Eval"],
+];
+
+/** Where runs and partitions used the dataset, as one sentence for the role's tooltip. */
+const usedText = (ds: Dataset): string | null => {
+  if (!ds.roles.length) return null;
+  const uses = ds.roles.map((role) => role.toLowerCase());
+  return `Used for ${uses.length > 1 ? `${uses.slice(0, -1).join(", ")} and ${uses.at(-1)}` : uses[0]}`;
 };
 
 const NO_CAPABILITY = "__none__";
@@ -50,12 +76,7 @@ const filterDatasets = (
 ): Dataset[] => {
   const q = search.trim().toLowerCase();
   return datasets.filter((ds) => {
-    if (
-      roleFilter === "unassigned"
-        ? ds.roles.length > 0
-        : roleFilter !== "all" && !ds.roles.some((role) => role === roleFilter)
-    )
-      return false;
+    if (roleFilter !== "all" && roleOf(ds) !== roleFilter) return false;
     if (capabilityFilter !== "all" && (ds.capability || NO_CAPABILITY) !== capabilityFilter) {
       return false;
     }
@@ -64,7 +85,9 @@ const filterDatasets = (
       datasetDisplayName(ds).toLowerCase().includes(q) ||
       ds.id.toLowerCase().startsWith(q) ||
       (ds.capabilityName ?? "").toLowerCase().includes(q) ||
-      (SOURCE_KIND_LABEL[ds.sourceKind] ?? "").toLowerCase().includes(q)
+      [describeSource(ds, {})?.label ?? "", ...(describeSource(ds, {})?.more ?? [])].some((text) =>
+        text.toLowerCase().includes(q)
+      )
     );
   });
 };
@@ -107,17 +130,16 @@ export function DatasetsToolbar({
       filters={
         <>
           <Select onValueChange={setRoleFilter} value={roleFilter}>
-            <SelectTrigger aria-label="Filter by role" className="w-[140px]" size="default">
+            <SelectTrigger aria-label="Filter by role" className="w-[160px]" size="default">
               <SelectValue placeholder="All roles" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All roles</SelectItem>
-              {Object.entries(DATASET_ROLES).map(([value, label]) => (
+              {Object.entries(ROLE_LABEL).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {label}
                 </SelectItem>
               ))}
-              <SelectItem value="unassigned">Unassigned</SelectItem>
             </SelectContent>
           </Select>
           {setCapabilityFilter && capabilityIds.length > 1 && (
@@ -157,20 +179,21 @@ export function DatasetsToolbar({
   );
 }
 
-type SortKey = "source" | "name" | "role" | "rows" | "version" | "capability" | "updated";
+type SortKey = "source" | "name" | "role" | "rows" | "capability" | "updated";
+
+const sourceText = (ds: Dataset, nameById: Record<string, string>): string =>
+  describeSource(ds, nameById)?.label ?? "";
 
 const sortValue = (ds: Dataset, key: SortKey): string | number => {
   switch (key) {
     case "source":
-      return SOURCE_KIND_LABEL[ds.sourceKind] ?? ds.sourceKind;
+      return sourceText(ds, {}).toLowerCase();
     case "name":
       return datasetDisplayName(ds).toLowerCase();
     case "role":
-      return ds.roles.map((role) => DATASET_ROLES[role] ?? role).join(", ");
+      return ROLE_LABEL[roleOf(ds)];
     case "rows":
-      return ds.rows ?? 0;
-    case "version":
-      return ds.activeVersion ?? "";
+      return ds.activeVersion ? ds.rows : -1;
     case "capability":
       return (ds.capabilityName ?? "").toLowerCase();
     case "updated":
@@ -178,39 +201,102 @@ const sortValue = (ds: Dataset, key: SortKey): string | number => {
   }
 };
 
-// The widest glyphs of the table's text, in pixels: an estimate must not fall short.
-const CHAR_PX = 7;
+/** One height, border and type size for every chip the table shows. */
+const TABLE_CHIP =
+  "inline-flex h-5 max-w-full min-w-0 items-center gap-1.5 rounded-sm border border-border/70 bg-transparent px-1.5 py-0 text-xs text-foreground";
 
-function statusOf(dataset: Dataset) {
+function Chip({ children, title }: { children: ReactNode; title?: string | null }) {
+  const chip = <span className={TABLE_CHIP}>{children}</span>;
+  if (!title) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+const Dash = () => <span className="text-sm text-muted-foreground">—</span>;
+
+interface SourceDescription {
+  icon: ReactNode;
+  label: string;
+  more: string[];
+}
+
+/** One label for any source: files, pasted rows, traces, LLM calls or another dataset. */
+function describeSource(ds: Dataset, nameById: Record<string, string>): SourceDescription | null {
+  const spec = (ds.sourceSpec ?? {}) as {
+    sources?: { filename: string }[];
+    filename?: string;
+    pasted?: boolean;
+    derived_from?: { dataset_id?: string; version?: string };
+    partition_plan?: string;
+    role?: string;
+  };
+  const icon = (Glyph: (typeof Icon)[keyof typeof Icon]) => <Glyph className="size-3.5 shrink-0" />;
+  if (spec.derived_from) {
+    const name = nameById[spec.derived_from.dataset_id ?? ""] ?? "a dataset";
+    const version = spec.derived_from.version ? ` ${spec.derived_from.version}` : "";
+    return { icon: icon(Icon.gitBranch), label: `From ${name}${version}`, more: [] };
+  }
+  if (spec.partition_plan)
+    return {
+      icon: icon(Icon.gitBranch),
+      label: `Split · ${SPLIT_LABEL[spec.role ?? ""] ?? spec.role}`,
+      more: [],
+    };
+  if (ds.sourceKind === "traces")
+    return { icon: icon(Icon.observability), label: "Traces", more: [] };
+  if (ds.sourceKind === "llm_calls")
+    return { icon: icon(Icon.model), label: "LLM calls", more: [] };
+  const files = spec.sources?.length
+    ? spec.sources.map((source) => source.filename)
+    : spec.filename
+      ? [spec.filename]
+      : [];
+  // Rows sent inline (pasted, or given through the API) name no file.
+  if (!files.length)
+    return ds.activeVersion && ds.sourceKind === "file"
+      ? { icon: icon(Icon.clipboard), label: "Inline rows", more: [] }
+      : null;
+  return {
+    icon: <FileTypeIcon className="size-3.5" filename={files[0]} />,
+    label: files[0],
+    more: files.slice(1),
+  };
+}
+
+/** Busy or failed work beside the name; an idle dataset shows its name alone. */
+function NameStatus({ dataset }: { dataset: Dataset }) {
   const work = dataset.work;
+  const failed = !work && dataset.state === "error";
   const queued =
     work?.status === "queued" ||
     (!work && dataset.state === "landing" && dataset.operation?.state === "queued");
   const busy = !!work || dataset.state === "running" || dataset.state === "landing";
-  const failed = !work && dataset.state === "error";
-  return { busy, failed, queued, work };
-}
-
-function statusLabel(dataset: Dataset): string {
-  const { busy, failed, queued, work } = statusOf(dataset);
-  if (!busy && !failed) return dataset.activeVersion ? "Ready" : "Waiting for source";
-  if (failed) return "Failed";
-  if (queued) return "Queued";
-  return work?.label ?? (dataset.state === "landing" ? "Importing" : "Transforming");
-}
-
-function DatasetStatus({ dataset }: { dataset: Dataset }) {
-  const { busy, failed, queued, work } = statusOf(dataset);
-  const label = statusLabel(dataset);
-  if (!busy && !failed) return <span className="text-sm text-muted-foreground">{label}</span>;
+  if (!busy && !failed) return null;
   const completed = work?.completed;
   const total = work?.total;
   const percent =
     typeof completed === "number" && typeof total === "number" && total > 0
       ? (completed / total) * 100
       : null;
+  const label = failed
+    ? "Failed"
+    : queued
+      ? "Queued"
+      : work
+        ? workText(work, { compact: true })
+        : dataset.state === "landing"
+          ? "Importing"
+          : "Transforming";
   return (
-    <span aria-live="polite" className="inline-flex items-center gap-2">
+    <span
+      aria-live="polite"
+      className="inline-flex shrink-0"
+      title={failed ? dataset.error : undefined}
+    >
       <ResolvedStatusBadge
         actorKind={work?.actorKind ?? undefined}
         cfg={resolveStatus(
@@ -225,9 +311,7 @@ function DatasetStatus({ dataset }: { dataset: Dataset }) {
 }
 
 function getColumns(opts: {
-  roleWidth: number;
-  sourceWidth: number;
-  statusWidth: number;
+  nameById: Record<string, string>;
   onDelete: (ds: Dataset) => void;
   onDeleteClick?: (e: React.MouseEvent) => void;
   deletePendingId?: string | null;
@@ -239,131 +323,46 @@ function getColumns(opts: {
       cell: ({ row }) => (
         <span className="flex min-w-0 items-center gap-2">
           <span
-            className="truncate font-mono text-sm text-foreground"
+            className="truncate text-sm text-foreground"
             title={datasetDisplayName(row.original)}
           >
             {datasetDisplayName(row.original)}
           </span>
+          <NameStatus dataset={row.original} />
         </span>
       ),
       header: "Name",
       id: "name",
       meta: { label: "Name", orderingField: "name" },
-      minSize: 160,
-      size: 180,
+      minSize: 200,
+      size: 280,
     },
     {
-      cell: ({ row }) => <DatasetStatus dataset={row.original} />,
-      header: "Status",
-      id: "status",
-      meta: { label: "Status", noTruncate: true },
-      minSize: opts.statusWidth,
-      size: opts.statusWidth,
-    },
-    {
-      accessorFn: (row) => row.roles.join(", "),
-      cell: ({ row }) =>
-        row.original.roles.length ? (
-          <span className="inline-flex flex-nowrap gap-1">
-            {row.original.roles.map((role) => (
-              <Badge key={role} size="chip" variant="outline">
-                {DATASET_ROLES[role] ?? role}
-              </Badge>
-            ))}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
+      accessorFn: (row) => ROLE_LABEL[roleOf(row)],
+      cell: ({ row }) => {
+        const role = roleOf(row.original);
+        const used = usedText(row.original);
+        if (role === "pending" && !used) return <Dash />;
+        // With no intent, a used dataset (often the source of a split) shows its uses.
+        const fromUses = role === "pending";
+        return (
+          <Chip title={fromUses ? `Intent not set · ${used}` : used}>
+            {used && <span aria-label="Used" className="size-1.5 shrink-0 rounded-xs bg-success" />}
+            <span className={cn("truncate font-mono", fromUses && "text-muted-foreground")}>
+              {fromUses
+                ? USES.filter(([use]) => row.original.roles.includes(use as never))
+                    .map(([, short]) => short)
+                    .join(" + ")
+                : ROLE_LABEL[role]}
+            </span>
+          </Chip>
+        );
+      },
       header: "Role",
       id: "role",
       meta: { label: "Role", noTruncate: true, orderingField: "role" },
-      minSize: opts.roleWidth,
-      size: opts.roleWidth,
-    },
-    {
-      accessorFn: (row) => row.activeVersion ?? "",
-      cell: ({ row }) => (
-        <span className="font-mono text-sm text-foreground">
-          {row.original.activeVersion || <span className="text-muted-foreground">—</span>}
-        </span>
-      ),
-      header: "Version",
-      id: "version",
-      meta: { label: "Version", orderingField: "version" },
-      minSize: 88,
-      size: 88,
-    },
-    {
-      accessorFn: (row) => row.rows ?? 0,
-      cell: ({ row }) => (
-        <span className="tabular-nums text-sm text-foreground">
-          {row.original.activeVersion ? (
-            row.original.rows.toLocaleString()
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </span>
-      ),
-      header: "Rows",
-      id: "rows",
-      meta: { label: "Rows", orderingField: "rows" },
-      minSize: 80,
-      size: 80,
-    },
-    {
-      accessorKey: "sourceKind",
-      cell: ({ row }) => {
-        const dataset = row.original;
-        const sources: { filename: string }[] = dataset.sourceSpec?.sources ?? [];
-        const filenames = sources.length
-          ? sources.map((source) => source.filename)
-          : dataset.sourceSpec?.filename
-            ? [String(dataset.sourceSpec.filename)]
-            : [];
-        return filenames.length ? (
-          <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-            {filenames.slice(0, 1).map((filename, index) => {
-              const extension = filename.replace(/\.gz$/i, "").match(/\.([^.]+)$/)?.[1];
-              return (
-                <Badge
-                  className="min-w-0 max-w-full gap-1.5"
-                  key={`${filename}:${index}`}
-                  size="chip"
-                  title={filename}
-                  variant="outline"
-                >
-                  <FileTypeIcon className="size-3" filename={filename} />
-                  <span className="min-w-0 truncate">{filename}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {extension?.toUpperCase() ?? "File"}
-                  </span>
-                </Badge>
-              );
-            })}
-            {filenames.length > 1 && (
-              <Badge
-                aria-label={`Also ${filenames.slice(1).join(", ")}`}
-                className="shrink-0"
-                size="chip"
-                tabIndex={0}
-                title={filenames.slice(1).join(", ")}
-                variant="outline"
-              >
-                +{filenames.length - 1}
-              </Badge>
-            )}
-          </span>
-        ) : (
-          <span className="text-sm text-foreground">
-            {SOURCE_KIND_LABEL[dataset.sourceKind] ?? dataset.sourceKind}
-          </span>
-        );
-      },
-      header: "Source",
-      id: "source",
-      meta: { label: "Source", noTruncate: true, orderingField: "source" },
-      minSize: opts.sourceWidth,
-      size: opts.sourceWidth,
+      minSize: 130,
+      size: 140,
     },
   ];
 
@@ -372,25 +371,66 @@ function getColumns(opts: {
       accessorFn: (row) => row.capabilityName ?? "",
       cell: ({ row }) =>
         row.original.capability ? (
-          <div className="flex w-full justify-start">
+          <div className="flex w-full min-w-0 justify-start">
             <EntityRef
+              className={TABLE_CHIP}
               id={row.original.capability}
               kind="capability"
               name={row.original.capabilityName}
             />
           </div>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <Dash />
         ),
       header: "Capability",
       id: "capability",
       meta: { label: "Capability", noTruncate: true, orderingField: "capability" },
       minSize: 120,
-      size: 140,
+      size: 150,
     });
   }
 
   cols.push(
+    {
+      accessorFn: (row) => row.rows ?? 0,
+      cell: ({ row }) =>
+        row.original.activeVersion ? (
+          <span
+            className="text-sm tabular-nums text-foreground"
+            title={row.original.rows.toLocaleString()}
+          >
+            {compactCount(row.original.rows)}
+          </span>
+        ) : (
+          <Dash />
+        ),
+      header: "Datapoints",
+      id: "rows",
+      meta: { label: "Datapoints", orderingField: "rows" },
+      minSize: 96,
+      size: 104,
+    },
+    {
+      accessorFn: (row) => sourceText(row, opts.nameById),
+      cell: ({ row }) => {
+        const source = describeSource(row.original, opts.nameById);
+        if (!source) return <Dash />;
+        return (
+          <Chip title={[source.label, ...source.more].join(", ")}>
+            {source.icon}
+            <span className="min-w-0 truncate">{source.label}</span>
+            {source.more.length > 0 && (
+              <span className="shrink-0 text-muted-foreground">+{source.more.length}</span>
+            )}
+          </Chip>
+        );
+      },
+      header: "Source",
+      id: "source",
+      meta: { label: "Source", noTruncate: true, orderingField: "source" },
+      minSize: 140,
+      size: 200,
+    },
     {
       accessorKey: "updatedAt",
       cell: ({ row }) => (
@@ -535,55 +575,26 @@ export function DatasetsBrowser({
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
 
-  // A column is as wide as the widest thing it shows now: a cell clips what does not fit.
-  const roleWidth = Math.max(
-    100,
-    ...datasets.map((dataset) =>
-      dataset.roles.reduce(
-        (width, role, index) =>
-          width + (DATASET_ROLES[role] ?? role).length * CHAR_PX + 19 + (index ? 5 : 0),
-        16
-      )
-    )
-  );
-  // A status at work is a badge: an icon and padding beside its label.
-  const statusWidth = Math.max(
-    120,
-    ...datasets.map((dataset) => {
-      const { busy, failed } = statusOf(dataset);
-      return statusLabel(dataset).length * CHAR_PX + (busy || failed ? 52 : 16);
-    })
-  );
   // A column of dashes says nothing and costs the width the others need.
   const noCapabilities = !datasets.some((dataset) => dataset.capability);
-  const sourceWidth = datasets.some(
-    (dataset) => dataset.sourceSpec?.sources?.length || dataset.sourceSpec?.filename
-  )
-    ? 160
-    : 90;
+  // Keyed by the names themselves: the inventory is a new array on every render, and new
+  // columns would reset the table.
+  const names = JSON.stringify(
+    datasets.map((dataset) => [dataset.id, datasetDisplayName(dataset)])
+  );
+  const nameById = useMemo(() => Object.fromEntries(JSON.parse(names)), [names]);
 
   const selectable = !!onRowSelectionChange;
   const columns = useMemo(() => {
     const base = getColumns({
       deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
       hideCapabilityColumn: hideCapabilityColumn || noCapabilities,
+      nameById,
       onDelete: (ds) => deleteMutation.mutate(ds.id),
       onDeleteClick: guard(() => undefined),
-      roleWidth,
-      sourceWidth,
-      statusWidth,
     });
     return selectable ? [ATTACH_COLUMN, ...base] : base;
-  }, [
-    deleteMutation,
-    guard,
-    hideCapabilityColumn,
-    noCapabilities,
-    roleWidth,
-    selectable,
-    sourceWidth,
-    statusWidth,
-  ]);
+  }, [deleteMutation, guard, hideCapabilityColumn, nameById, noCapabilities, selectable]);
 
   return (
     <DataTable

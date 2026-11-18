@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { CellFit } from './CellFit';
+import {
+    CellFitFromJSON,
+    CellFitFromJSONTyped,
+    CellFitToJSON,
+    CellFitToJSONTyped,
+} from './CellFit';
 import type { DatasetAnalytics } from './DatasetAnalytics';
 import {
     DatasetAnalyticsFromJSON,
@@ -27,13 +34,6 @@ import {
     CellTransformationToJSON,
     CellTransformationToJSONTyped,
 } from './CellTransformation';
-import type { DatasetReadiness } from './DatasetReadiness';
-import {
-    DatasetReadinessFromJSON,
-    DatasetReadinessFromJSONTyped,
-    DatasetReadinessToJSON,
-    DatasetReadinessToJSONTyped,
-} from './DatasetReadiness';
 import type { CellStateEnum } from './CellStateEnum';
 import {
     CellStateEnumFromJSON,
@@ -153,6 +153,12 @@ export interface Cell {
     readonly fits: { [key: string]: any; };
     /**
      *
+     * @type {CellFit}
+     * @memberof Cell
+     */
+    readonly fit: CellFit;
+    /**
+     *
      * @type {DatasetAnalytics}
      * @memberof Cell
      */
@@ -163,24 +169,6 @@ export interface Cell {
      * @memberof Cell
      */
     readonly review: { [key: string]: any; };
-    /**
-     *
-     * @type {any}
-     * @memberof Cell
-     */
-    readonly qualityReport: any | null;
-    /**
-     *
-     * @type {{ [key: string]: any; }}
-     * @memberof Cell
-     */
-    readonly preparationPlan: { [key: string]: any; } | null;
-    /**
-     *
-     * @type {DatasetReadiness}
-     * @memberof Cell
-     */
-    readonly readiness: DatasetReadiness;
     /**
      *
      * @type {number}
@@ -236,11 +224,9 @@ export function instanceOfCell(value: object): value is Cell {
     if (!('intentReport' in value) || value['intentReport'] === undefined) return false;
     if (!('capabilityReport' in value) || value['capabilityReport'] === undefined) return false;
     if (!('fits' in value) || value['fits'] === undefined) return false;
+    if (!('fit' in value) || value['fit'] === undefined) return false;
     if (!('analytics' in value) || value['analytics'] === undefined) return false;
     if (!('review' in value) || value['review'] === undefined) return false;
-    if (!('qualityReport' in value) || value['qualityReport'] === undefined) return false;
-    if (!('preparationPlan' in value) || value['preparationPlan'] === undefined) return false;
-    if (!('readiness' in value) || value['readiness'] === undefined) return false;
     if (!('seconds' in value) || value['seconds'] === undefined) return false;
     if (!('usedAt' in value) || value['usedAt'] === undefined) return false;
     if (!('usage' in value) || value['usage'] === undefined) return false;
@@ -276,11 +262,9 @@ export function CellFromJSONTyped(json: any, ignoreDiscriminator: boolean): Cell
         'intentReport': json['intent_report'],
         'capabilityReport': json['capability_report'],
         'fits': json['fits'],
+        'fit': CellFitFromJSON(json['fit']),
         'analytics': DatasetAnalyticsFromJSON(json['analytics']),
         'review': json['review'],
-        'qualityReport': json['quality_report'],
-        'preparationPlan': json['preparation_plan'],
-        'readiness': DatasetReadinessFromJSON(json['readiness']),
         'seconds': json['seconds'],
         'usedAt': (json['used_at'] == null ? null : new Date(json['used_at'])),
         'usage': json['usage'],
@@ -293,7 +277,7 @@ export function CellToJSON(json: any): Cell {
     return CellToJSONTyped(json, false);
 }
 
-export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'transformation'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'analytics'|'review'|'quality_report'|'preparation_plan'|'readiness'|'seconds'|'used_at'|'usage'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function CellToJSONTyped(value?: Omit<Cell, 'id'|'position'|'version'|'title'|'script'|'transformation'|'note'|'state'|'error'|'frozen'|'rows'|'columns'|'fingerprint'|'input_fingerprint'|'intent_report'|'capability_report'|'fits'|'fit'|'analytics'|'review'|'seconds'|'used_at'|'usage'|'created_at'|'updated_at'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

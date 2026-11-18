@@ -60,7 +60,7 @@ function choose(label: string, option: string) {
 }
 
 describe("dataset file dialog", () => {
-  it("allows exploration before choosing a purpose and resets that choice when reopened", async () => {
+  it("creates before an intent is chosen and resets the choice when reopened", async () => {
     const props = {
       initialFiles: [new File(["a"], "first.csv")],
       onOpenChange: vi.fn(),
@@ -70,24 +70,13 @@ describe("dataset file dialog", () => {
     await within(screen.getByRole("list", { name: "Selected files" })).findByText("7 rows");
     const create = screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement;
     expect(create.disabled).toBe(false);
-    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe(
-      "Choose in workshop"
-    );
-    fireEvent.keyDown(screen.getByRole("combobox", { name: "Purpose" }), { key: "ArrowDown" });
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Choose in workshop",
-      "Data exploration",
-      "Evaluation",
-      "Training",
-      "Train + eval",
-    ]);
+    expect(screen.getByRole("combobox", { name: "Intent" }).textContent).toBe("Not set");
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Intent" }), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Training" }));
     expect(create.disabled).toBe(false);
     view.rerender(<NewDatasetDialog {...props} open={false} />);
     view.rerender(<NewDatasetDialog {...props} open />);
-    expect(screen.getByRole("combobox", { name: "Purpose" }).textContent).toBe(
-      "Choose in workshop"
-    );
+    expect(screen.getByRole("combobox", { name: "Intent" }).textContent).toBe("Not set");
     expect(
       (screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement).disabled
     ).toBe(true);
@@ -95,7 +84,7 @@ describe("dataset file dialog", () => {
 
   it.each([
     "Training",
-    "Train + eval",
+    "Training + evaluation",
   ])("preserves an explicit None capability for %s", async (purpose) => {
     render(
       <NewDatasetDialog
@@ -108,7 +97,7 @@ describe("dataset file dialog", () => {
     );
     await within(screen.getByRole("list", { name: "Selected files" })).findByText("7 rows");
     choose("Capability", "None");
-    choose("Purpose", purpose);
+    choose("Intent", purpose);
     fireEvent.click(
       screen.getByRole("button", {
         name: purpose === "Training" ? "Create dataset" : "Create datasets",
@@ -139,7 +128,7 @@ describe("dataset file dialog", () => {
     expect(within(list).queryByText("first.csv")).toBeNull();
     expect((screen.getByLabelText("Dataset name") as HTMLInputElement).value).toBe("Support data");
     choose("Capability", "Support");
-    choose("Purpose", "Evaluation");
+    choose("Intent", "Evaluation");
     fireEvent.click(screen.getByRole("button", { name: "Create dataset" }));
     await waitFor(() =>
       expect(mocks.create).toHaveBeenCalledWith({
@@ -147,6 +136,7 @@ describe("dataset file dialog", () => {
         capabilityId: "cap",
         intent: "eval",
         name: "Support data",
+        prepare: true,
         projectId: "project",
         source: { uploads: ["second.jsonl"] },
       })
@@ -164,7 +154,7 @@ describe("dataset file dialog", () => {
     );
     await screen.findByText("15 rows");
     expect(screen.queryByRole("spinbutton", { name: "Data split" })).toBeNull();
-    choose("Purpose", "Train + eval");
+    choose("Intent", "Training + evaluation");
     expect(screen.queryByLabelText("Group columns")).toBeNull();
     expect(screen.queryByLabelText("Stratify by")).toBeNull();
     expect(screen.queryByText(/Estimated counts\./)).toBeNull();
@@ -185,6 +175,7 @@ describe("dataset file dialog", () => {
         evalPercent: 40,
         name: "first",
         position: "tail",
+        prepare: true,
         projectId: "project",
         source: { uploads: ["first.csv", "second.jsonl"] },
       })
@@ -202,7 +193,7 @@ describe("dataset file dialog", () => {
       />
     );
     await screen.findByText("1 row");
-    choose("Purpose", "Train + eval");
+    choose("Intent", "Training + evaluation");
     expect(screen.getByRole("alert").textContent).toContain("At least two rows");
     const create = screen.getByRole("button", { name: "Create datasets" }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
@@ -211,7 +202,7 @@ describe("dataset file dialog", () => {
     });
     expect(screen.getByRole("alert").textContent).toContain("1 to 99");
     expect(create.disabled).toBe(true);
-    choose("Purpose", "Training");
+    choose("Intent", "Training");
     expect(screen.queryByRole("spinbutton", { name: "Data split" })).toBeNull();
     expect(
       (screen.getByRole("button", { name: "Create dataset" }) as HTMLButtonElement).disabled

@@ -43,13 +43,12 @@ import { errorMessage } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { Dataset, SourceRequest } from "@/openapi";
 
-type Purpose = "train" | "eval" | "explore" | "split" | "pending";
-const PURPOSES: Array<{ value: Purpose; label: string }> = [
-  { label: "Choose in workshop", value: "pending" },
-  { label: "Data exploration", value: "explore" },
+type IntentChoice = "train" | "eval" | "split" | "pending";
+const INTENTS: Array<{ value: IntentChoice; label: string }> = [
+  { label: "Not set", value: "pending" },
   { label: "Evaluation", value: "eval" },
   { label: "Training", value: "train" },
-  { label: "Train + eval", value: "split" },
+  { label: "Training + evaluation", value: "split" },
 ];
 const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
   { label: "First rows", value: "head" },
@@ -97,8 +96,8 @@ export function NewDatasetDialog({
   const defaultCapabilityId =
     initialCapabilityId ?? (sourceType === "traces" ? NO_CAPABILITY : AUTO_CAPABILITY);
   const [capabilityId, setCapabilityId] = useState(defaultCapabilityId);
-  const [filePurpose, setPurpose] = useState<Purpose>("pending");
-  const purpose = sourceType === "traces" ? "pending" : filePurpose;
+  const [fileIntent, setIntent] = useState<IntentChoice>("pending");
+  const intent = sourceType === "traces" ? "pending" : fileIntent;
   const [percentInput, setPercentInput] = useState("30");
   const [position, setPosition] = useState<SplitPosition>("tail");
   const [picked, setPicked] = useState<TraceSelectionState>({ status: "counting" });
@@ -123,7 +122,7 @@ export function NewDatasetDialog({
     setName("");
     setNameTouched(false);
     setCapabilityId(defaultCapabilityId);
-    setPurpose("pending");
+    setIntent("pending");
     setBrief("");
     setPercentInput("30");
     setPosition("tail");
@@ -167,7 +166,7 @@ export function NewDatasetDialog({
   const canStart = ready || (sourceType === "file" && upload.files.length === 0 && !!brief.trim());
   const rows = ready ? readiness.rows : undefined;
   const splitError =
-    purpose === "split"
+    intent === "split"
       ? !validPercent
         ? "Enter a percentage from 1 to 99."
         : rows !== undefined && rows < 2
@@ -202,7 +201,7 @@ export function NewDatasetDialog({
   );
 
   const handleSubmit = async () => {
-    if (!canStart || busy || splitError || (purpose === "split" && !ready)) return;
+    if (!canStart || busy || splitError || (intent === "split" && !ready)) return;
     setError(null);
     const base = {
       brief: sourceType === "traces" ? "" : brief.trim(),
@@ -213,11 +212,13 @@ export function NewDatasetDialog({
             ? null
             : capabilityId,
       name: name.trim() || suggestedName || "Untitled dataset",
+      // A stated intent or brief starts the assistant's first pass once the source lands.
+      prepare: !!ready && (intent !== "pending" || !!brief.trim()),
       projectId,
       source: ready ? readiness.source : undefined,
     };
     try {
-      if (purpose === "split") {
+      if (intent === "split") {
         const pair = await createSplit.mutateAsync({
           ...base,
           deduplicate: true,
@@ -227,7 +228,7 @@ export function NewDatasetDialog({
         });
         finish(pair.train);
       } else {
-        finish(await create.mutateAsync({ ...base, intent: purpose }));
+        finish(await create.mutateAsync({ ...base, intent }));
       }
     } catch (err) {
       setError(errorMessage(err, "Couldn't create the dataset."));
@@ -300,20 +301,20 @@ export function NewDatasetDialog({
             </div>
             {sourceType === "file" && (
               <div className="flex min-w-0 flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground" htmlFor="dataset-purpose">
-                  Purpose
+                <Label className="text-xs text-muted-foreground" htmlFor="dataset-intent">
+                  Intent
                 </Label>
                 <Select
                   disabled={busy}
-                  onValueChange={(value) => setPurpose(value as Purpose)}
+                  onValueChange={(value) => setIntent(value as IntentChoice)}
                   required
-                  value={purpose}
+                  value={intent}
                 >
-                  <SelectTrigger className="w-full" id="dataset-purpose">
-                    <SelectValue placeholder="Select purpose" />
+                  <SelectTrigger className="w-full" id="dataset-intent">
+                    <SelectValue placeholder="Select intent" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PURPOSES.map((option) => (
+                    {INTENTS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -324,7 +325,7 @@ export function NewDatasetDialog({
             )}
           </div>
 
-          {purpose === "split" && (
+          {intent === "split" && (
             <section aria-label="Data split" className="flex flex-col gap-3">
               <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
@@ -401,7 +402,7 @@ export function NewDatasetDialog({
           {sourceType === "file" && (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground" htmlFor="dataset-brief">
-                Intent (optional)
+                Brief (optional)
               </Label>
               <textarea
                 className="min-h-16 max-h-40 w-full resize-y rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-primary placeholder:text-muted-foreground"
@@ -427,18 +428,20 @@ export function NewDatasetDialog({
                 ? rows === undefined
                   ? null
                   : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
-                : readiness.hint}
+                : canStart
+                  ? null
+                  : readiness.hint}
             </span>
           )}
           <Button disabled={busy} onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </Button>
           <Button
-            disabled={!canStart || busy || !!splitError || (purpose === "split" && !ready)}
+            disabled={!canStart || busy || !!splitError || (intent === "split" && !ready)}
             onClick={() => void handleSubmit()}
           >
             {busy ? <Spinner className="size-4" /> : <Icon.datasetAdd />}
-            {purpose === "split" ? "Create datasets" : "Create dataset"}
+            {intent === "split" ? "Create datasets" : "Create dataset"}
           </Button>
         </DialogFooter>
       </DialogContent>

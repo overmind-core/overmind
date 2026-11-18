@@ -124,7 +124,7 @@ def use_freezes_an_uploaded_eval_source(console, workshop, project, worker, tmp_
     console.fill("#dataset-name", "Console upload")
     console.upload('[role="dialog"] input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")
-    console.choose("#dataset-purpose", "Evaluation")
+    console.choose("#dataset-intent", "Evaluation")
     console.press("Create dataset")
 
     def landed():
@@ -162,7 +162,7 @@ def show_upload_bytes_until_publication(console, workshop, rest, project, worker
         "start_dataset", {"name": "Live upload", "brief": "Inspect uploaded rows"}
     )["dataset"]["id"]
     console.goto(f"/datasets?projectId={project}")
-    console.sees("Waiting for source")
+    console.sees("Live upload")
     data = b'[{"value":1},{"value":2}]'
     receipt = rest.request(
         "POST",
@@ -194,7 +194,6 @@ def show_upload_bytes_until_publication(console, workshop, rest, project, worker
     )
     rest.request("POST", f"/api/dataset-transfers/{receipt['id']}/complete/", json={})
     drain(worker)
-    console.sees("Ready")
     console.wait_until(
         "() => !document.body.textContent.includes('Uploading') && [...document.querySelectorAll('td')].some(cell => cell.textContent === '2')"
     )
@@ -379,7 +378,7 @@ def open_traces_selected_in_the_console(console, workshop, project, live_api, wo
         f"() => location.pathname === '/datasets/{dataset['id']}' "
         "&& !!document.querySelector('article [data-cell-frame]')"
     )
-    console.sees("Intent pending", exact=False)
+    console.sees("Not set", exact=False)
     console._browser.call(
         lambda: console._page.get_by_role(
             "group", name="Prepare with coding agent", exact=True
@@ -433,7 +432,6 @@ def read_a_scanned_document_once_per_page(workshop, cli, sample_agent, worker):
             {
                 "brief": "Keep document evidence for OCR verification.",
                 "name": f"OCR source {number}",
-                "intent": "explore",
             },
         )["dataset"]["id"]
         workshop.call("update_dataset", {"dataset": draft, "ocr_languages": ["eng"]})
@@ -510,7 +508,6 @@ def publish_version_bound_analytics(workshop, cli, sample_agent, rest, worker, t
         next(c for c in report["checks"] if c["id"] == "targets.class_balance")["status"]
         == "warning"
     )
-    assert receipt["progress"]["analytics"]["fingerprint"] == report["fingerprint"]
     rest_cell = next(
         c
         for c in rest.request("GET", f"/api/datasets/{dataset}/")["cells"]
@@ -611,4 +608,7 @@ def a_failed_preparation_is_repaired_from_the_console(
     )
     console.save_evidence("dataset-preparation-repaired")
     console.goto(f"/datasets?projectId={project}")
-    console.sees("Ready")
+    # An idle row shows its name alone: the repaired dataset no longer reads Failed.
+    console.wait_until(
+        "() => document.querySelector('tbody tr') && !document.body.textContent.includes('Failed')"
+    )

@@ -16,8 +16,6 @@ function contentSignature(cell: Cell) {
     cell.columns,
     cell.fingerprint,
     cell.review,
-    cell.qualityReport,
-    cell.readiness,
   ]);
 }
 
@@ -119,7 +117,7 @@ export function CellMotionFrame({
 
   return (
     <div
-      className="workshop-cell-node nopan"
+      className="nopan"
       data-cell-motion={ready ? motion?.kind : undefined}
       // Focusing a cell control must not trigger React Flow's node-centering behaviour.
       onFocus={(event) => event.stopPropagation()}

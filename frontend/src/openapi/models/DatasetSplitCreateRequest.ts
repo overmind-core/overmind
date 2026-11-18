@@ -95,6 +95,12 @@ export interface DatasetSplitCreateRequest {
      * @memberof DatasetSplitCreateRequest
      */
     deduplicate?: boolean;
+    /**
+     * Queue the assistant's first pass, which starts once the source lands.
+     * @type {boolean}
+     * @memberof DatasetSplitCreateRequest
+     */
+    prepare?: boolean;
 }
 
 
@@ -131,6 +137,7 @@ export function DatasetSplitCreateRequestFromJSONTyped(json: any, ignoreDiscrimi
         'groupBy': json['group_by'] == null ? undefined : json['group_by'],
         'stratifyBy': json['stratify_by'] == null ? undefined : json['stratify_by'],
         'deduplicate': json['deduplicate'] == null ? undefined : json['deduplicate'],
+        'prepare': json['prepare'] == null ? undefined : json['prepare'],
     };
 }
 
@@ -155,5 +162,6 @@ export function DatasetSplitCreateRequestToJSONTyped(value?: DatasetSplitCreateR
         'group_by': value['groupBy'],
         'stratify_by': value['stratifyBy'],
         'deduplicate': value['deduplicate'],
+        'prepare': value['prepare'],
     };
 }

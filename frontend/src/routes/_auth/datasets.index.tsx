@@ -148,7 +148,12 @@ function ProjectDatasets({ projectId }: { projectId: string }) {
               aria-controls="assistant-datasets"
               aria-expanded={tableFocused}
               aria-label={tableFocused ? "Show composer" : "Focus datasets"}
-              className="assistant-dataset-handle absolute left-1/2 z-10 w-12 border border-border bg-card hover:bg-control"
+              className={cn(
+                "assistant-dataset-handle absolute left-1/2 z-10 h-5 w-10 border border-border bg-card hover:bg-control",
+                tableFocused
+                  ? "rounded-t-none rounded-b-sm border-t-0"
+                  : "rounded-t-sm rounded-b-none border-b-0"
+              )}
               onClick={() => setTableFocused((focused) => !focused)}
               size="icon-xs"
               variant="ghost"

@@ -119,5 +119,5 @@ it("keeps import retry unavailable while the source is landing", () => {
   };
   showNotebook();
   expect(screen.queryByRole("button", { name: "Resume import" })).toBeNull();
-  expect(screen.getByText("Workshop operation running")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
 });
