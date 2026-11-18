@@ -35,13 +35,16 @@ function AuthorizeConnection() {
   const reports = agentFeedback ?? me.data?.agentFeedback ?? true;
   const decision = useMutation({
     mutationFn: async (approve: boolean) => {
-      // The untouched default reads the account's value fresh: another session may have chosen.
-      const current = agentFeedback === null ? (await me.refetch()).data?.agentFeedback : undefined;
-      const record = choiceToRecord(agentFeedback, current);
-      if (approve && record !== null)
-        await api.auth.authMePartialUpdate({
-          patchedUserPreferencesRequest: { agentFeedback: record },
-        });
+      if (approve) {
+        // The untouched default reads the account's value fresh: another session may have chosen.
+        const current =
+          agentFeedback === null ? (await me.refetch()).data?.agentFeedback : undefined;
+        const record = choiceToRecord(agentFeedback, current);
+        if (record !== null)
+          await api.auth.authMePartialUpdate({
+            patchedUserPreferencesRequest: { agentFeedback: record },
+          });
+      }
       return api.mcpOauth.mcpOauthConsentCreate({
         consentDecisionRequest: { approve, request: request ?? "" },
       });
