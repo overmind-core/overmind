@@ -110,7 +110,7 @@ def test_upload_file_rejects_ft_intent_before_network(tmp_path: Path):
     path.write_bytes(b"{}\n")
     session = ExportSession(FakeResponse({}))
 
-    with pytest.raises(DatasetUploadError, match="train, eval or explore"):
+    with pytest.raises(DatasetUploadError, match="train or eval"):
         upload_file(
             path,
             project_id="project-1",

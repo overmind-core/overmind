@@ -3,7 +3,6 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from overbae.services.datasets import review
 from overbae.services.mcp.contracts.common import (
     JobReceipt,
     MCPModel,
@@ -16,8 +15,6 @@ from overbae.services.mcp.contracts.datasets import NextAction
 def compact_run(record: dict, evidence_resource: dict) -> dict:
     def measured(scope):
         result = {key: value for key, value in scope.items() if key != "sample"}
-        if "impact" in result:
-            result["impact"] = review.summary(result["impact"])
         if "sample" in scope:
             result["sample_count"] = len(scope["sample"])
         return result
@@ -125,7 +122,10 @@ class UpdateInput(DatasetInput):
         description="Future-import Tesseract codes (e.g. [eng, fra]); [] English. Set before upload. Published cells unchanged.",
     )
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    intent: Literal["train", "eval", "explore"] | None = None
+    intent: Literal["train", "eval"] | None = None
+    train_format: Literal["sft", "decision", ""] | None = Field(
+        default=None, description="For a train dataset: sft or decision training."
+    )
     active: UUID | None = None
     capability: UUID | None = None
 

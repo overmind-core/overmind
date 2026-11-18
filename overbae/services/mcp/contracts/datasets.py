@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import analytics, imports, review, transformation
+from overbae.services.datasets import analytics, imports, transformation
 from overbae.services.datasets.admission import status as landing_admission_status
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.contract import public_intent
@@ -89,23 +89,6 @@ def _bounded(value, limit=2500):
     return text + "…"
 
 
-def _quality_summary(report):
-    result = review.summary(report or {})
-    for key in ("audit", "audits"):
-        if key in result:
-            result[key] = _bounded(result[key], 500)
-    result["checks"] = [
-        {**check, "evidence": _clip(check.get("evidence", ""), 160)}
-        for check in result.get("checks", [])
-    ]
-    if result.get("semantic_audit"):
-        result["semantic_audit"] = {
-            **result["semantic_audit"],
-            "definitions": _bounded(result["semantic_audit"].get("definitions", []), 1000),
-        }
-    return result
-
-
 def _source_summary(source):
     # Page whole entries: clipping extraction metadata can erase OCR limitations.
     return {
@@ -168,7 +151,8 @@ class ActiveVersion(MCPModel):
 class DatasetListItem(MCPModel):
     id: str
     name: str = Field(default="", max_length=255)
-    intent: Literal["train", "eval", "explore", "pending"]
+    intent: Literal["train", "eval", "pending"]
+    train_format: Literal["sft", "decision", ""] = ""
     source_kind: Literal["file", "traces", "llm_calls", "pending"]
     state: Literal["landing", "idle", "running", "error"]
     capability: CapabilityRef | None = None
@@ -191,7 +175,6 @@ class CellTransformation(MCPModel):
 
 class CellSummary(MCPModel):
     analytics: dict[str, Any] = Field(default_factory=dict)
-    preparation_plan: dict[str, Any] = Field(default_factory=dict)
     id: str
     position: int = Field(ge=0)
     version: str = Field(min_length=1, max_length=32)
@@ -211,10 +194,9 @@ class CellSummary(MCPModel):
     intent_report: dict[str, Any] = Field(default_factory=dict)
     capability_report: dict[str, Any] = Field(default_factory=dict)
     fits: FitReport
+    fit: dict[str, FitReport] = Field(default_factory=dict)
     seconds: float = 0.0
     review: dict[str, Any] = Field(default_factory=dict)
-    quality_report: dict[str, Any] = Field(default_factory=dict)
-    readiness: dict[str, Any] = Field(default_factory=dict)
     used_at: datetime | None = None
     resource: ResourceLinkContract
 
@@ -253,7 +235,6 @@ class DatasetDetail(DatasetListItem):
         default=None,
         description="Latest file stage; completed/total count files. PDF OCR adds pages_total, ocr_pages_completed and ocr_pages_total. Not an ETA or overall percentage.",
     )
-    preparation_plan: dict[str, Any] = Field(default_factory=dict)
     brief: str = Field(default="", max_length=8000)
     sources: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     sources_total: int = Field(default=0, ge=0)
@@ -304,7 +285,7 @@ class DatasetMutationOutput(MCPModel):
 
 class ListDatasetsInput(MCPModel):
     capability: str | None = Field(default=None, min_length=1, max_length=255)
-    intent: Literal["train", "eval", "explore", "pending"] | None = None
+    intent: Literal["train", "eval", "pending"] | None = None
     state: Literal["landing", "idle", "running", "error"] | None = None
     search: str | None = Field(default=None, min_length=1, max_length=255)
     limit: int = Field(default=20, ge=1, le=_LIST_CAP)
@@ -522,7 +503,7 @@ def mutation_output(
 class StartDatasetInput(MCPModel):
     brief: str = Field(min_length=1, max_length=8000)
     name: str = Field(default="Untitled dataset", min_length=1, max_length=255)
-    intent: Literal["train", "eval", "explore", "pending"] = "pending"
+    intent: Literal["train", "eval", "pending"] = "pending"
     capability: str | None = Field(default=None, max_length=255)
 
 
@@ -576,6 +557,7 @@ def _list_fields(dataset, chain: list[Cell]) -> dict[str, Any]:
         "id": str(dataset.id),
         "name": dataset.name or "",
         "intent": public_intent(dataset.intent),
+        "train_format": dataset.train_format,
         "source_kind": dataset.source_kind,
         "state": dataset.state,
         "capability": _capability_ref(dataset),
@@ -617,11 +599,9 @@ def _cell_summary(
         intent_report=_jsonable(cell.intent_report or {}),
         capability_report=_jsonable(cell.capability_report or {}),
         review=_bounded(cell.review),
-        quality_report=_jsonable(_quality_summary(cell.quality_report)),
         analytics=analytics.describe(cell),
-        preparation_plan=_bounded(cell.preparation_plan),
-        readiness=review.readiness(dataset, cell),
         fits=_fit(cell, public_intent(dataset.intent)),
+        fit=cell.fit(),
         seconds=float(cell.seconds or 0),
         used_at=cell.used_at,
         resource=_cell_link(dataset, cell),
@@ -747,7 +727,7 @@ def next_actions(dataset, chain: list[Cell], active: Cell | None) -> list[NextAc
             )
         ]
     ok, reason = active.fits(public_intent(dataset.intent))
-    if not ok or dataset.intent == Dataset.Intent.EXPLORE:
+    if not ok:
         return [
             NextAction(
                 tool="inspect_dataset_workbench",
@@ -835,8 +815,7 @@ def serialize_dataset_detail(
                 "has_more": False,
                 "next_cursor": None,
             },
-            "preparation_context": _bounded(workshop_context(dataset, measure_missing=False), 6000),
-            "preparation_plan": _bounded(dataset.preparation_plan, 3000),
+            "preparation_context": _bounded(workshop_context(dataset), 6000),
             "capability_rank": _rank(dataset.capability_rank),
             "contamination_report": _bounded(dataset.source_spec.get("contamination_report", {})),
             "cells": cells,
@@ -877,7 +856,6 @@ def serialize_dataset_detail(
         for name in (
             "operation",
             "preparation_context",
-            "preparation_plan",
             "contamination_report",
         ):
             setattr(result, name, _bounded(getattr(result, name), 1000))
@@ -894,9 +872,6 @@ def serialize_dataset_detail(
             for name in (
                 "analytics",
                 "review",
-                "quality_report",
-                "preparation_plan",
-                "readiness",
                 "intent_report",
                 "capability_report",
             ):
@@ -905,7 +880,7 @@ def serialize_dataset_detail(
                     name,
                     _bounded(
                         getattr(cell, name),
-                        6000 if name in {"analytics", "quality_report"} else 500,
+                        6000 if name == "analytics" else 500,
                     ),
                 )
                 result.truncated_fields.append(f"cells.{cell.id}.{name}")

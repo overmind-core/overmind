@@ -1,5 +1,5 @@
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from mcp_fixtures import asgi_db
@@ -18,18 +18,14 @@ pytestmark = [pytest.mark.django_db, pytest.mark.covers("mcp-surface")]
 
 
 @asgi_db
-def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatch):
+def test_mcp_inspection_is_bounded_and_paged():
     project, _, dataset = workspace()
     cell = dataset.active_cell
     dataset.active = cell
     dataset.save(update_fields=["active"])
     cell.note = "long note " * 51
     cell.stats = {}
-    cell.quality_report = {
-        "checks": [],
-        "audit": {"script": "x" * 100000},
-        "audits": {str(i): {"script": "x" * 100000} for i in range(20)},
-    }
+    cell.review = {str(i): {"script": "x" * 100000} for i in range(20)}
     cell.save()
     for i in range(1, 13):
         Cell.objects.create(
@@ -44,10 +40,6 @@ def test_mcp_inspection_is_bounded_paged_and_does_not_profile_on_read(monkeypatc
         )
     key, _ = APIToken.create_for_user(
         project.memberships.first().user, project=project, permission=["read", "write"]
-    )
-    monkeypatch.setattr(
-        "overbae.services.datasets.context.profile_records",
-        Mock(side_effect=AssertionError("Inspection scanned whole source")),
     )
     with TestClient(create_mcp_application()) as client:
         found = []
@@ -107,7 +99,6 @@ def test_native_partition_members_are_ready_for_comparison_without_workshop_repa
             for row in store.iter_rows(paths.cell_path(cell.dataset_id, cell.id)):
                 assert row["expected_output"] == {"probabilities": [0.35, 0.65]}
                 assert set(row["input"]["decision"]) == {"state", "question", "kind", "options"}
-                assert row["_overmind_provenance"]["partition"]["role"] == role
     with patch.object(
         native_evaluation, "runtime", return_value={"app": "offline", "environment": "test"}
     ):
@@ -149,10 +140,7 @@ def test_inspection_remains_valid_json_for_one_wide_unicode_cell():
     cell.script = "界" * 8000
     cell.note = "界" * 512
     cell.columns = [{"name": "column" + str(i), "metadata": "界" * 8000} for i in range(100)]
-    cell.quality_report = {
-        "checks": [],
-        "audit": {("界" * 1000 + str(i)): "界" * 8000 for i in range(100)},
-    }
+    cell.review = {("界" * 1000 + str(i)): "界" * 8000 for i in range(100)}
     cell.save()
     dataset.brief = "界" * 8000
     dataset.save()

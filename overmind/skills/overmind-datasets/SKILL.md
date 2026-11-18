@@ -56,10 +56,12 @@ decision comparisons use their frozen calibration/final plan in place of the eva
 A use freezes the version and everything before it, and starts a new major (2.0). A
 used cell freezes intent: derive a separate dataset or create role-specific partitions
 instead of retagging a used chain. A contract is measured, never declared.
-Capability prompt/schema mismatches, incomplete quality reviews and train/eval overlap
-are advisory warnings, not technical-format errors; inspect cell `warnings` and
-`readiness.quality_reason`. A passing format contract is not a claim that the answers
-are supported by the inputs.
+Capability prompt/schema mismatches and train/eval overlap are advisory warnings,
+not technical-format errors. Each cell's `fit` says, for SFT training, decision
+training and evaluation, whether its rows fit and why not. A train dataset's
+`train_format` (`sft` or `decision`) is set by `update_dataset`, or by publication
+when the final step declares `chat_train` or `decision_train` and no intent is set.
+A passing format contract is not a claim that the answers are supported by the inputs.
 
 ## Sources and inspection
 
@@ -251,7 +253,7 @@ version and never partially publish output.
 Follow the run's `poll_after_seconds`; a queue wait alone is not a reason to
 resubmit or inspect infrastructure. A terminal receipt includes `completed_at`
 and stops suggesting polling. Format compatibility and task suitability are
-different: readiness reports task suitability as unmeasured, not implicitly ready.
+different: task suitability stays unmeasured, not implicitly ready.
 
 Reuse does not require copying the recipe into another dataset. Source and
 destination must be in the same project. Save a paused source-to-revision binding
@@ -308,7 +310,7 @@ an external coding agent or a remote provider request.
 
 ## Consumer handoff
 
-Inspect the actual output, technical format, impact and semantic limitations
+Inspect the actual output, technical format, row counts and semantic limitations
 separately. Preserve exact dataset/cell IDs for training and evaluation.
 `update_dataset(active=...)` selects the default without changing prior consumers.
 Quality findings remain advisory; unreadable or incompatible data blocks use.
@@ -345,9 +347,10 @@ evidenced semantics and structured provenance; never remove them to pass checks.
 Preview samples a bounded prefix and does not establish coverage of every family.
 
 For row-independent transformations, declare step `batch_rows` (1–100000).
-Consecutive batches execute in separate restricted containers and concatenate in
-source order. Each expanded JSONL input/output must fit half the package's
-`scratch_mb`; each batch has the declared time limit. Global sorting, grouping,
+Consecutive batches run one after another in fresh processes inside the step's one
+sandbox run and concatenate in source order. Memory admission covers one batch;
+each batch has the declared time limit. A step may declare `"io": "parquet"` to
+read `input.parquet` and write `output.parquet` instead of JSONL. Global sorting, grouping,
 splitting and deduplication must not use batching. Row checks apply to the combined
 output, publication remains atomic, and progress records completed batches and
 rows. A failed or cancelled batch publishes no partial cells. CLI directory

@@ -220,7 +220,7 @@ def register_workbench_tools(catalog):
             "update_dataset",
             UpdateInput,
             False,
-            "Set name, user intent, capability, active cell or future Tesseract OCR codes ([] English). Intent/capability freeze after use; null clears capability/default. Existing cells/consumers unchanged.",
+            "Set name, intent (train with train_format sft or decision, or eval), capability, active cell or future Tesseract OCR codes ([] English). Intent/capability freeze after use; null clears capability/default. Existing cells/consumers unchanged.",
         ),
     ]
     for name, model, read_only, description in definitions:
