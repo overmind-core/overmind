@@ -91,7 +91,8 @@ def test_reports_keep_platform_behaviour_and_drop_what_identifies_the_customer(s
         summary=(
             "Upload of /home/alice/acme/claims.csv for alice@acme.com failed at "
             "https://acme.internal/upload from 10.2.3.4 with key sk-live-abcdefghijklmnop. "
-            "Authorization: Bearer opaque-example-123456. <!channel> <@U123> please look"
+            "Authorization: Bearer opaque-example-123456. <!channel> <@U123> please look. "
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpkeybody\n-----END RSA PRIVATE KEY-----"
         ),
         trail=[
             {
@@ -108,7 +109,7 @@ def test_reports_keep_platform_behaviour_and_drop_what_identifies_the_customer(s
     assert not result.isError, result.structuredContent
     stored = Feedback.objects.get()
     saved = json.dumps({"message": stored.message, "detail": stored.detail})
-    for secret in ("alice", "acme", "10.2.3.4", "sk-live", "ghp_", "opaque-example"):
+    for secret in ("alice", "acme", "10.2.3.4", "sk-live", "ghp_", "opaque-example", "MIIEp"):
         assert secret not in saved
     assert stored.message.startswith("Upload of [path] for [email] failed at [link]")
     [posted] = slack.calls

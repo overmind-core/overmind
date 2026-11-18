@@ -35,7 +35,9 @@ function AuthorizeConnection() {
   const reports = agentFeedback ?? me.data?.agentFeedback ?? true;
   const decision = useMutation({
     mutationFn: async (approve: boolean) => {
-      const record = choiceToRecord(agentFeedback, me.data?.agentFeedback);
+      // The untouched default reads the account's value fresh: another session may have chosen.
+      const current = agentFeedback === null ? (await me.refetch()).data?.agentFeedback : undefined;
+      const record = choiceToRecord(agentFeedback, current);
       if (approve && record !== null)
         await api.auth.authMePartialUpdate({
           patchedUserPreferencesRequest: { agentFeedback: record },

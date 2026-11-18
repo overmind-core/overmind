@@ -18,12 +18,12 @@ const SENT =
   "Agents are told to leave out data rows, prompts, code, file contents and credentials. Known credential formats, emails, web links, home-directory paths and IPv4 addresses are removed.";
 
 /**
- * What Connect saves: the choice the person made on the screen, or the ticked default for an
- * account that has none. An untouched box never overwrites a stored or still-loading choice.
+ * What Connect saves: the choice the person made on the screen, or the ticked default when the
+ * account's current value is still unset. An untouched box never overwrites a stored choice.
  */
-export function choiceToRecord(touched: boolean | null, stored: boolean | null | undefined) {
-  if (touched !== null) return touched === stored ? null : touched;
-  return stored === null ? true : null;
+export function choiceToRecord(touched: boolean | null, current: boolean | null | undefined) {
+  if (touched !== null) return touched;
+  return current === null ? true : null;
 }
 
 export function useAgentFeedbackChoice() {

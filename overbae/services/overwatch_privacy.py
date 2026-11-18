@@ -6,7 +6,7 @@ import re
 
 EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _CREDENTIAL = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"
     r"|\b(?:sk[-_]|rk_live_|gh[pousr]_|github_pat_|xox[baprs]-|phx_|phs_|ovr_)[A-Za-z0-9_\-]{8,}"
     r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
     r"|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
