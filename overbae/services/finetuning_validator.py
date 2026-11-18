@@ -75,7 +75,7 @@ def validate_decision_rows(rows) -> ValidationResult:
     for count, row in enumerate(rows, 1):
         try:
             decision_line(row)
-        except (ValueError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError) as exc:
             if len(errors) < 20:
                 errors.append(f"Example {count}: {exc}")
     if not count:

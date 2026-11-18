@@ -66,7 +66,9 @@ the same cleaning steps; only the final formatting step differs by consumer.
    leakage between the inputs and the target, and rows that need judgement. Put related
    checks in one cell. A version is at its `path` once you list its cell id in `versions`.
 2. Write the transformation as a pipeline package and run it with `run_pipeline` in mode
-   publish. It runs the package on a sample first and publishes nothing when that fails. To
+   publish. Above 200 source rows it first runs the package on the first 200 rows and
+   publishes nothing when that sample fails; a sample that keeps no rows does not stop the
+   full run. To
    correct the dataset's pipeline, call `run_pipeline` again with its id and the new files.
 3. When the intent is train and the user wants it evaluated, `create_data_partition` on the
    published version. Each partition numbers its `source_row` again: compare partitions by

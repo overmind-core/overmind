@@ -254,7 +254,12 @@ export function DatasetNotebook({
           datasetId={owner}
           editable={editable && local}
           intent={node?.intent ?? intent}
-          intentLocked={cells.some((other) => other.frozen)}
+          // The server locks intent on the edited dataset's own used versions.
+          intentLocked={
+            nodes?.some(
+              (other) => other.cell.frozen && (other.dataset ?? datasetId) === datasetId
+            ) ?? false
+          }
           key={cell.id}
           member={
             node && !local

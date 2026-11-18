@@ -363,6 +363,8 @@ def execute(run_id, *, script_executor=None):
     local_files = ExitStack()
 
     rows_done = None
+    # Cell files copied into place; removed again unless their transaction commits.
+    placed = []
 
     def progress(next_stage, *, heartbeat=False, measurement=None):
         nonlocal checkpoint, stage, stage_started_at, rows_done
@@ -501,6 +503,8 @@ def execute(run_id, *, script_executor=None):
             rows.verify(run.artifact)
         directory = local_files.enter_context(scratch())
         input_path = directory / f"{run.source_id}.parquet"
+        if shutil.disk_usage(directory).free - source_path.stat().st_size < SCRATCH_FREE_BYTES:
+            raise ValueError("Workshop scratch capacity reached; no version was published.")
         shutil.copyfile(source_path, input_path)
         if store.file_sha256(input_path) != run.source_fingerprint:
             raise ValueError("The copied source does not match its pinned fingerprint.")
@@ -525,8 +529,8 @@ def execute(run_id, *, script_executor=None):
         pinned = (run.dataset.intent, run.dataset.capability_id)
         for field, value in declared_intent(run.dataset, steps[-1].get("consumer")).items():
             setattr(run.dataset, field, value)
-        source_keys = lineage.read(run.source)
-        step_keys = {"source": source_keys[: store.row_count(input_path)]}
+        # A preview reads only the key rows of its sample.
+        step_keys = {"source": lineage.head(run.source, store.row_count(input_path))}
         for index, step in enumerate(steps):
             node = flow["nodes"][index]
             parent_paths = [step_inputs[identity] for identity in node["inputs"]]
@@ -756,6 +760,7 @@ def execute(run_id, *, script_executor=None):
                     )
                     destination = paths.cell_path(dataset.pk, cell.pk)
                     destination.parent.mkdir(parents=True, exist_ok=True)
+                    placed.extend([destination, lineage.keys_path(destination)])
                     shutil.copyfile(output, destination)
                     shutil.copyfile(lineage.keys_path(output), lineage.keys_path(destination))
                     report = {
@@ -810,6 +815,7 @@ def execute(run_id, *, script_executor=None):
                 transaction.on_commit(
                     lambda: events.publish(dataset.pk, {"type": "dataset_changed"})
                 )
+            placed.clear()
     except (ValueError, rows.RowStoreError, DatasetError) as exc:
         fail(run_id, str(exc)[:1000])
     except Exception:
@@ -819,6 +825,8 @@ def execute(run_id, *, script_executor=None):
             "Transformation failed. Inspect the recipe and source columns; no version was published.",
         )
     finally:
+        for path in placed:
+            path.unlink(missing_ok=True)
         local_files.close()
 
 

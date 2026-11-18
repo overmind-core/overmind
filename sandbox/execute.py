@@ -96,16 +96,24 @@ def memory_budget() -> int:
 
 def need_for(header: dict) -> int:
     if header["mode"] == "package":
-        # The decoded rows a script holds take about 5.5 times the uncompressed frame; with
-        # batch_rows, one batch is in memory at a time.
         expanded = max(header["input_bytes"], header.get("expanded_bytes", 0))
-        active, retained = expanded, 0
-        if header.get("batch_rows") and header.get("rows"):
-            active = expanded * min(1.0, header["batch_rows"] / header["rows"])
-            # The whole input and the finished outputs wait on the tmpfs between batches.
-            retained = header["input_bytes"] + expanded
-        return max(GIB // 2, int(active * 5.5) + retained + 256 * 1024**2 + header["package_bytes"])
+        # The whole input and the finished outputs wait on the tmpfs between batches.
+        retained = header["input_bytes"] + expanded if _batched(header) else 0
+        return max(GIB // 2, _child_need(header) + retained)
     return max(2 * GIB, 4 * int(header["input_bytes"])) + 3 * header.get("cache_bytes", 0)
+
+
+def _batched(header: dict) -> bool:
+    return bool(header.get("batch_rows") and header.get("rows"))
+
+
+def _child_need(header: dict) -> int:
+    """One script process: the decoded rows it holds, about 5.5 times their uncompressed
+    size (one batch with batch_rows), and its package."""
+    expanded = max(header["input_bytes"], header.get("expanded_bytes", 0))
+    if _batched(header):
+        expanded = expanded * min(1.0, header["batch_rows"] / header["rows"])
+    return int(expanded * 5.5) + 256 * 1024**2 + header["package_bytes"]
 
 
 def refusal(header: dict, need: int, budget: int) -> str:
@@ -616,6 +624,11 @@ def _run_batches(header, child, scratch, slot, stop, on_progress) -> Outcome:
                 outcome.ok = False
                 outcome.error = f"The package did not produce a readable regular {name}."
                 break
+            # The 2 GiB output limit holds before a batch is copied, separator included.
+            if combined.tell() + os.fstat(output.fileno()).st_size + 1 > packages.MAX_OUTPUT_BYTES:
+                output.close()
+                outcome.ok, outcome.error = False, "The package output exceeds 2 GiB."
+                break
             with output:
                 start = combined.tell()
                 shutil.copyfileobj(output, combined)
@@ -625,9 +638,6 @@ def _run_batches(header, child, scratch, slot, stop, on_progress) -> Outcome:
                     if combined.read(1) != b"\n":
                         combined.write(b"\n")
                 segments.append(combined.tell() - start)
-            if combined.tell() > packages.MAX_OUTPUT_BYTES:
-                outcome.ok, outcome.error = False, "The package output exceeds 2 GiB."
-                break
             _reset(scratch)
             if on_progress is not None:
                 on_progress({"batches": {"completed": number + 1, "total": total}})

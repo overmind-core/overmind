@@ -586,7 +586,7 @@ def test_landing_and_pipeline_preserve_scalar_values_without_lossy_coercion(valu
         assert json.dumps(actual) == json.dumps(values)
         frame_values = store.read_frame(paths.cell_path(dataset.pk, cell.pk))["value"].tolist()
         assert json.dumps(frame_values) == json.dumps(values)
-        batches = store.iter_frames(paths.cell_path(dataset.pk, cell.pk), batch_size=10000)
+        batches = store.iter_frames(paths.cell_path(dataset.pk, cell.pk))
         assert json.dumps(
             [value for frame in batches for value in frame["value"].tolist()]
         ) == json.dumps(values)

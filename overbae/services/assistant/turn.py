@@ -193,7 +193,7 @@ def _answer(thread, deadline: float) -> None:
             )
             return
         # A message sent "now" joins at the next model call.
-        for urgent in thread.inputs.filter(state=Queued, urgent=True).order_by("position"):
+        for urgent in ready(thread).filter(urgent=True).order_by("position"):
             _deliver(thread, urgent)
         user = _actor(thread)
         if user is None:

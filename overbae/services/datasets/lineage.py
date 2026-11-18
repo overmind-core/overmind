@@ -110,6 +110,20 @@ def read(cell) -> list[tuple[int, Keys]]:
     return load(_derived(cell))
 
 
+def head(cell, rows: int) -> list[tuple[int, Keys]]:
+    """The cell's first ``rows`` rows in frame order, read no further than that."""
+    keys = pq.ParquetFile(keys_path(_derived(cell)))
+    found = []
+    for batch in keys.iter_batches(batch_size=min(max(rows, 1), 65536)):
+        for source_row, row in zip(
+            batch.column(0).to_pylist(), batch.column(1).to_pylist(), strict=True
+        ):
+            if len(found) == rows:
+                return found
+            found.append((source_row, frozenset(tuple(key.split(_SEP, 1)) for key in row)))
+    return found
+
+
 def stream(cell) -> Iterator[Keys]:
     """The cell's key sets in frame order, one row group at a time."""
     keys = pq.ParquetFile(keys_path(_derived(cell)))

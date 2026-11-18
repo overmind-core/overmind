@@ -349,8 +349,9 @@ Preview samples a bounded prefix and does not establish coverage of every family
 For row-independent transformations, declare step `batch_rows` (1–100000).
 Consecutive batches run one after another in fresh processes inside the step's one
 sandbox run and concatenate in source order. Memory admission estimates one batch
-from the frame's average row width, plus the whole input and output held between
-batches; each batch has the declared time limit. A step may declare `"io": "parquet"` to
+from the frame's average row width, plus the whole input and an output the size of the
+expanded input, held between batches; set `limits.memory_mb` for steps whose output
+is much larger than their input; each batch has the declared time limit. A step may declare `"io": "parquet"` to
 read `input.parquet` and write `output.parquet` instead of JSONL. Global sorting, grouping,
 splitting and deduplication must not use batching. Row checks apply to the combined
 output, publication remains atomic, and progress records completed batches and

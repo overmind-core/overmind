@@ -392,7 +392,7 @@ def _run(turn: Turn, run: dict) -> tuple[bool, dict]:
 def _empty(finished: dict) -> bool:
     """A sample whose script ran but kept none of the first rows says nothing about the
     rest: the full run decides."""
-    run = DatasetPipelineRun.objects.filter(pk=finished.get("id")).first()
+    run = DatasetPipelineRun.objects.filter(pk=finished.get("id"), state="failed").first()
     steps = (run.result or {}).get("steps") or [] if run else []
     return bool(steps) and steps[-1].get("exit_code") == 0 and steps[-1].get("output_rows") == 0
 

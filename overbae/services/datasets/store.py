@@ -102,12 +102,19 @@ def json_loads_finite(text: str | bytes) -> Any:
     if isinstance(text, bytes):
         text = text.decode()
     if _LONG_DIGITS.search(text):
-        return json.loads(text, parse_constant=_refuse_constant)
+        return json.loads(text, parse_constant=_refuse_constant, parse_float=_finite_float)
     return orjson.loads(text)
 
 
 def _refuse_constant(name):
     raise ValueError(f"{name} is not a finite JSON value.")
+
+
+def _finite_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text} is not a finite JSON value.")
+    return value
 
 
 def finite(value: Any) -> bool:
@@ -382,10 +389,15 @@ def frame(rows, manifest) -> pd.DataFrame:
     return pd.DataFrame(columns)
 
 
-def iter_frames(path: Path, batch_size: int = ROW_GROUP_SIZE):
+def iter_frames(path: Path):
+    """One frame per stored row group, which the writer bounds by rows and by bytes."""
     manifest = read_manifest(path)
-    for batch in itertools.batched(iter_rows(path), batch_size, strict=False):
-        yield frame(batch, manifest)
+    rows = iter_rows(path)
+    metadata = pq.read_metadata(path)
+    for group in range(metadata.num_row_groups):
+        batch = list(itertools.islice(rows, metadata.row_group(group).num_rows))
+        if batch:
+            yield frame(batch, manifest)
 
 
 def read_rows(path: Path, indices: list[int]) -> list[dict[str, Any]]:

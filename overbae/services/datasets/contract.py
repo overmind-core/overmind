@@ -218,6 +218,23 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
     if not reference_rows:
         # A frame of a batched output reports its types and its native decisions with
         # no reference: references in other frames clear only "no expected_output".
+        # Tool schemas do not depend on references, so they fail here as in one frame.
+        tool_failures = [
+            {"row": index, "reason": reason}
+            for index, value in enumerate(inputs)
+            if isinstance(payload := normalize_record({"input": _as_obj(value)})["input"], dict)
+            and "messages" in payload
+            for reason in tool_schema_errors(payload.get("tools"))
+        ]
+        if tool_failures:
+            return {
+                "ok": False,
+                "reason": tool_failures[0]["reason"],
+                "failures": tool_failures[:_FAILURE_SAMPLES],
+                "input_type": input_type,
+                "input_types": dict(types),
+                "has_reference": False,
+            }
         return {
             "ok": False,
             "reason": "no expected_output values",

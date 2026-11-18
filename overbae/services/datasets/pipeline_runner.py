@@ -171,10 +171,11 @@ def execute_script(run, index, source, directory, step, files, progress):
             [parquet.schema_arrow.field(name) for name in columns],
             metadata=parquet.schema_arrow.metadata,
         )
-        # Row group by row group: the worker never holds the whole input.
+        # One stored row group at a time: those are bounded by bytes, so the worker never
+        # holds more than one.
         with pq.ParquetWriter(incoming, schema, compression="zstd") as writer:
-            for batch in parquet.iter_batches(columns=columns):
-                writer.write_batch(batch)
+            for group in range(parquet.num_row_groups):
+                writer.write_table(parquet.read_row_group(group, columns=columns))
         metadata = pq.read_metadata(incoming)
         header = {
             "mode": "package",
