@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 export const AGENT_FEEDBACK_DOCS = "https://docs.overmindlab.ai/reference/agent-feedback";
 const SENT =
-  "Agents are told to leave out data rows, prompts, code, file contents and credentials. Credentials, emails, links, paths and IP addresses are removed.";
+  "Agents are told to leave out data rows, prompts, code, file contents and credentials. Credentials, emails, web links, home-directory paths and IPv4 addresses are removed.";
 
 /**
  * What Connect saves: the choice the person made on the screen, or the ticked default for an
