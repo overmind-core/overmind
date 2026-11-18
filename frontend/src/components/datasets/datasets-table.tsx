@@ -350,7 +350,7 @@ function getColumns(opts: {
         return (
           <Chip title={fromUses ? `Intent not set · ${used}` : used}>
             {used && <span aria-label="Used" className="size-1.5 shrink-0 rounded-xs bg-success" />}
-            <span className={cn("truncate font-mono", fromUses && "text-muted-foreground")}>
+            <span className="truncate font-mono">
               {fromUses
                 ? USES.filter(([use]) => row.original.roles.includes(use as never))
                     .map(([, short]) => short)
@@ -577,8 +577,6 @@ export function DatasetsBrowser({
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
 
-  // A column of dashes says nothing and costs the width the others need.
-  const noCapabilities = !datasets.some((dataset) => dataset.capability);
   // Keyed by the names themselves: the inventory is a new array on every render, and new
   // columns would reset the table.
   const names = JSON.stringify(
@@ -590,13 +588,13 @@ export function DatasetsBrowser({
   const columns = useMemo(() => {
     const base = getColumns({
       deletePendingId: deleteMutation.isPending ? deleteMutation.variables : null,
-      hideCapabilityColumn: hideCapabilityColumn || noCapabilities,
+      hideCapabilityColumn,
       nameById,
       onDelete: (ds) => deleteMutation.mutate(ds.id),
       onDeleteClick: guard(() => undefined),
     });
     return selectable ? [ATTACH_COLUMN, ...base] : base;
-  }, [deleteMutation, guard, hideCapabilityColumn, nameById, noCapabilities, selectable]);
+  }, [deleteMutation, guard, hideCapabilityColumn, nameById, selectable]);
 
   return (
     <DataTable

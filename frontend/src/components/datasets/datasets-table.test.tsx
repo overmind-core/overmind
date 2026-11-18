@@ -87,8 +87,8 @@ describe("datasets table", () => {
     expect(row("Tickets").getByText("+2")).toBeTruthy();
     expect(row("Calls").getByText("Traces")).toBeTruthy();
     expect(row("Calls").queryByLabelText("Used")).toBeNull();
-    // A draft has no role, count or source: each shows the same dash.
-    expect(row("Draft").getAllByText("—")).toHaveLength(3);
+    // A draft has no role, capability, count or source: each shows the same dash.
+    expect(row("Draft").getAllByText("—")).toHaveLength(4);
     // With no intent, a used dataset shows what it was used for, and rows sent inline say so.
     expect(row("Split source").getByText("Train + Eval")).toBeTruthy();
     expect(row("Split source").getByText("Inline rows")).toBeTruthy();
