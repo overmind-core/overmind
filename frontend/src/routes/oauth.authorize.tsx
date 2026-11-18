@@ -113,7 +113,11 @@ function AuthorizeConnection() {
               >
                 Cancel
               </Button>
-              <Button disabled={decision.isPending} onClick={() => decision.mutate(true)} size="lg">
+              <Button
+                disabled={decision.isPending || !me.data}
+                onClick={() => decision.mutate(true)}
+                size="lg"
+              >
                 {decision.isPending ? <Spinner /> : null}Connect
               </Button>
             </div>
