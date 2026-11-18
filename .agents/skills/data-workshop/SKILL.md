@@ -89,7 +89,7 @@ The inventory columns are Name, Role, Capability, Datapoints, Source and Updated
 Current work (`list_activity.current_work`) shows beside the name only while busy or
 failed: upload bytes, landing rows written then measured, and a run's stage with the
 sandbox's counted batches or rows written and measured; anything else stays
-indeterminate. Role is the intent (Train · SFT, Train · Decision, Train, Eval); a dot marks
+indeterminate. Role is the intent (Train · SFT, Train · Decision, Train, Eval); a lock marks
 a dataset that completed partitions or recorded consumers used (`roles`), and its tooltip
 names the uses; with no intent, a used dataset (often a split's source) shows its uses in
 muted text ("Train + Eval"). Datapoints are compact above 10,000. Source is one chip for
