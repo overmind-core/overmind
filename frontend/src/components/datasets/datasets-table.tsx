@@ -349,10 +349,6 @@ function getColumns(opts: {
         const fromUses = role === "pending";
         return (
           <Chip title={fromUses ? `Intent not set · ${used}` : used}>
-            {/* The lock the cell shows too: a use fixes the dataset's intent. */}
-            {used && (
-              <Icon.lock aria-label="Used" className="size-3 shrink-0 text-muted-foreground" />
-            )}
             <span className="truncate font-mono">
               {fromUses
                 ? USES.filter(([use]) => row.original.roles.includes(use as never))
