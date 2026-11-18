@@ -26,6 +26,8 @@ import { useActivityHighlights } from "@/hooks/use-activity";
 import {
   compactCount,
   datasetDisplayName,
+  INTENT_LABEL,
+  intentLabel,
   intentOf,
   SPLIT_LABEL,
   useDeleteDatasetMutation,
@@ -39,11 +41,11 @@ import type { Dataset } from "@/openapi";
 
 /** What a dataset is for, from its intent: the one value the Role column shows. */
 export const ROLE_LABEL: Record<string, string> = {
-  decision: "Train · Decision",
-  eval: "Eval",
-  pending: "Not set",
-  sft: "Train · SFT",
-  train: "Train",
+  decision: intentLabel("train", "decision"),
+  eval: intentLabel("eval"),
+  pending: intentLabel("pending"),
+  sft: intentLabel("train", "sft"),
+  train: intentLabel("train"),
 };
 
 const roleOf = (ds: Dataset): string => {
@@ -53,10 +55,10 @@ const roleOf = (ds: Dataset): string => {
 
 // In the order a model meets them; a workspace merges its members' uses in any order.
 const USES: [string, string][] = [
-  ["training", "Train"],
-  ["development", "Dev"],
-  ["calibration", "Calib"],
-  ["evaluation", "Eval"],
+  ["training", SPLIT_LABEL.train],
+  ["development", SPLIT_LABEL.development],
+  ["calibration", SPLIT_LABEL.calibration],
+  ["evaluation", INTENT_LABEL.eval],
 ];
 
 /** Where runs and partitions used the dataset, as one sentence for the role's tooltip. */

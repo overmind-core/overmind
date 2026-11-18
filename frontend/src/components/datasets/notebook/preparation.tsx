@@ -17,8 +17,8 @@ export function ContaminationReport({ spec }: { spec: unknown }) {
   if (!report) return null;
   return (
     <div aria-label="Data split" className="mb-2 mr-2 flex flex-wrap gap-2">
-      <Field label="Training">{report.train_rows.toLocaleString()} rows</Field>
-      <Field label="Evaluation">{report.eval_rows.toLocaleString()} rows</Field>
+      <Field label="Train">{report.train_rows.toLocaleString()} rows</Field>
+      <Field label="Eval">{report.eval_rows.toLocaleString()} rows</Field>
       <Field label="Duplicates removed">{report.duplicates_removed.toLocaleString()}</Field>
       <Field label="Shared across splits">
         {(report.content_overlap + report.group_overlap).toLocaleString()}

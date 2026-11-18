@@ -97,18 +97,19 @@ export function traceSelectionBody(selection: TraceSelectionSpec) {
   };
 }
 
+// One vocabulary for what a dataset is for: the cell, the table, the dialog and the canvas.
 export const INTENT_LABEL: Record<string, string> = {
-  eval: "Evaluation",
+  eval: "Eval",
   pending: "Not set",
-  train: "Training",
+  train: "Train",
 };
 
 /** The role a partition gives its member dataset. */
 export const SPLIT_LABEL: Record<string, string> = {
-  calibration: "Calibration",
-  development: "Development",
+  calibration: "Calib",
+  development: "Dev",
   final: "Test",
-  train: "Training",
+  train: "Train",
 };
 
 /** The intent as the Console names it, with the training format when one is set. */
@@ -116,7 +117,7 @@ export const TRAIN_FORMAT_LABEL: Record<string, string> = { decision: "Decision"
 
 export const intentLabel = (intent: string, trainFormat?: string | null): string =>
   intent === "train" && trainFormat
-    ? `Training · ${TRAIN_FORMAT_LABEL[trainFormat] ?? trainFormat}`
+    ? `Train · ${TRAIN_FORMAT_LABEL[trainFormat] ?? trainFormat}`
     : (INTENT_LABEL[intent] ?? intent);
 
 export const intentOf = (dataset: Dataset | null | undefined): Intent =>

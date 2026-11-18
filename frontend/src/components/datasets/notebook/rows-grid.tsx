@@ -128,15 +128,12 @@ function Tag({ children }: { children: ReactNode }) {
 function ValuePreview({ value }: { value: object }) {
   if (Array.isArray(value)) {
     if (value.length > 0 && value.every(isTurn)) {
+      // A conversation reads by its first user message; every turn shows in the row view.
+      const opening = value.find((turn) => turn.role === "user") ?? value[0];
       return (
         <span className="flex min-w-0 items-center gap-1.5">
-          {value.slice(0, 3).map((turn, index) => (
-            <span className="flex min-w-0 items-center gap-1" key={`${turn.role}-${index}`}>
-              <Tag>{turn.role}</Tag>
-              <span className="truncate">{cellText(turn.content)}</span>
-            </span>
-          ))}
-          {value.length > 3 && <Tag>+{value.length - 3}</Tag>}
+          <Tag>{value.length === 1 ? "1 turn" : `${value.length} turns`}</Tag>
+          <span className="truncate">{cellText(opening.content)}</span>
         </span>
       );
     }

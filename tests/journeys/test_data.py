@@ -124,7 +124,7 @@ def use_freezes_an_uploaded_eval_source(console, workshop, project, worker, tmp_
     console.fill("#dataset-name", "Console upload")
     console.upload('[role="dialog"] input[type="file"]', tickets(tmp_path))
     console.sees("3 rows")
-    console.choose("#dataset-intent", "Evaluation")
+    console.choose("#dataset-intent", "Eval")
     console.press("Create dataset")
 
     def landed():

@@ -46,9 +46,9 @@ import type { Dataset, SourceRequest } from "@/openapi";
 type IntentChoice = "train" | "eval" | "split" | "pending";
 const INTENTS: Array<{ value: IntentChoice; label: string }> = [
   { label: "Not set", value: "pending" },
-  { label: "Evaluation", value: "eval" },
-  { label: "Training", value: "train" },
-  { label: "Training + evaluation", value: "split" },
+  { label: "Eval", value: "eval" },
+  { label: "Train", value: "train" },
+  { label: "Train + eval", value: "split" },
 ];
 const POSITIONS: Array<{ value: SplitPosition; label: string }> = [
   { label: "First rows", value: "head" },
@@ -352,7 +352,7 @@ export function NewDatasetDialog({
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <Label className="text-xs text-muted-foreground" htmlFor="eval-position">
-                    Evaluation rows
+                    Eval rows
                   </Label>
                   <Select
                     disabled={busy}
@@ -378,7 +378,7 @@ export function NewDatasetDialog({
                 className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground"
               >
                 <p>
-                  Training dataset{" "}
+                  Train dataset{" "}
                   <span className="tabular-nums text-foreground">
                     {heldRows === undefined || rows === undefined
                       ? "—"
@@ -386,7 +386,7 @@ export function NewDatasetDialog({
                   </span>
                 </p>
                 <p>
-                  Evaluation dataset{" "}
+                  Eval dataset{" "}
                   <span className="tabular-nums text-foreground">
                     {heldRows === undefined ? "—" : `${heldRows.toLocaleString()} rows`}
                   </span>
