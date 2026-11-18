@@ -8,6 +8,7 @@ frozen matrix. Grouped jobs share identical incumbent baseline runs.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -26,12 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 def _is_self_hosted(job) -> bool:
-    """Baseten and Modal ship weight-only artifacts with no provider chat endpoint, so
-    their evals route through OUR Modal deployment. Together serves its own fine-tunes.
+    """Baseten, Modal and SageMaker ship weight-only artifacts with no provider chat
+    endpoint. Together serves its own fine-tunes.
     """
     from overbae.models import FinetuningJob
 
-    return job.provider in (FinetuningJob.Provider.BASETEN, FinetuningJob.Provider.MODAL)
+    return job.provider in (
+        FinetuningJob.Provider.BASETEN,
+        FinetuningJob.Provider.MODAL,
+        FinetuningJob.Provider.SAGEMAKER,
+    )
 
 
 def job_wants_evals(job) -> bool:
@@ -199,6 +204,7 @@ def sync_eval_scores(job) -> list[dict[str, Any]]:
         progress["judge_evals"] = rows
         FinetuningJob.objects.filter(pk=job.pk).update(progress=progress)
         job.progress = progress
+    release_eval_endpoint(job)
     return rows
 
 
@@ -651,7 +657,7 @@ def ensure_final_eval(job):
     if existing is not None:
         return existing
     if _is_self_hosted(job):
-        # Weights are chat-callable only once the Modal deployment is READY; defer,
+        # Weights are chat-callable only once the deployment is READY; defer,
         # because the deployment controller re-ticks evals at READY.
         deployment = _ready_deployment(job)
         if deployment is None:
@@ -723,13 +729,17 @@ def _provider_routing(job, *, kind: str, target: _BaselineTarget | None) -> tupl
             raise RuntimeError("The evaluation model has no ready route.")
         return target.provider, target.base_url, target.api_key_ref
     if _is_self_hosted(job):
-        # Baseline follows the incumbent's own route; final always goes through the
-        # gateway to the fine-tune's Modal deployment.
+        # Baseline follows the incumbent's own route. The final score calls the
+        # fine-tune's own deployment, then that GPU is released.
         deployment = _ready_deployment(job)
         if deployment is None:
             raise RuntimeError(
                 f"{job.provider} job {job.id} has no READY {kind} deployment — eval must wait for it"
             )
+        from overbae.models import FinetuningJob
+
+        if job.provider == FinetuningJob.Provider.SAGEMAKER:
+            return ModelRef.Provider.CUSTOM, deployment.inference_url, ""
         from django.conf import settings
 
         # The gateway's OpenAI-compatible /v1 base, never ``deployment.inference_url``:
@@ -742,6 +752,47 @@ def _provider_routing(job, *, kind: str, target: _BaselineTarget | None) -> tupl
             )
         return ModelRef.Provider.CUSTOM, f"{gateway}/v1", "INFERENCE_API_KEY"
     return ModelRef.Provider.TOGETHER, "", "TOGETHER_API_KEY"
+
+
+_EVAL_ENDPOINT_KINDS = ("final", "checkpoint")
+_EVAL_ENDPOINT_TERMINAL = ("completed", "failed", "cancelled", "skipped")
+
+
+def release_eval_endpoint(job) -> None:
+    """Drop the SageMaker GPU once every eval that calls it has finished."""
+    from overbae.core.aws import boto3_client
+    from overbae.models import DeployedModel, FinetuningJob, FinetuningJobEval
+
+    if job.provider != FinetuningJob.Provider.SAGEMAKER:
+        return
+    hosted = FinetuningJobEval.objects.filter(job=job, kind__in=_EVAL_ENDPOINT_KINDS)
+    if not hosted.exists() or hosted.exclude(status__in=_EVAL_ENDPOINT_TERMINAL).exists():
+        return
+    deployed = (
+        DeployedModel.objects.filter(finetuning_job=job)
+        .exclude(inference_url="")
+        .order_by("-created_at")
+        .first()
+    )
+    if deployed is None or not str(deployed.inference_url).startswith("sagemaker://"):
+        return
+    runtime = dict(deployed.serving_runtime or {})
+    if runtime.get("eval_endpoint_released"):
+        return
+    name = deployed.inference_url.removeprefix("sagemaker://")
+    client = boto3_client("sagemaker")
+    with contextlib.suppress(Exception):
+        client.delete_endpoint(EndpointName=name)
+    try:
+        desc = client.describe_endpoint(EndpointName=name)
+    except Exception:  # noqa: BLE001
+        gone = True
+    else:
+        gone = desc.get("EndpointStatus") in ("Deleting", "Failed", "OutOfService")
+    if not gone:
+        return
+    runtime["eval_endpoint_released"] = True
+    DeployedModel.objects.filter(pk=deployed.pk).update(serving_runtime=runtime)
 
 
 def _get_or_create_model_ref(

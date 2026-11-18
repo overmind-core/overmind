@@ -736,6 +736,42 @@ def _do_bedrock_completion(
     return content.strip(), stats
 
 
+def _sagemaker_eval_completion(
+    spec: ModelSpec, messages: list[dict[str, Any]], max_tokens: int, request_kwargs: dict
+) -> tuple[str, dict]:
+    """One chat completion against the fine-tune's SageMaker endpoint."""
+    endpoint = spec.base_url.removeprefix("sagemaker://").split("?", 1)[0]
+    cap = request_kwargs.get("max_tokens", max_tokens)
+    body = {
+        "model": spec.model_id,
+        "messages": messages,
+        "max_tokens": int(cap) if cap is not None else max_tokens,
+    }
+    resp = boto3_client("sagemaker-runtime").invoke_endpoint(
+        EndpointName=endpoint,
+        ContentType="application/json",
+        Accept="application/json",
+        Body=json.dumps(body).encode("utf-8"),
+    )
+    raw = resp.get("Body")
+    payload = raw.read() if hasattr(raw, "read") else (raw or b"{}")
+    parsed = json.loads(
+        payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else payload
+    )
+    choice = (parsed.get("choices") or [{}])[0]
+    content = ((choice.get("message") or {}).get("content") or "").strip()
+    usage = parsed.get("usage") or {}
+    if not content:
+        raise ValueError("No content received from the SageMaker endpoint")
+    return content, {
+        "provider_request_id": parsed.get("id"),
+        "finish_reason": choice.get("finish_reason") or "stop",
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "served_model": parsed.get("model") or spec.model_id,
+    }
+
+
 def call_llm(
     input_text: str,
     system_prompt: str | None = None,
@@ -780,6 +816,8 @@ def call_llm(
         if model_spec is not None:
             if model_spec.params:
                 request_kwargs = {**model_spec.params, **request_kwargs}
+            if str(model_spec.base_url).startswith("sagemaker://"):
+                return _sagemaker_eval_completion(model_spec, messages, max_tokens, request_kwargs)
             if (model_spec.provider or "").lower() == "bedrock":
                 selected_model_name = normalize_model_name(model_spec.model_id)
                 result = _do_bedrock_completion(

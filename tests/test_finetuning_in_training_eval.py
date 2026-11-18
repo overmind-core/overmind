@@ -661,3 +661,39 @@ def test_baseten_final_eval_fires_after_ready_deployment(
     ref = final.eval_run.model_ref
     assert ref.base_url == f"{settings.INFERENCE_API_URL.rstrip('/')}/v1"
     assert ref.api_key_ref == "INFERENCE_API_KEY"
+
+
+@override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
+def test_sagemaker_final_eval_calls_the_deployment_endpoint(
+    django_capture_on_commit_callbacks, fake_llm
+):
+    fake_llm.catalog_models = []
+    from overbae.models import DeployedModel
+
+    _, _, job, _, _ = _setup()
+    job.provider = FinetuningJob.Provider.SAGEMAKER
+    job.output_model_name = "sagemaker/ft-1"
+    job.status = FinetuningJob.Status.SUCCEEDED
+    job.save(update_fields=["provider", "output_model_name", "status"])
+    DeployedModel.objects.create(
+        project=job.project,
+        finetuning_job=job,
+        model_id="ft-sm-qwen",
+        base_model_id=job.base_model,
+        status=DeployedModel.Status.READY,
+        inference_url="sagemaker://om-ep-ft-sm-qwen",
+    )
+
+    with (
+        patch("overbae.tasks.innermind.run_eval_run.delay") as apply,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        apply.return_value = MagicMock(id="celery-eval-sm")
+        tick_job_evals(job)
+
+    final = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.FINAL)
+    assert final.model_id == "ft-sm-qwen"
+    ref = final.eval_run.model_ref
+    assert ref.base_url == "sagemaker://om-ep-ft-sm-qwen"
+    assert ref.api_key_ref == ""
+    assert "gateway.example" not in ref.base_url

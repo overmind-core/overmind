@@ -15,6 +15,7 @@ from overbae.models import (
     DedicatedDeployment,
     DeployedModel,
     FinetuningJob,
+    FinetuningJobEval,
     Project,
     User,
 )
@@ -526,3 +527,63 @@ def test_terraform_and_dockerfile_artifacts_exist():
         root / "infra" / "aws" / "modules" / "sagemaker" / "main.tf",
     ):
         assert tf_path.is_file(), f"Missing {tf_path}"
+
+
+def test_sagemaker_eval_calls_the_endpoint_and_then_releases_it(aws_env):
+    from overbae.core.llms import ModelSpec, call_llm
+    from overbae.services.finetuning_eval import release_eval_endpoint
+
+    user = User.objects.create_user(email="eval-sm@example.test", password="pw")
+    project = Project.objects.create(name="Eval AWS", slug="eval-aws")
+    dataset = frozen_dataset(project, TRAIN_ROWS, contract="train")
+    job = FinetuningJob.objects.create(
+        project=project,
+        dataset=dataset,
+        base_model="Qwen/Qwen3-0.6B",
+        status=FinetuningJob.Status.SUCCEEDED,
+        provider=FinetuningJob.Provider.SAGEMAKER,
+        output_model_name="sagemaker/ft-eval",
+        triggered_by=user,
+    )
+    deployed = DeployedModel.objects.create(
+        project=project,
+        finetuning_job=job,
+        model_id="ft-eval-qwen",
+        base_model_id=job.base_model,
+        status=DeployedModel.Status.READY,
+        inference_url="sagemaker://om-ep-ft-eval-qwen",
+    )
+    aws_env.sagemaker.create_endpoint(
+        EndpointName="om-ep-ft-eval-qwen", EndpointConfigName="om-cfg-ft-eval-qwen"
+    )
+    text, stats = call_llm(
+        "Say hello",
+        model_spec=ModelSpec(
+            provider="custom",
+            model_id=deployed.model_id,
+            base_url=deployed.inference_url,
+        ),
+        max_tokens=16,
+    )
+    assert text == "SageMaker endpoint reply."
+    assert stats["finish_reason"] == "stop"
+    sent = json.loads(aws_env.sagemaker_runtime.invocations[-1]["Body"])
+    assert aws_env.sagemaker_runtime.invocations[-1]["EndpointName"] == "om-ep-ft-eval-qwen"
+    assert sent["messages"][-1]["content"] == "Say hello"
+
+    row = FinetuningJobEval.objects.create(
+        job=job,
+        kind=FinetuningJobEval.Kind.FINAL,
+        status=FinetuningJobEval.Status.RUNNING,
+        model_id=deployed.model_id,
+    )
+    release_eval_endpoint(job)
+    assert "om-ep-ft-eval-qwen" in aws_env.sagemaker.endpoints
+
+    row.status = FinetuningJobEval.Status.COMPLETED
+    row.save(update_fields=["status"])
+    release_eval_endpoint(job)
+    assert "om-ep-ft-eval-qwen" not in aws_env.sagemaker.endpoints
+    deployed.refresh_from_db()
+    assert deployed.serving_runtime["eval_endpoint_released"] is True
+    release_eval_endpoint(job)
