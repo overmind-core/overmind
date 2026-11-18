@@ -2402,6 +2402,94 @@
           "runtime": "vllm-0.30.0"
         }
       }
+    },
+    "ornith-ai/Ornith-1.5-9B": {
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 59.4,
+          "tokens_per_second_p50": 44.6,
+          "measured_at": "2026-11-17T02:57:12Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 51.6,
+          "tokens_per_second_p50": 86.5,
+          "measured_at": "2026-11-17T02:56:37Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 36.3,
+          "tokens_per_second_p50": 150.3,
+          "measured_at": "2026-11-17T02:55:14Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 45.4,
+          "tokens_per_second_p50": 190.1,
+          "measured_at": "2026-11-17T02:56:08Z",
+          "runtime": "vllm-0.33.0"
+        }
+      }
+    },
+    "microsoft/Fara1.5-27B": {
+      "lora_bf16": {
+        "A100-80GB": {
+          "ttft_ms_p50": 144.2,
+          "tokens_per_second_p50": 29.2,
+          "measured_at": "2026-11-17T03:01:41Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 62.3,
+          "tokens_per_second_p50": 50.9,
+          "measured_at": "2026-11-17T02:58:16Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 77.8,
+          "tokens_per_second_p50": 66.5,
+          "measured_at": "2026-11-17T03:00:07Z",
+          "runtime": "vllm-0.33.0"
+        }
+      }
+    },
+    "ornith-ai/Ornith-1.5-35B-A3B": {
+      "lora_bf16": {
+        "H200": {
+          "ttft_ms_p50": 99.4,
+          "tokens_per_second_p50": 236.2,
+          "measured_at": "2026-11-17T02:59:34Z",
+          "runtime": "vllm-0.33.0"
+        }
+      }
+    },
+    "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16": {
+      "lora_bf16": {
+        "L40S": {
+          "ttft_ms_p50": 89.9,
+          "tokens_per_second_p50": 70.6,
+          "measured_at": "2026-11-17T11:36:50Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "A100-80GB": {
+          "ttft_ms_p50": 52.1,
+          "tokens_per_second_p50": 115.4,
+          "measured_at": "2026-11-17T11:34:16Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H100": {
+          "ttft_ms_p50": 97.7,
+          "tokens_per_second_p50": 171.9,
+          "measured_at": "2026-11-17T11:36:35Z",
+          "runtime": "vllm-0.33.0"
+        },
+        "H200": {
+          "ttft_ms_p50": 59.0,
+          "tokens_per_second_p50": 205.2,
+          "measured_at": "2026-11-17T11:35:36Z",
+          "runtime": "vllm-0.33.0"
+        }
+      }
     }
   }
 }

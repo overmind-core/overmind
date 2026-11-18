@@ -8218,6 +8218,194 @@
         "percentile": 75.0,
         "cohort_n": 2
       }
+    ],
+    "ornith-ai/Ornith-1.5-9B": [
+      {
+        "benchmark": "gpqa-diamond",
+        "skills": [
+          "Reasoning"
+        ],
+        "domains": [
+          "Science"
+        ],
+        "raw_score": 0.8640000000000001,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-9B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 75.0,
+        "cohort_n": 14
+      },
+      {
+        "benchmark": "humanitys-last-exam",
+        "skills": [
+          "Reasoning"
+        ],
+        "domains": [
+          "Medical",
+          "Science",
+          "Math",
+          "Humanities"
+        ],
+        "raw_score": 0.20199999999999999,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-9B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 38.89,
+        "cohort_n": 9
+      },
+      {
+        "benchmark": "swe-bench-multilingual",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding",
+          "Multilingual"
+        ],
+        "raw_score": 0.544,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-9B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 50.0,
+        "cohort_n": 5
+      },
+      {
+        "benchmark": "swe-bench-pro",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding"
+        ],
+        "raw_score": 0.475,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-9B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 12.5,
+        "cohort_n": 4
+      },
+      {
+        "benchmark": "swe-bench-verified",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding"
+        ],
+        "raw_score": 0.706,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-9B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 56.25,
+        "cohort_n": 8
+      }
+    ],
+    "ornith-ai/Ornith-1.5-35B-A3B": [
+      {
+        "benchmark": "gpqa-diamond",
+        "skills": [
+          "Reasoning"
+        ],
+        "domains": [
+          "Science"
+        ],
+        "raw_score": 0.892,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 92.86,
+        "cohort_n": 14
+      },
+      {
+        "benchmark": "humanitys-last-exam",
+        "skills": [
+          "Reasoning"
+        ],
+        "domains": [
+          "Medical",
+          "Science",
+          "Math",
+          "Humanities"
+        ],
+        "raw_score": 0.256,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 83.33,
+        "cohort_n": 9
+      },
+      {
+        "benchmark": "swe-bench-multilingual",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding",
+          "Multilingual"
+        ],
+        "raw_score": 0.7140000000000001,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 90.0,
+        "cohort_n": 5
+      },
+      {
+        "benchmark": "swe-bench-pro",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding"
+        ],
+        "raw_score": 0.596,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 62.5,
+        "cohort_n": 4
+      },
+      {
+        "benchmark": "swe-bench-verified",
+        "skills": [
+          "Coding",
+          "Agentic"
+        ],
+        "domains": [
+          "Coding"
+        ],
+        "raw_score": 0.79,
+        "scale": "accuracy_0_1",
+        "source": "huggingface",
+        "source_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B",
+        "observed_at": "2026-08-18",
+        "provenance": "lab_claimed",
+        "percentile": 93.75,
+        "cohort_n": 8
+      }
     ]
   },
   "catalog": {
@@ -8367,6 +8555,14 @@
     },
     "Qwen/Qwen3.8-27B": {
       "hf_model_id": "Qwen/Qwen3.8-27B",
+      "match_type": "hub_only"
+    },
+    "ornith-ai/Ornith-1.5-9B": {
+      "hf_model_id": "ornith-ai/Ornith-1.5-9B",
+      "match_type": "hub_only"
+    },
+    "ornith-ai/Ornith-1.5-35B-A3B": {
+      "hf_model_id": "ornith-ai/Ornith-1.5-35B-A3B",
       "match_type": "hub_only"
     }
   }
