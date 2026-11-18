@@ -71,6 +71,14 @@ export function CellScript({ cell }: { cell: Cell }) {
             </SelectContent>
           </Select>
           <Field label="Revision">{cell.transformation.revision}</Field>
+          {inventory.isError && (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground" role="alert">
+              Package files could not be listed.
+              <Button onClick={() => void inventory.refetch()} size="xs" variant="outline">
+                Retry
+              </Button>
+            </span>
+          )}
         </div>
       )}
       {!other ? (

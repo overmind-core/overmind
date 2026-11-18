@@ -22,6 +22,7 @@ CAPABILITY_FIELDS = (
     "input_schema",
     "output_fields",
     "expected_output",
+    "output_schema",
     "success_criteria",
     "failure_modes",
     "vocabulary",
@@ -96,7 +97,9 @@ def _profile(cell) -> dict:
     """Each column's kind, nulls, examples and, from a fixed sample, its distinct and most
     common values; and the version's exact duplicate rows."""
     try:
-        measured = store.frame_profile(rows.frame_path(cell), fingerprint=cell.fingerprint)
+        measured = store.frame_profile(
+            rows.frame_path(cell), fingerprint=cell.fingerprint, duplicates=True
+        )
     except (rows.RowStoreError, store.StoreError):
         measured = None
     by_name = {column["name"]: column for column in (measured or {}).get("columns", [])}
@@ -140,6 +143,10 @@ def capability_contract(capability) -> dict:
         value = {
             "description": capability.description,
             "system_prompt": alignment.system_prompt(capability),
+            # The schema alignment checks rows against, as the card states it.
+            "output_schema": (
+                (capability.improvement_metadata or {}).get("capability_card") or {}
+            ).get("output_schema"),
         }.get(field, card.get(field))
         if not value:
             continue
@@ -159,6 +166,7 @@ FIRST_PASS = {
     Dataset.Intent.PENDING: "Prepare this dataset for the use its rows fit best.",
 }
 SPLIT_PASS = "Prepare this dataset for training and its evaluation split for evaluation."
+FIRST_PASS_KEY = "first-pass:"
 
 
 def queue_first_pass(dataset: Dataset, user, *, split: bool = False) -> AssistantInput:
@@ -167,7 +175,7 @@ def queue_first_pass(dataset: Dataset, user, *, split: bool = False) -> Assistan
     text = SPLIT_PASS if split else FIRST_PASS[dataset.intent]
     if dataset.brief.strip():
         text = f"{text}\n\n{dataset.brief.strip()}"
-    return send(open_thread(dataset), user, request_key=f"first-pass:{dataset.pk}", text=text)
+    return send(open_thread(dataset), user, request_key=f"{FIRST_PASS_KEY}{dataset.pk}", text=text)
 
 
 def send(thread, user, *, request_key, text, cells=(), interaction=None) -> AssistantInput:

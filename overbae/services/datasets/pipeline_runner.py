@@ -116,8 +116,11 @@ def _refusal(response) -> str:
 
 
 BUSY_SECONDS = 2
+# How long a step waits for a full sandbox before the run fails as unstarted.
+BUSY_LIMIT_SECONDS = QUEUE_SECONDS
 # Columns that carry platform lineage, not data the script transforms.
-HIDDEN = ("_overmind_parent_rows", "_overmind_provenance")
+# Platform lineage: scripts never see it, and carry() restores what rows inherit.
+HIDDEN = ("_overmind_parent_rows", "_overmind_provenance", store.EVIDENCE)
 MAX_LINE = 4 * 1024 * 1024
 
 
@@ -164,7 +167,14 @@ def execute_script(run, index, source, directory, step, files, progress):
         incoming = root / "input.parquet"
         parquet = pq.ParquetFile(source)
         columns = [name for name in parquet.schema_arrow.names if name not in HIDDEN]
-        pq.write_table(parquet.read(columns=columns), incoming, compression="zstd")
+        schema = pa.schema(
+            [parquet.schema_arrow.field(name) for name in columns],
+            metadata=parquet.schema_arrow.metadata,
+        )
+        # Row group by row group: the worker never holds the whole input.
+        with pq.ParquetWriter(incoming, schema, compression="zstd") as writer:
+            for batch in parquet.iter_batches(columns=columns):
+                writer.write_batch(batch)
         metadata = pq.read_metadata(incoming)
         header = {
             "mode": "package",
@@ -212,6 +222,7 @@ def _submit(header, parts, output, phase, receipt) -> dict:
                 while chunk := stream.read(64 * 1024):
                     yield chunk
 
+    waited_until = time.monotonic() + BUSY_LIMIT_SECONDS
     while True:
         reader = HeaderReader()
         try:
@@ -227,6 +238,10 @@ def _submit(header, parts, output, phase, receipt) -> dict:
                 output.open("wb") as stream,
             ):
                 if response.status_code == 503:
+                    if time.monotonic() > waited_until:
+                        raise RuntimeUnavailableError(
+                            "The sandbox stayed full for 15 minutes; the step did not start."
+                        )
                     phase("waiting_for_sandbox")
                     time.sleep(BUSY_SECONDS)
                     continue
@@ -264,11 +279,12 @@ def _jsonl_rows(path):
             if len(line) > MAX_LINE:
                 raise RuntimeUnavailableError("An output row exceeds 4 MiB.")
             try:
-                yield _checked(store.json_loads_finite(line))
+                row = store.json_loads_finite(line)
             except ValueError as exc:
                 raise RuntimeUnavailableError(
                     "Every output line must be one finite JSON object."
                 ) from exc
+            yield _checked(row)
 
 
 def _parquet_rows(path, segments):

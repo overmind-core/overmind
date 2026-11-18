@@ -568,10 +568,14 @@ def page(
     return {"rows": rows, "total": int(total), "columns": manifest}
 
 
-def frame_profile(path: Path, *, top: int = 5, fingerprint: str = "") -> dict[str, Any]:
+def frame_profile(
+    path: Path, *, top: int = 5, fingerprint: str = "", duplicates: bool = False
+) -> dict[str, Any]:
     try:
-        return profile(path, read_manifest(path), fingerprint=fingerprint, top=top)
-    except StatisticsUnavailableError as exc:
+        return profile(
+            path, read_manifest(path), fingerprint=fingerprint, top=top, duplicates=duplicates
+        )
+    except (StatisticsUnavailableError, OSError) as exc:
         raise StoreError(str(exc)) from exc
 
 

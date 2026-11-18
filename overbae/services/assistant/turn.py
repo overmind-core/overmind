@@ -18,7 +18,14 @@ from django.utils import timezone
 
 from overbae.core.llms import IncompleteCompletionError, call_llm_tools, stream_llm_tools
 from overbae.core.model_registry import TaskType, model_chain
-from overbae.models import AssistantEvent, AssistantInput, AssistantThread, BillingService, Dataset
+from overbae.models import (
+    AssistantEvent,
+    AssistantInput,
+    AssistantThread,
+    BillingService,
+    Cell,
+    Dataset,
+)
 from overbae.models.assistant import STALE
 from overbae.services.assistant import log, prompt, threads, tools
 from overbae.services.billing_ledger import InsufficientCredits, charge_llm_usage, ensure_credits
@@ -56,10 +63,21 @@ def wake(thread: AssistantThread) -> None:
     transaction.on_commit(lambda: run_turn.delay(str(thread.pk)))
 
 
+def ready(thread):
+    """The queued messages a turn may take. The first pass prepares landed rows: after an
+    import fails it stays queued for the landing that succeeds."""
+    queued = thread.inputs.filter(state=Queued)
+    if not Cell.objects.filter(
+        dataset_id=thread.dataset_id, position=0, state=Cell.State.OK
+    ).exists():
+        queued = queued.exclude(request_key__startswith=threads.FIRST_PASS_KEY)
+    return queued
+
+
 def wake_dataset(dataset_id) -> None:
     """The dataset's source landed: a message that waited for it may start its turn."""
     thread = AssistantThread.objects.filter(dataset_id=dataset_id).first()
-    if thread is not None and thread.inputs.filter(state=Queued).exists():
+    if thread is not None and ready(thread).exists():
         wake(thread)
 
 
@@ -83,7 +101,7 @@ def settle(thread: AssistantThread) -> AssistantThread:
                     "detail": "The turn was interrupted. Send a message to continue.",
                 },
             )
-            if held.inputs.filter(state=Queued).exists():
+            if ready(held).exists():
                 wake(held)
     thread.refresh_from_db()
     return thread
@@ -106,7 +124,7 @@ def run(thread_id) -> None:
         _status(thread, "failed", "The turn failed. Send a message to continue.")
     if _held(thread).update(state=State.IDLE, stop_requested=False):
         log.changed(thread)
-        if thread.inputs.filter(state=Queued).exists():
+        if ready(thread).exists():
             wake(thread)
 
 
@@ -119,7 +137,7 @@ def _begin(thread_id) -> AssistantThread | None:
             .select_related("project", "dataset")
             .get(pk=thread_id)
         )
-        if thread.state == State.RUNNING or not thread.inputs.filter(state=Queued).exists():
+        if thread.state == State.RUNNING or not ready(thread).exists():
             return None
         # A first message on a new dataset waits for its source; landing wakes the thread.
         if thread.dataset.state == Dataset.State.LANDING:
@@ -156,12 +174,12 @@ def _stopped(thread) -> None:
 
 def _turn(thread) -> None:
     deadline = time.monotonic() + TURN_SECONDS
-    message = thread.inputs.filter(state=Queued).order_by("-urgent", "position").first()
+    message = ready(thread).order_by("-urgent", "position").first()
     # Past the deadline the rest stay queued: ``run`` starts the next turn for them.
     while message is not None and time.monotonic() < deadline:
         if _deliver(thread, message):
             _answer(thread, deadline)
-        message = thread.inputs.filter(state=Queued).order_by("-urgent", "position").first()
+        message = ready(thread).order_by("-urgent", "position").first()
 
 
 def _answer(thread, deadline: float) -> None:
@@ -226,7 +244,10 @@ def _deliver(thread, message) -> bool:
         None,
     )
     # Saving a recipe updates the row, not the dataset this turn loaded.
-    thread.dataset.refresh_from_db(fields=["preparation_pipeline"])
+    # A turn's publish changes these; the brief reads them fresh.
+    thread.dataset.refresh_from_db(
+        fields=["preparation_pipeline", "intent", "train_format", "capability", "source_spec"]
+    )
     now = threads.brief(thread)
     with transaction.atomic():
         # The thread first, as every queue change locks it: a stop that came after the

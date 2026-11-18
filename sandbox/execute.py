@@ -21,7 +21,7 @@ from typing import BinaryIO
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from sandbox import packages
+from sandbox import packages, script_io
 
 GIB = 1024**3
 EXTRACT_CPU_SECONDS = 1200
@@ -99,9 +99,12 @@ def need_for(header: dict) -> int:
         # The decoded rows a script holds take about 5.5 times the uncompressed frame; with
         # batch_rows, one batch is in memory at a time.
         expanded = max(header["input_bytes"], header.get("expanded_bytes", 0))
+        active, retained = expanded, 0
         if header.get("batch_rows") and header.get("rows"):
-            expanded = expanded * min(1.0, header["batch_rows"] / header["rows"])
-        return max(GIB // 2, int(expanded * 5.5) + 256 * 1024**2 + header["package_bytes"])
+            active = expanded * min(1.0, header["batch_rows"] / header["rows"])
+            # The whole input and the finished outputs wait on the tmpfs between batches.
+            retained = header["input_bytes"] + expanded
+        return max(GIB // 2, int(active * 5.5) + retained + 256 * 1024**2 + header["package_bytes"])
     return max(2 * GIB, 4 * int(header["input_bytes"])) + 3 * header.get("cache_bytes", 0)
 
 
@@ -592,13 +595,16 @@ def _run_batches(header, child, scratch, slot, stop, on_progress) -> Outcome:
         metadata = parquet.schema_arrow.metadata or {}
         kinds = {
             column["name"]: column["type"]
-            for column in json.loads(metadata.get(packages.MANIFEST_KEY, b"[]"))
+            for column in json.loads(metadata.get(script_io.MANIFEST_KEY, b"[]"))
         }
         batches = parquet.iter_batches(batch_size=size)
         for number in range(total):
+            if stop is not None and stop.is_set():
+                outcome = Outcome(ok=False, error="The run was cancelled.")
+                break
             batch = next(batches, None) or pa.RecordBatch.from_pylist([], parquet.schema_arrow)
             if header.get("io", "jsonl") == "jsonl":
-                packages.write_jsonl(batch, kinds, scratch / "input.jsonl")
+                script_io.write_jsonl(batch, kinds, scratch / "input.jsonl")
             else:
                 pq.write_table(pa.Table.from_batches([batch]), scratch / "input.parquet")
             outcome = spawn(child, scratch, slot, stop)
@@ -613,6 +619,11 @@ def _run_batches(header, child, scratch, slot, stop, on_progress) -> Outcome:
             with output:
                 start = combined.tell()
                 shutil.copyfileobj(output, combined)
+                # A JSONL batch without a final newline must not join the next batch's line.
+                if name == "output.jsonl" and combined.tell() > start:
+                    combined.seek(-1, os.SEEK_END)
+                    if combined.read(1) != b"\n":
+                        combined.write(b"\n")
                 segments.append(combined.tell() - start)
             if combined.tell() > packages.MAX_OUTPUT_BYTES:
                 outcome.ok, outcome.error = False, "The package output exceeds 2 GiB."

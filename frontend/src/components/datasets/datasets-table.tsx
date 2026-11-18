@@ -74,7 +74,8 @@ const filterDatasets = (
   datasets: Dataset[],
   search: string,
   roleFilter = "all",
-  capabilityFilter = "all"
+  capabilityFilter = "all",
+  nameById: Record<string, string> = {}
 ): Dataset[] => {
   const q = search.trim().toLowerCase();
   return datasets.filter((ds) => {
@@ -87,9 +88,10 @@ const filterDatasets = (
       datasetDisplayName(ds).toLowerCase().includes(q) ||
       ds.id.toLowerCase().startsWith(q) ||
       (ds.capabilityName ?? "").toLowerCase().includes(q) ||
-      [describeSource(ds, {})?.label ?? "", ...(describeSource(ds, {})?.more ?? [])].some((text) =>
-        text.toLowerCase().includes(q)
-      )
+      [
+        describeSource(ds, nameById)?.label ?? "",
+        ...(describeSource(ds, nameById)?.more ?? []),
+      ].some((text) => text.toLowerCase().includes(q))
     );
   });
 };
@@ -186,10 +188,14 @@ type SortKey = "source" | "name" | "role" | "rows" | "capability" | "updated";
 const sourceText = (ds: Dataset, nameById: Record<string, string>): string =>
   describeSource(ds, nameById)?.label ?? "";
 
-const sortValue = (ds: Dataset, key: SortKey): string | number => {
+const sortValue = (
+  ds: Dataset,
+  key: SortKey,
+  nameById: Record<string, string>
+): string | number => {
   switch (key) {
     case "source":
-      return sourceText(ds, {}).toLowerCase();
+      return sourceText(ds, nameById).toLowerCase();
     case "name":
       return datasetDisplayName(ds).toLowerCase();
     case "role":
@@ -208,11 +214,19 @@ const TABLE_CHIP =
   "inline-flex h-5 max-w-full min-w-0 items-center gap-1.5 rounded-sm border border-border/70 bg-transparent px-1.5 py-0 text-xs text-foreground";
 
 function Chip({ children, title }: { children: ReactNode; title?: string | null }) {
-  const chip = <span className={TABLE_CHIP}>{children}</span>;
-  if (!title) return chip;
+  if (!title) return <span className={TABLE_CHIP}>{children}</span>;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      {/* Focusable, so a keyboard reaches what the tooltip says. */}
+      <TooltipTrigger asChild>
+        <span
+          className={cn(TABLE_CHIP, "outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: the tooltip is its content
+          tabIndex={0}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
       <TooltipContent>{title}</TooltipContent>
     </Tooltip>
   );
@@ -555,9 +569,15 @@ export function DatasetsBrowser({
   const [pageSize, setPageSize] = useState(25);
   const [ordering, setOrdering] = useState<string | undefined>("-updated");
 
+  // Keyed by the names themselves: the inventory is a new array on every render, and new
+  // columns would reset the table.
+  const names = JSON.stringify(
+    datasets.map((dataset) => [dataset.id, datasetDisplayName(dataset)])
+  );
+  const nameById = useMemo(() => Object.fromEntries(JSON.parse(names)), [names]);
   const filtered = useMemo(
-    () => filterDatasets(datasets, search, roleFilter, capabilityFilter),
-    [datasets, search, roleFilter, capabilityFilter]
+    () => filterDatasets(datasets, search, roleFilter, capabilityFilter, nameById),
+    [datasets, search, roleFilter, capabilityFilter, nameById]
   );
   const sorted = useMemo(() => {
     const parsed = parseDrfOrdering(ordering);
@@ -565,23 +585,16 @@ export function DatasetsBrowser({
     const key = parsed.field as SortKey;
     const dir = parsed.dir === "desc" ? -1 : 1;
     return [...filtered].sort((a, b) => {
-      const va = sortValue(a, key);
-      const vb = sortValue(b, key);
+      const va = sortValue(a, key, nameById);
+      const vb = sortValue(b, key, nameById);
       if (va < vb) return -dir;
       if (va > vb) return dir;
       return 0;
     });
-  }, [filtered, ordering]);
+  }, [filtered, ordering, nameById]);
   const currentPage = Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)));
   const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = roleFilter !== "all" || capabilityFilter !== "all" || !!search;
-
-  // Keyed by the names themselves: the inventory is a new array on every render, and new
-  // columns would reset the table.
-  const names = JSON.stringify(
-    datasets.map((dataset) => [dataset.id, datasetDisplayName(dataset)])
-  );
-  const nameById = useMemo(() => Object.fromEntries(JSON.parse(names)), [names]);
 
   const selectable = !!onRowSelectionChange;
   const columns = useMemo(() => {

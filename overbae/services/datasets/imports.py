@@ -714,7 +714,8 @@ def execute(task_id, inputs):
                     path=stage / f"{target.pk}.parquet",
                     state=state,
                     infer_capability=run.inputs.get("infer_capability", True),
-                    on_progress=progress,
+                    # Each half of a split counts its own rows.
+                    on_progress=_landing_progress(run, [target]),
                 ),
             )
             for target, part in parts

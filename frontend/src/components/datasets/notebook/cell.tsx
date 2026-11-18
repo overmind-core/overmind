@@ -165,6 +165,17 @@ function IntentFields({
           <Icon.warning className="size-3 shrink-0" />
           <span className="truncate">{verdict?.reason || "Rows do not fit"}</span>
         </Field>
+        {onIntent &&
+          USES.filter((use) => use !== chosen && fit[use.key]?.ok).map((use) => (
+            <Button
+              key={use.key}
+              onClick={() => onIntent(use.intent, use.format || undefined)}
+              size="xs"
+              variant="outline"
+            >
+              Use for {intentLabel(use.intent, use.format)}
+            </Button>
+          ))}
       </>
     );
   }
@@ -223,6 +234,7 @@ export function NotebookCell({
   capabilityName,
   active,
   member,
+  intentLocked,
   editable,
   selected,
   onSelect,
@@ -239,6 +251,8 @@ export function NotebookCell({
   /** The cell's part of a training split, named for the reader. */
   /** A cell of another dataset, such as a partition member: its name links there. */
   member?: { datasetId: string; label: string };
+  /** A run used some version of the dataset: its intent no longer changes. */
+  intentLocked: boolean;
   editable: boolean;
   selected: boolean;
   onSelect: () => void;
@@ -250,7 +264,6 @@ export function NotebookCell({
   const attachment = (cell.review as { kind?: string } | undefined)?.kind === "attachment";
   const hasScript = !source && !attachment && !!cell.script;
   const ran = cell.state === "ok" && !!cell.fingerprint;
-  const frozen = !!cell.frozen;
   const incoming = useNodeConnections({ handleType: "target" });
   const outgoing = useNodeConnections({ handleType: "source" });
   const [scriptOpen, setScriptOpen] = useState(!ran);
@@ -259,6 +272,10 @@ export function NotebookCell({
   const [labelsOpen, setLabelsOpen] = useState(false);
   const terminal = outgoing.length === 0 || active;
   const tableOpen = tableChoice ?? (terminal || selected);
+  // A table that selection opened stays open, with its filters, when selection moves on.
+  useEffect(() => {
+    if (selected && tableChoice === null) setTableOpen(true);
+  }, [selected, tableChoice]);
   useEffect(() => {
     if (cell.state === "failed" || cell.state === "queued") setScriptOpen(true);
   }, [cell.state]);
@@ -318,7 +335,7 @@ export function NotebookCell({
                 <Link
                   className="nodrag hover:underline"
                   params={{ datasetId: member.datasetId }}
-                  search={(previous) => previous}
+                  search={(previous) => ({ projectId: previous.projectId })}
                   to="/datasets/$datasetId"
                 >
                   {member.label}
@@ -446,9 +463,9 @@ export function NotebookCell({
               <footer className="flex min-h-10 flex-wrap items-center gap-2 border-t border-border/70 px-2.5 py-2">
                 <IntentFields
                   cell={cell}
-                  fixed={frozen}
+                  fixed={intentLocked}
                   intent={intent}
-                  onIntent={editable && !frozen ? actions.onIntent : undefined}
+                  onIntent={editable && !intentLocked ? actions.onIntent : undefined}
                   trainFormat={trainFormat}
                 />
                 <CapabilityMismatch cell={cell} name={capabilityName} />
@@ -456,7 +473,9 @@ export function NotebookCell({
                 {intent === "train" && (
                   <Button
                     className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                    disabled={!fit.ok}
+                    disabled={
+                      trainFormat ? !(cell.fit as unknown as Fit)?.[trainFormat]?.ok : !fit.ok
+                    }
                     onClick={() => actions.onUse("train")}
                     size="xs"
                     variant="outline"

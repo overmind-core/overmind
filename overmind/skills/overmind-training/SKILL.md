@@ -48,7 +48,7 @@ A fine-tuning job needs both of these before any paid preparation, estimate or
 
 Prefer the native `finetune-capability` prompt with the selected dataset and
 optional capability. Resolve datasets with `list_datasets`; inspect and query
-the exact train and held-out eval cells. Inspect each cell's measured columns, `fit` and
+the exact train cell, and the held-out eval cell when the evaluation uses one. Inspect each cell's measured columns, `fit` and
 analytics rather than assuming a sample describes the whole corpus.
 
 Use `get_model_catalog` for initial model discovery (it is dataset-independent and

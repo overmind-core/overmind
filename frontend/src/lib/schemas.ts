@@ -157,7 +157,11 @@ export const datasetsSearchSchema = projectIdSearchSchema.extend({
   /** A capability id, or the `NO_CAPABILITY` sentinel for datasets attached to none. */
   ds_capability: z.string().optional().default("all"),
   ds_role: z
-    .enum(["all", "sft", "decision", "train", "eval", "pending"])
+    // Links saved before roles were intents still filter by the same use.
+    .preprocess(
+      (value) => ({ evaluation: "eval", training: "train" })[value as string] ?? value,
+      z.enum(["all", "sft", "decision", "train", "eval", "pending"])
+    )
     .optional()
     .default("all")
     .catch("all"),

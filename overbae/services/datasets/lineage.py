@@ -4,6 +4,7 @@ counts, partitions and validation splits compare these keys across cells."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -34,7 +35,8 @@ class Writer:
 
     def __init__(self, frame: Path):
         self.destination = keys_path(frame)
-        self.temporary = self.destination.with_suffix(".tmp")
+        # Its own name: two readers that derive one legacy key file never share it.
+        self.temporary = self.destination.with_suffix(f".{uuid.uuid4().hex}.tmp")
         self.writer = pq.ParquetWriter(self.temporary, _SCHEMA, compression="zstd")
         self.batch = []
 
@@ -45,10 +47,14 @@ class Writer:
             self.batch = []
 
     def close(self) -> None:
-        if self.batch:
-            self.writer.write_table(_table(self.batch))
-        self.writer.close()
-        self.temporary.replace(self.destination)
+        try:
+            if self.batch:
+                self.writer.write_table(_table(self.batch))
+            self.writer.close()
+            self.temporary.replace(self.destination)
+        except BaseException:
+            self.temporary.unlink(missing_ok=True)
+            raise
 
     def abort(self) -> None:
         self.writer.close()
@@ -87,8 +93,8 @@ def load(frame: Path) -> list[tuple[int, Keys]]:
     ]
 
 
-def read(cell) -> list[tuple[int, Keys]]:
-    """The cell's rows in frame order. A frame written before key files carries its
+def _derived(cell) -> Path:
+    """The cell's frame, with its key file. A frame written before key files carries its
     lineage in ``_overmind_provenance``; its key file is derived from that once."""
     frame = paths.cell_path(cell.dataset_id, cell.id)
     if not keys_path(frame).exists():
@@ -96,7 +102,20 @@ def read(cell) -> list[tuple[int, Keys]]:
             frame,
             ((row.get(store.SOURCE_ROW), own_keys(row)) for row in store.iter_rows(frame)),
         )
-    return load(frame)
+    return frame
+
+
+def read(cell) -> list[tuple[int, Keys]]:
+    """The cell's rows in frame order."""
+    return load(_derived(cell))
+
+
+def stream(cell) -> Iterator[Keys]:
+    """The cell's key sets in frame order, one row group at a time."""
+    keys = pq.ParquetFile(keys_path(_derived(cell)))
+    for batch in keys.iter_batches(columns=["keys"]):
+        for row in batch.column(0).to_pylist():
+            yield frozenset(tuple(key.split(_SEP, 1)) for key in row)
 
 
 def grouped(frame: Path, keyed, group_by) -> Iterator[tuple[int, Keys]]:

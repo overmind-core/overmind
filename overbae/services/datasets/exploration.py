@@ -155,6 +155,7 @@ def advance(identifier):
                         "name": op.name,
                         "brief": source.brief,
                         "intent": source.intent,
+                        "train_format": source.train_format,
                         "capability_id": source.capability_id,
                     },
                 )
@@ -164,7 +165,7 @@ def advance(identifier):
                         land.Landing(
                             store.iter_rows(path),
                             spec={"derived_from": report["source"]},
-                            inherited=(keys for _, keys in lineage.read(op.source_cell)),
+                            inherited=lineage.stream(op.source_cell),
                         ),
                         infer_capability=False,
                     )

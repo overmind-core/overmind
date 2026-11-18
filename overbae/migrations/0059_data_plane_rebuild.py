@@ -52,15 +52,17 @@ def forward(apps, schema_editor):
             dataset.save(update_fields=["train_format"])
     for cell in Cell.objects.only("id", "stats", "review").iterator():
         stats, review = _without(cell.stats, STATS), _without(cell.review, REVIEW)
-        for step in review.get("steps") or []:
-            step.pop("impact", None)
+        # New step dicts: popping from the shared ones would hide the change from the check.
+        if "steps" in review:
+            review["steps"] = [_without(step, ("impact",)) for step in review["steps"] or []]
         if stats != cell.stats or review != cell.review:
             Cell.objects.filter(pk=cell.pk).update(stats=stats, review=review)
     for run in Run.objects.only("id", "result").iterator():
         result = _without(run.result, RESULT)
-        for step in result.get("steps") or []:
-            step.pop("impact", None)
-            step.pop("validation", None)
+        if "steps" in result:
+            result["steps"] = [
+                _without(step, ("impact", "validation")) for step in result["steps"] or []
+            ]
         if result != run.result:
             Run.objects.filter(pk=run.pk).update(result=result)
 

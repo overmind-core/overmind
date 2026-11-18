@@ -109,11 +109,20 @@ function cellText(value: unknown): string {
   }
 }
 
+const TURN_FIELDS = new Set(["role", "content", "name", "tool_calls", "tool_call_id"]);
+
+/** A chat turn: a role and nothing but the fields a turn carries. */
 function isTurn(value: unknown): value is { role: string; content?: unknown } {
   return (
-    !!value && typeof value === "object" && typeof (value as { role?: unknown }).role === "string"
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { role?: unknown }).role === "string" &&
+    Object.keys(value).every((key) => TURN_FIELDS.has(key))
   );
 }
+
+// A collapsed object shows its first fields; the expanded row shows them all.
+const PREVIEW_FIELDS = 6;
 
 function Tag({ children }: { children: ReactNode }) {
   return (
@@ -129,7 +138,11 @@ function ValuePreview({ value }: { value: object }) {
   if (Array.isArray(value)) {
     if (value.length > 0 && value.every(isTurn)) {
       // A conversation reads by its first user message; every turn shows in the row view.
-      const opening = value.find((turn) => turn.role === "user") ?? value[0];
+      const text = (turn: { content?: unknown }) => cellText(turn.content ?? "").trim();
+      const opening =
+        value.find((turn) => turn.role === "user" && text(turn)) ??
+        value.find((turn) => text(turn)) ??
+        value[0];
       return (
         <span className="flex min-w-0 items-center gap-1.5">
           <Tag>{value.length === 1 ? "1 turn" : `${value.length} turns`}</Tag>
@@ -151,12 +164,17 @@ function ValuePreview({ value }: { value: object }) {
   }
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      {Object.entries(value).map(([key, item]) => (
-        <span className="flex shrink-0 items-center gap-1" key={key}>
-          <span className="text-muted-foreground">{key}</span>
-          <span>{item === null ? "—" : cellText(item)}</span>
-        </span>
-      ))}
+      {Object.entries(value)
+        .slice(0, PREVIEW_FIELDS)
+        .map(([key, item]) => (
+          <span className="flex shrink-0 items-center gap-1" key={key}>
+            <span className="text-muted-foreground">{key}</span>
+            <span>{item === null ? "—" : cellText(item)}</span>
+          </span>
+        ))}
+      {Object.keys(value).length > PREVIEW_FIELDS && (
+        <Tag>+{Object.keys(value).length - PREVIEW_FIELDS}</Tag>
+      )}
     </span>
   );
 }

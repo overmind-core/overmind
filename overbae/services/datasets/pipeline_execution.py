@@ -20,8 +20,12 @@ def contract_violation(path: Path, contract: dict) -> str | None:
     if not checks:
         return None
     literal = str(path).replace("'", "''")
+    # Rows are named by source_row: DuckDB's file_row_number option refuses a frame that
+    # has a column of that name.
+    row = store.quote_identifier(store.SOURCE_ROW) if store.SOURCE_ROW in kinds else "NULL"
     failures = [
-        f"(SELECT min(file_row_number) FROM read_parquet('{literal}', file_row_number = true) "
+        f"(SELECT CASE WHEN count(*) > 0 THEN coalesce(min({row}), -1) END "
+        f"FROM read_parquet('{literal}') "
         f"WHERE NOT coalesce({check}, false))"
         for check in checks.values()
     ]
@@ -31,7 +35,8 @@ def contract_violation(path: Path, contract: dict) -> str | None:
     if not found:
         return None
     row, name = min(found)
-    return f"Row {row} column {name} does not match {contract[name]}."
+    where = f"Row {row} column" if row >= 0 else "Column"
+    return f"{where} {name} does not match {contract[name]}."
 
 
 def _matches(name: str, stored: str, declared: str) -> str:
@@ -97,11 +102,13 @@ def carry(records, parents: Parents, inherited: list[lineage.Keys]):
             )
         keys = set()
         values = []
-        for parent in dict.fromkeys(parent_ids):
+        # Each ID is checked before deduplication: True would otherwise fold into 1.
+        for parent in parent_ids:
             if isinstance(parent, bool) or not isinstance(parent, int) or parent < 0:
                 raise ValueError(
                     "Preserve source_row, or declare _overmind_parent_rows for a split or merge."
                 )
+        for parent in dict.fromkeys(parent_ids):
             if parent not in parents.keys:
                 raise ValueError("A parent row is not present in the bound source version.")
             keys |= parents.keys[parent]
@@ -112,8 +119,12 @@ def carry(records, parents: Parents, inherited: list[lineage.Keys]):
         row[store.SOURCE_ROW] = identity
         for column in sorted(parents.columns):
             found = [value.get(column) for value in values]
-            if found[0] is not None and all(value == found[0] for value in found):
-                row[column] = found[0]
+            if all(value == found[0] for value in found):
+                if found[0] is not None:
+                    row[column] = found[0]
+            else:
+                # Parents that disagree give the merged row no single identity.
+                row.pop(column, None)
         row.pop("human_reviewed", None)
         inherited.append(frozenset(keys))
         yield row

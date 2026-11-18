@@ -35,10 +35,10 @@ contracts (`list_datasets` shows the active version's):
   probability/ordinal targets.
 - **`eval`**: an `input` on every row plus an `expected_output` column with at least
   one reference.
-- **`explore`**: data exploration, without automatic train/eval preparation.
-- **`pending`**: no user purpose yet. Obtain their choice of Training, Eval or Data
-  exploration and set it with `update_dataset`; never infer intent from rows. A
-  leftover stored `ft` is **train**; there is no `ft` or `surface` intent.
+- **`pending`**: no user purpose yet. Obtain their choice of training or evaluation
+  and set it with `update_dataset`; never infer intent from rows. For exploration
+  only, leave the intent pending and use `explore_dataset`. Publishing a final step
+  with a declared `consumer` sets a pending intent (and `train_format`).
 
 Set intent at upload (`overmind dataset upload FILE --json --intent train|eval`), at
 create (`create_dataset_from_traces` / `_failures`), or later with
@@ -348,8 +348,9 @@ Preview samples a bounded prefix and does not establish coverage of every family
 
 For row-independent transformations, declare step `batch_rows` (1–100000).
 Consecutive batches run one after another in fresh processes inside the step's one
-sandbox run and concatenate in source order. Memory admission covers one batch;
-each batch has the declared time limit. A step may declare `"io": "parquet"` to
+sandbox run and concatenate in source order. Memory admission estimates one batch
+from the frame's average row width, plus the whole input and output held between
+batches; each batch has the declared time limit. A step may declare `"io": "parquet"` to
 read `input.parquet` and write `output.parquet` instead of JSONL. Global sorting, grouping,
 splitting and deduplication must not use batching. Row checks apply to the combined
 output, publication remains atomic, and progress records completed batches and

@@ -216,10 +216,18 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
     if "expected_output" in df.columns:
         reference_rows = sum(1 for v in df["expected_output"].tolist() if not _missing(v))
     if not reference_rows:
+        # A frame of a batched output reports its types and its native decisions with
+        # no reference: references in other frames clear only "no expected_output".
         return {
             "ok": False,
             "reason": "no expected_output values",
             "input_type": input_type,
+            "input_types": dict(types),
+            "unreferenced_decisions": sum(
+                isinstance(payload := normalize_record({"input": _as_obj(value)})["input"], dict)
+                and "decision" in payload
+                for value in inputs
+            ),
             "has_reference": False,
         }
     failures = []
@@ -241,6 +249,8 @@ def _eval_check(df: pd.DataFrame) -> dict[str, Any]:
             "ok": False,
             "reason": failures[0]["reason"],
             "failures": failures[:_FAILURE_SAMPLES],
+            "input_type": input_type,
+            "input_types": dict(types),
             "has_reference": True,
         }
     return {
@@ -288,8 +298,10 @@ def measure_frames(frames, columns):
     types = Counter()
     semantics = Counter()
     references = 0
+    unreferenced = 0
     for df, decision_problems in frames:
         part = measure(df, decision_problems)
+        unreferenced += part["eval"].get("unreferenced_decisions", 0)
         semantics.update(part["train"].get("target_semantics", {}))
         evaluation = part["eval"]
         references += evaluation.get("reference_rows", 0)
@@ -331,7 +343,12 @@ def measure_frames(frames, columns):
         evaluation["has_reference"] = True
         evaluation["reference_rows"] = references
         if evaluation.get("reason") == "no expected_output values":
-            evaluation.update(ok=True, reason="")
+            evaluation.update(
+                ok=not unreferenced,
+                reason=f"{unreferenced} decision inputs have no expected_output"
+                if unreferenced
+                else "",
+            )
     if types:
         evaluation.update(input_types=dict(types), input_type=types.most_common(1)[0][0])
     return result

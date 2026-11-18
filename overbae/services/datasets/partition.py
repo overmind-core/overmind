@@ -24,6 +24,8 @@ _IDENTITY = {
     "origin_trace_id",
     "conversation_id",
     "_overmind_provenance",
+    # Where a document row came from is lineage, not content: repeated text is a duplicate.
+    "_overmind_evidence",
 }
 
 

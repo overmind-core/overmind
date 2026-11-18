@@ -19,7 +19,7 @@ from django.conf import settings
 from django.db.models import Q
 
 from overbae.core.errors import InputValidationError
-from overbae.models import AssistantThread, Cell, DatasetPipeline
+from overbae.models import AssistantThread, Cell, DatasetPipeline, DatasetPipelineRun
 from overbae.services import workspaces
 from overbae.services.assistant import presentation
 from overbae.services.assistant.threads import data_name
@@ -369,8 +369,11 @@ def _run_pipeline(turn: Turn, arguments) -> Outcome:
     if mode == "publish" and (source.rows or 0) > SAMPLE_ROWS:
         sample = {**run, "mode": "preview", "preview_rows": SAMPLE_ROWS}
         ok, finished = _run(turn, {**sample, "request_key": turn.key("sample")})
-        if not ok:
+        if not ok and not _empty(finished):
             return Outcome(False, {**content, "sample": finished, "error": _error(finished)})
+        # Stop lets started jobs finish; the full run has not started.
+        if not turn.alive():
+            return Outcome(False, {**content, "error": "The user stopped the conversation."})
     ok, finished = _run(turn, {**run, "mode": mode, "request_key": turn.key("run")})
     if ok:
         return Outcome(True, {**content, "run": finished})
@@ -381,8 +384,17 @@ def _run(turn: Turn, run: dict) -> tuple[bool, dict]:
     ran = _invoke(turn, "run_dataset_pipeline", run)
     if ran.isError:
         return False, ran.structuredContent
-    finished = _wait(turn, ran.structuredContent["job"])
+    receipt = ran.structuredContent["job"]
+    finished = {**_wait(turn, receipt), "id": receipt["id"]}
     return finished.get("status") == "completed", finished
+
+
+def _empty(finished: dict) -> bool:
+    """A sample whose script ran but kept none of the first rows says nothing about the
+    rest: the full run decides."""
+    run = DatasetPipelineRun.objects.filter(pk=finished.get("id")).first()
+    steps = (run.result or {}).get("steps") or [] if run else []
+    return bool(steps) and steps[-1].get("exit_code") == 0 and steps[-1].get("output_rows") == 0
 
 
 def _error(finished: dict) -> str:

@@ -18,7 +18,7 @@ from overbae.models import (
 )
 from overbae.services import workspaces
 from overbae.services.assistant import log, threads, tools, turn
-from overbae.services.datasets import lifecycle, list_activity
+from overbae.services.datasets import land, lifecycle, list_activity
 from overbae.tasks import assistant as assistant_tasks
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("assistant-turn")]
@@ -274,6 +274,25 @@ def test_a_dataset_made_with_an_intent_queues_one_first_pass_and_a_split_one_for
     (first,) = AssistantInput.objects.filter(thread__dataset_id=pair["train"]["id"])
     assert first.text.startswith(threads.SPLIT_PASS)
     assert not AssistantThread.objects.filter(dataset_id=pair["eval"]["id"]).exists()
+
+
+def test_a_first_pass_waits_through_a_failed_import_for_a_landed_source(
+    user, woken, django_capture_on_commit_callbacks
+):
+    project = make_project(member=user)
+    dataset = Dataset.objects.create(
+        project=project, name="t", intent="train", state=Dataset.State.ERROR
+    )
+    message = threads.queue_first_pass(dataset, user)
+    thread = message.thread
+    turn.run(thread.pk)
+    message.refresh_from_db()
+    assert message.state == AssistantInput.State.QUEUED and not thread.events.exists()
+
+    land.land_rows(dataset, [{"text": "a"}])
+    with django_capture_on_commit_callbacks(execute=True):
+        turn.wake_dataset(dataset.pk)
+    assert woken == [str(thread.pk)]
 
 
 def test_a_kernel_that_restarted_is_told_to_the_model(fake_llm, user, thread):

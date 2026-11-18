@@ -408,6 +408,8 @@ class DatasetCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs.get("source") and not attrs.get("brief"):
             raise serializers.ValidationError("Describe what you want to do or add source data.")
+        if attrs.get("prepare") and not attrs.get("source"):
+            raise serializers.ValidationError({"prepare": "The first pass needs source data."})
         if (attrs.get("source") or {}).get("llm_calls") and attrs.get("intent") not in (
             Dataset.Intent.TRAIN,
             Dataset.Intent.EVAL,

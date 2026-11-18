@@ -81,9 +81,9 @@ if FAIL and rows[0]["source_row"] == 8:
     raise SystemExit(1)
 seen = pathlib.Path("seen").exists()
 pathlib.Path("seen").write_text("x")
+# No final newline: each batch's last row must not join the next batch's first.
 with open(sys.argv[2], "w") as output:
-    for row in rows:
-        output.write(json.dumps({**row, "batch": len(rows), "seen": seen}) + "\\n")
+    output.write("\\n".join(json.dumps({**r, "batch": len(rows), "seen": seen}) for r in rows))
 """.replace("FAIL", str(fail_last))
     status, result, payload = run_package(
         sandbox_server, code, rows=[{"source_row": i} for i in range(11)], batch_rows=4

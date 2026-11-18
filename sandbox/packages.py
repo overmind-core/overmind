@@ -2,13 +2,13 @@
 
 import hashlib
 import json
-import math
-import sys
+import platform
 from functools import cache
 from pathlib import Path, PurePosixPath
 
 MAX_PACKAGE_BYTES = 20 * 1024**2
 MAX_OUTPUT_BYTES = 2 * 1024**3
+MAX_BATCHES = 10_000
 
 
 IO = ("jsonl", "parquet")
@@ -19,8 +19,15 @@ def runtime_id():
     """What a script can observe: its I/O contract, the interpreter, the libraries it can
     import and the runner that confines it. A change to the server leaves it unchanged."""
     root = Path(__file__).resolve().parent
-    digest = hashlib.sha256(b"overmind-sandbox-package-v2\0" + sys.version.encode() + b"\0")
-    for path in (root.parent / "uv.lock", root / "package_child.py", root / "kernel.py"):
+    # The interpreter's version, not its build string: one runtime on every host OS.
+    interpreter = f"{platform.python_implementation()} {platform.python_version()}"
+    digest = hashlib.sha256(b"overmind-sandbox-package-v3\0" + interpreter.encode() + b"\0")
+    for path in (
+        root.parent / "uv.lock",
+        root / "package_child.py",
+        root / "kernel.py",
+        root / "script_io.py",
+    ):
         digest.update(path.relative_to(root.parent).as_posix().encode() + b"\0")
         digest.update(path.read_bytes())
     return "sha256:" + digest.hexdigest()
@@ -46,6 +53,10 @@ def validate(header):
     batch_rows = header.get("batch_rows")
     if batch_rows is not None and (type(batch_rows) is not int or not 1 <= batch_rows <= 100000):
         raise ValueError("batch_rows must be between 1 and 100000.")
+    # Each batch adds one output segment length to the reply header.
+    rows = header.get("rows", 0)
+    if batch_rows and rows and -(-rows // batch_rows) > MAX_BATCHES:
+        raise ValueError(f"batch_rows must leave at most {MAX_BATCHES:,} batches.")
     bounds = {
         "seconds": (1, 1200),
         "memory_mb": (64, 4096),
@@ -100,36 +111,3 @@ def unpack(header, scratch):
             }
         )
     )
-
-
-# The column kinds the platform stores with every frame.
-MANIFEST_KEY = b"overmind.columns"
-
-
-def _decode(value, kind):
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return None
-    if kind == "json":
-        try:
-            return json.loads(value)
-        except ValueError:
-            return value
-    if kind == "datetime":
-        return value.isoformat()
-    return value
-
-
-def write_jsonl(batch, kinds: dict, destination: Path) -> None:
-    """A batch of frame rows as one JSON object per line, nested values decoded."""
-    names = batch.schema.names
-    columns = [
-        [_decode(v, kinds.get(name)) for v in batch.column(name).to_pylist()] for name in names
-    ]
-    with destination.open("w", encoding="utf-8") as output:
-        for values in zip(*columns, strict=True):
-            output.write(
-                json.dumps(
-                    dict(zip(names, values, strict=True)), ensure_ascii=False, allow_nan=False
-                )
-                + "\n"
-            )

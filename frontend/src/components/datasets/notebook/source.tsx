@@ -35,9 +35,11 @@ export function extractionStatus(spec: unknown): string | undefined {
   if (!progress) return;
   if (progress.stage === "merging") return "Adding extracted rows";
   if (progress.stage === "writing" || progress.stage === "measuring")
-    return `${progress.stage === "writing" ? "Writing" : "Measuring"} rows · ${(
-      progress.rows_done ?? 0
-    ).toLocaleString()}${progress.rows_total ? ` of ${progress.rows_total.toLocaleString()}` : ""}`;
+    return progress.rows_done == null
+      ? `${progress.stage === "writing" ? "Writing" : "Measuring"} rows`
+      : `${progress.stage === "writing" ? "Writing" : "Measuring"} rows · ${progress.rows_done.toLocaleString()}${
+          progress.rows_total ? ` of ${progress.rows_total.toLocaleString()}` : ""
+        }`;
   const action = progress.stage === "extracting" ? "Extracting text" : "Reading file";
   const count =
     progress.total && progress.total > 1

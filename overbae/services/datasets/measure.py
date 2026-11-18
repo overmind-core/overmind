@@ -6,6 +6,7 @@ import itertools
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
+import pyarrow.parquet as pq
 from django.utils import timezone
 
 from modal_shared.decisions import decision_line
@@ -58,6 +59,8 @@ def describe_frame(
             for name, found in examples.items():
                 if len(found) < EXAMPLES and not missing(value := row.get(name)):
                     text = value if isinstance(value, str) else store.json_dumps(value)
+                    # PostgreSQL JSON cannot hold NUL.
+                    text = text.replace("\x00", "\\u0000")
                     if text and text[:EXAMPLE_CHARS] not in found:
                         found.append(text[:EXAMPLE_CHARS])
             yield row
@@ -68,7 +71,14 @@ def describe_frame(
 
     def frames():
         nonlocal problems
-        for batch in itertools.batched(observed(), store.ROW_GROUP_SIZE, strict=False):
+        # One frame per stored row group: the store bounds those by rows and by bytes, so
+        # wide rows never build a gigabyte-scale frame.
+        rows = observed()
+        metadata = pq.read_metadata(path)
+        for group in range(metadata.num_row_groups):
+            batch = list(itertools.islice(rows, metadata.row_group(group).num_rows))
+            if not batch:
+                continue
             df = store.frame(batch, manifest)
             if dataset.capability_id is not None:
                 capability.append(
@@ -146,7 +156,7 @@ def frame(
     **fields,
 ) -> Cell:
     Cell.objects.filter(pk=cell.pk).update(
-        **describe_frame(dataset, path, inherited=inherited), **fields
+        **{**describe_frame(dataset, path, inherited=inherited), **fields}
     )
     cell.refresh_from_db()
     return cell

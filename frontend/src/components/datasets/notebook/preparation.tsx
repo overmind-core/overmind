@@ -20,7 +20,10 @@ export function ContaminationReport({ spec }: { spec: unknown }) {
       <Field label="Train">{report.train_rows.toLocaleString()} rows</Field>
       <Field label="Eval">{report.eval_rows.toLocaleString()} rows</Field>
       <Field label="Duplicates removed">{report.duplicates_removed.toLocaleString()}</Field>
-      <Field label="Shared across splits">
+      <Field
+        label="Exact overlap"
+        title="Exact content and group overlap between the splits; near duplicates are not checked."
+      >
         {(report.content_overlap + report.group_overlap).toLocaleString()}
       </Field>
       {report.group_by.length > 0 && (

@@ -428,7 +428,7 @@ export function NewDatasetDialog({
                 ? rows === undefined
                   ? null
                   : `${rows.toLocaleString()} ${rows === 1 ? "row" : "rows"}`
-                : canStart
+                : canStart && intent !== "split"
                   ? null
                   : readiness.hint}
             </span>

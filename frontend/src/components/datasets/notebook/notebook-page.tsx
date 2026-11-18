@@ -138,6 +138,15 @@ export function DatasetNotebook({
   const visibleIds = useMemo(() => new Set(cells.map((cell) => cell.id)), [cells]);
   const { motions, complete } = useCellMotion(nodes ? cells : undefined, visibleIds);
   const busy = isBusy(dataset);
+  // A first landing shows its stage in the source cell; added files show it here.
+  const busyText =
+    dataset?.state === "landing"
+      ? ((cells.some((cell) => cell.state === "ok")
+          ? extractionStatus(dataset.sourceSpec)
+          : undefined) ?? "Importing")
+      : dataset?.work
+        ? workText(dataset.work)
+        : "Running";
   const editable = !!dataset && !busy;
   const intent = intentOf(dataset);
 
@@ -245,6 +254,7 @@ export function DatasetNotebook({
           datasetId={owner}
           editable={editable && local}
           intent={node?.intent ?? intent}
+          intentLocked={cells.some((other) => other.frozen)}
           key={cell.id}
           member={
             node && !local
@@ -273,18 +283,15 @@ export function DatasetNotebook({
     <div className="relative flex h-full min-h-0 flex-col">
       <div className="assistant-notices pointer-events-none absolute bottom-16 z-10 max-h-48 overflow-y-auto">
         <div className="pointer-events-auto space-y-2 rounded-sm bg-card">
+          {/* Mounted while idle too, so the first status is announced. */}
+          <span className="sr-only" role="status">
+            {busy ? busyText : ""}
+          </span>
           {busy && (
             <div className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-xs">
-              <span aria-live="polite" className="flex min-w-0 items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
                 <Spinner size="sm" />
-                <span className="truncate tabular-nums">
-                  {/* A landing's stage and count show in the source cell. */}
-                  {dataset.state === "landing"
-                    ? "Importing"
-                    : dataset.work
-                      ? workText(dataset.work)
-                      : "Running"}
-                </span>
+                <span className="truncate tabular-nums">{busyText}</span>
               </span>
               <Button
                 disabled={cancel.isPending}

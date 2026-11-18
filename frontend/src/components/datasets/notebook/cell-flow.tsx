@@ -321,6 +321,11 @@ function Canvas({
     <div className="h-full min-h-0" ref={wrapper}>
       <ReactFlow<CellNode>
         aria-label="Dataset transformation flow"
+        // Cells are placed by the layout and never deleted from the canvas.
+        ariaLabelConfig={{
+          "node.a11yDescription.default": "Press enter or space to select a cell.",
+          "node.a11yDescription.keyboardDisabled": "Press enter or space to select a cell.",
+        }}
         colorMode="dark"
         deleteKeyCode={null}
         edges={visibleEdges}

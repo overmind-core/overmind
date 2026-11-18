@@ -141,7 +141,7 @@ def _validate_native_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
-                lineage=(keys for _, keys in lineage.read(checkpoint)),
+                lineage=lineage.stream(checkpoint),
             )
             result.stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"
@@ -150,6 +150,10 @@ def _validate_native_dataset(
         except ValueError as exc:
             result.valid = False
             result.errors.append(str(exc))
+        except OSError:
+            # A version from before key files writes its key file on first read.
+            result.valid = False
+            result.errors.append("The version's lineage could not be read. Retry the check.")
     return result
 
 
@@ -240,7 +244,7 @@ def validate_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
-                lineage=(keys for _, keys in lineage.read(checkpoint)),
+                lineage=lineage.stream(checkpoint),
             )
             split_stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"
@@ -249,6 +253,10 @@ def validate_dataset(
         except ValueError as exc:
             result.valid = False
             result.errors.append(str(exc))
+        except OSError:
+            # A version from before key files writes its key file on first read.
+            result.valid = False
+            result.errors.append("The version's lineage could not be read. Retry the check.")
     result.stats.update(split_stats)
     return result
 

@@ -18,7 +18,7 @@ class StatisticsUnavailableError(ValueError):
     pass
 
 
-def profile(path, manifest, *, fingerprint="", top=5):
+def profile(path, manifest, *, fingerprint="", top=5, duplicates=False):
     """The frame's column statistics from a fixed sample, and its exact duplicate rows."""
     path = Path(path).resolve()
     stat = path.stat()
@@ -31,6 +31,7 @@ def profile(path, manifest, *, fingerprint="", top=5):
                 "mtime": stat.st_mtime_ns,
                 "inode": stat.st_ino,
                 "top": top,
+                "duplicates": duplicates,
                 "sample": SAMPLE_ROWS,
                 "implementation": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 "method": "deterministic_reservoir",
@@ -67,6 +68,7 @@ def profile(path, manifest, *, fingerprint="", top=5):
                     str(path),
                     json.dumps(manifest),
                     str(top),
+                    "duplicates" if duplicates else "",
                 ],
                 capture_output=True,
                 text=True,
@@ -93,7 +95,7 @@ def profile(path, manifest, *, fingerprint="", top=5):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def compute(path, manifest, top):
+def compute(path, manifest, top, duplicates=False):
     with duckdb.connect(config={"memory_limit": "256MB", "threads": 1}) as con:
         literal = str(path).replace("'", "''")
         con.execute(f"CREATE VIEW source AS SELECT * FROM read_parquet('{literal}')")
@@ -107,13 +109,13 @@ def compute(path, manifest, top):
             for spec in manifest
             if spec["name"] != "source_row" and not spec["name"].startswith("_overmind_")
         ]
-        # Exact over every row: a duplicate the sample missed would still train twice.
-        duplicates = (
+        # Exact over every row, and only on request: the column card does not read it.
+        duplicate_rows = (
             con.execute(
                 f"SELECT count(*) - count(DISTINCT hash({', '.join(compared)})) FROM source"
             ).fetchone()[0]
-            if compared
-            else 0
+            if duplicates and compared
+            else None
         )
         result = []
         for spec in manifest:
@@ -150,8 +152,17 @@ def compute(path, manifest, top):
                 ).fetchall()
                 entry["top"] = [{"value": v, "count": int(c)} for v, c in values]
             result.append(entry)
-        return {"columns": result, "duplicate_rows": int(duplicates), "rows": int(total)}
+        return {"columns": result, "duplicate_rows": duplicate_rows, "rows": int(total)}
 
 
 if __name__ == "__main__":
-    print(json.dumps(compute(Path(sys.argv[1]), json.loads(sys.argv[2]), int(sys.argv[3]))))
+    print(
+        json.dumps(
+            compute(
+                Path(sys.argv[1]),
+                json.loads(sys.argv[2]),
+                int(sys.argv[3]),
+                duplicates=sys.argv[4] == "duplicates",
+            )
+        )
+    )

@@ -43,6 +43,8 @@ from overbae.services.datasets.pipeline_execution import Parents
 logger = logging.getLogger(__name__)
 # Seconds between row counts while a step's output is written and measured.
 ROW_REPORT_SECONDS = 2.0
+SCRATCH_BYTES = 8 * 1024**3
+SCRATCH_FREE_BYTES = 512 * 1024**2
 
 
 def digest(value):
@@ -444,6 +446,10 @@ def execute(run_id, *, script_executor=None):
         nonlocal rows_done, reported_at
         now = time.monotonic()
         if next_stage != stage or now - reported_at >= ROW_REPORT_SECONDS:
+            # One run must not fill the worker's volume for every other run on it.
+            used = sum(item.stat().st_size for item in directory.rglob("*") if item.is_file())
+            if used > SCRATCH_BYTES or shutil.disk_usage(directory).free < SCRATCH_FREE_BYTES:
+                raise ValueError("Workshop scratch capacity reached; no version was published.")
             if next_stage != stage and not progress(next_stage):
                 raise ValueError("The run stopped; no version was published.")
             rows_done, reported_at = done, now
@@ -850,7 +856,8 @@ def external_rows(records):
         yield {
             key: value
             for key, value in record.items()
-            if key not in {"_overmind_provenance", "_overmind_document_id"}
+            # Platform lineage comes from the bound parents (carry), never from the output.
+            if key not in {"_overmind_provenance", "_overmind_document_id", store.EVIDENCE}
         }
 
 
@@ -967,11 +974,10 @@ def update_dataset(dataset, **fields):
     if "name" in fields:
         lifecycle.rename(dataset, fields["name"])
     if "intent" in fields or "train_format" in fields:
-        lifecycle.set_intent(
-            dataset,
-            fields.get("intent", dataset.intent),
-            fields.get("train_format", dataset.train_format if "intent" not in fields else ""),
-        )
+        intent = fields.get("intent", dataset.intent)
+        # A format survives a request that keeps the intent train and does not name one.
+        kept = dataset.train_format if intent == Dataset.Intent.TRAIN else ""
+        lifecycle.set_intent(dataset, intent, fields.get("train_format", kept))
     if "capability" in fields:
         lifecycle.set_capability(dataset, fields["capability"])
     if "active" in fields:

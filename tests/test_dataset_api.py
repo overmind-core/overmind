@@ -278,3 +278,13 @@ def test_another_project_reads_and_writes_nothing():
     res = outsider.get("/api/datasets/", {"project": str(project.id)})
     assert res.status_code == 200 and res.data["results"] == []
     assert Dataset.objects.filter(pk=dataset.pk, name="ds").exists()
+
+
+def test_an_intent_only_patch_keeps_the_training_format():
+    project = _project()
+    client = _client(project)
+    dataset = _create(client, project)
+    url = f"/api/datasets/{dataset.id}/"
+    client.patch(url, {"intent": "train", "train_format": "decision"}, format="json")
+    assert client.patch(url, {"intent": "train"}, format="json").data["train_format"] == "decision"
+    assert client.patch(url, {"intent": "eval"}, format="json").data["train_format"] == ""

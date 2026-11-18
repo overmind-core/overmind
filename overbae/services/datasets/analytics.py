@@ -59,16 +59,13 @@ class Analytics:
         identity = (decision["question"], decision["kind"], tuple(options), semantics)
         key = self.keys.get(identity)
         if key is None:
+            # Only tracked families are cached: a frame of distinct questions stays small.
+            if len(options) > OPTION_LIMIT or len(self.families) >= FAMILY_LIMIT:
+                self.unlisted += 1
+                return
             key = self.keys[identity] = digest(
                 [decision["question"], decision["kind"], options, semantics]
             )
-        if (
-            len(options) > OPTION_LIMIT
-            or key not in self.families
-            and len(self.families) >= FAMILY_LIMIT
-        ):
-            self.unlisted += 1
-            return
         family = self.families.setdefault(
             key,
             {

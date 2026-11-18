@@ -281,6 +281,9 @@ class Cell(models.Model):
     def fit(self) -> dict[str, dict]:
         """For each use, whether this version's rows fit it and why not."""
         report = self.intent_report or {}
+        if not report:
+            unmeasured = {"ok": False, "reason": "This version has not been measured."}
+            return {use: dict(unmeasured) for use in ("sft", "decision", "eval")}
         train, evaluation = report.get("train") or {}, report.get("eval") or {}
         decision = train.get("format") == "decision"
 
