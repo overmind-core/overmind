@@ -14,7 +14,8 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
 export const AGENT_FEEDBACK_DOCS = "https://docs.overmindlab.ai/reference/agent-feedback";
-const SENT = "Never data rows, prompts, code, file contents or credentials.";
+const SENT =
+  "Agents are told to leave out data rows, prompts, code, file contents and credentials. Credentials, emails, links, paths and IP addresses are removed.";
 
 /**
  * What Connect saves: the choice the person made on the screen, or the ticked default for an
