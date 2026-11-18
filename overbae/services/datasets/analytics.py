@@ -24,6 +24,7 @@ class Analytics:
         self.input_rows = 0
         self.structured_input_rows = self.weighted_rows = 0
         self.families = {}
+        self.keys = {}
 
     def observe(self, decision, *, valid):
         self.rows += 1
@@ -43,21 +44,24 @@ class Analytics:
             if key not in self.fields and len(self.fields) >= FIELD_LIMIT:
                 self.field_overflow = True
                 continue
-            field = self.fields.setdefault(
-                key, {"present": 0, "empty": 0, "first": None, "varies": False}
-            )
+            field = self.fields.setdefault(key, {"present": 0, "empty": 0, "varies": False})
             field["present"] += 1
             if missing(value):
                 field["empty"] += 1
-            else:
-                signature = digest(value)
-                if field["first"] is None:
-                    field["first"] = signature
-                field["varies"] |= signature != field["first"]
+            elif "first" not in field:
+                field["first"] = value
+            elif not field["varies"]:
+                first = field["first"]
+                field["varies"] = type(value) is not type(first) or value != first
         semantics = decision.get("target_semantics") or "unknown"
         self.unknown += semantics == "unknown"
         options = decision["options"]
-        key = digest([decision["question"], decision["kind"], options, semantics])
+        identity = (decision["question"], decision["kind"], tuple(options), semantics)
+        key = self.keys.get(identity)
+        if key is None:
+            key = self.keys[identity] = digest(
+                [decision["question"], decision["kind"], options, semantics]
+            )
         if (
             len(options) > OPTION_LIMIT
             or key not in self.families
@@ -118,7 +122,7 @@ class Analytics:
             count = self.input_rows - field["present"] + field["empty"]
             if count:
                 missing_fields.append({"field": name[:120], "rows": count})
-            if field["first"] is not None and not field["varies"]:
+            if "first" in field and not field["varies"]:
                 constants.append(name[:120])
 
         def check(identifier, title, status, summary, metrics=None):

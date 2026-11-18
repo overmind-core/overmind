@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.django_db, pytest.mark.covers("capacity")]
 def test_missing_query_admission_backend_is_retryable_and_does_not_change_the_source(settings):
     user = make_user()
     project = make_project(member=user)
-    dataset = Dataset.objects.create(project=project, name="retained", intent="explore")
+    dataset = Dataset.objects.create(project=project, name="retained")
     land.land_rows(dataset, [{"value": 1}], user=user)
     dataset.refresh_from_db()
     _, token = APIToken.create_for_user(user, project=project)

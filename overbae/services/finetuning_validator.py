@@ -19,6 +19,7 @@ from typing import Any
 
 from modal_shared.decisions import decision_line
 from overbae.models import Cell, Dataset
+from overbae.services.datasets import lineage
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.contract import training_line
 from overbae.services.datasets.examples import normalize_record
@@ -140,6 +141,7 @@ def _validate_native_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
+                lineage=(keys for _, keys in lineage.read(checkpoint)),
             )
             result.stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"
@@ -238,6 +240,7 @@ def validate_dataset(
                 method=split_method,
                 group_by=split.get("group_by", []),
                 stratify_by=split.get("stratify_by"),
+                lineage=(keys for _, keys in lineage.read(checkpoint)),
             )
             split_stats.update(
                 train_examples=len(training), val_examples=len(validation), validation_mode="split"

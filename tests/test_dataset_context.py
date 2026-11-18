@@ -6,7 +6,7 @@ import pytest
 from conftest import import_version
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import contract, land, review, rows, store
+from overbae.services.datasets import contract, land, rows, store
 from overbae.services.datasets.context import workshop_context
 from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.profile import profile_records
@@ -79,7 +79,7 @@ def test_encoded_wire_fields_are_normalised_without_modifying_text_or_source(
     source["messages"] = json.dumps(source["messages"])
     prepared = prepare_examples(pd.DataFrame([source]), intent)
     path = tmp_path / "frame.parquet"
-    store.write_frame(path, prepared)
+    store.write_rows(path, prepared.to_dict(orient="records"))
     persisted = next(store.iter_rows(path))
     assert contract.measure(frame_of([persisted]))[intent]["ok"]
     product_row = rows.row_from_record(0, persisted)
@@ -127,7 +127,7 @@ def test_invalid_tools_fail_even_when_no_assistant_calls_them(bad_tools, frame_o
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("intent", ["train", "eval"])
-def test_replacing_existing_instructions_records_semantic_impact_and_preserves_source(intent):
+def test_replacing_existing_instructions_publishes_a_new_version_and_preserves_source(intent):
     project = Project.objects.create(name="Context", slug="context")
     dataset = Dataset.objects.create(project=project, name="Mixed tasks", intent=intent)
     records = prepare_examples(pd.DataFrame([example(), example("Apply rules")]), intent)
@@ -139,18 +139,11 @@ def test_replacing_existing_instructions_records_semantic_impact_and_preserves_s
     for row in prepared:
         transcript = row["messages"] if intent == "train" else row["input"]["messages"]
         transcript[0]["content"] = "Do everything"
-    output = import_version(dataset, prepared, name="Replace instructions")
-    assert output.review["instruction_changes"] == 2
+    import_version(dataset, prepared, name="Replace instructions")
     dataset.refresh_from_db()
     assert dataset.active_cell.id != dataset.source.id
-    assert len(workshop_context(dataset)["profiles"]["source"]["families"]) == 2
-
-
-def test_representation_changes_and_projection_do_not_look_like_scope_changes(frame_of):
-    before = pd.DataFrame([example(source_row=0, tools=json.dumps([tool()]))])
-    after = prepare_examples(before, "eval")
-    changes = review.impact(frame_of(before.to_dict("records")), frame_of(after.to_dict("records")))
-    assert changes["instruction_changes"] == 0
+    source = workshop_context(dataset)["profiles"]["source"]
+    assert source["cell"] == str(dataset.source.id) and source["columns"]
 
 
 def test_decision_profiles_count_raw_and_native_targets_and_source_families():
@@ -180,18 +173,15 @@ def test_decision_profiles_count_raw_and_native_targets_and_source_families():
 
 
 @pytest.mark.django_db
-def test_workshop_context_uses_profile_measured_for_the_frozen_frame(monkeypatch):
+def test_workshop_context_reads_the_columns_measured_at_publication(monkeypatch):
     from overbae.services.datasets import context
 
     project = Project.objects.create(name="Cached profile", slug="cached-profile")
     dataset = Dataset.objects.create(project=project, name="Cached", intent="train")
     land.land_rows(dataset, [example(), example("Second task")])
-    monkeypatch.setattr(
-        context, "profile_records", lambda *a: pytest.fail("Re-scanned immutable frame")
-    )
+    monkeypatch.setattr(store, "iter_rows", lambda *a, **k: pytest.fail("Re-scanned the frame"))
     profile = context.workshop_context(dataset)["profiles"]["source"]
-    assert profile["rows_scanned"] == 2 and len(profile["families"]) == 2
-    assert profile["fingerprint"] == dataset.source.fingerprint
+    assert profile["rows"] == 2 and profile["columns"] == dataset.source.columns
 
 
 @pytest.mark.parametrize(

@@ -49,7 +49,7 @@ def test_mcp_training_plan_keeps_task_data_and_selection_bound(mode, settings):
     user = User.objects.create_user(email=f"{mode}@example.com")
     ProjectMembership.objects.create(project=project, user=user)
     key, _ = APIToken.create_for_user(user, project=project, permission=["read", "write"])
-    dataset = Dataset.objects.create(project=project, name="Cases", intent="explore")
+    dataset = Dataset.objects.create(project=project, name="Cases")
     records = []
     for index in range(40):
         row = {"case_id": str(index), "language": "en"}

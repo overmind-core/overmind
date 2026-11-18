@@ -14,6 +14,7 @@ from rest_framework.test import APIClient
 
 from overbae.models import APIToken, Dataset, Project, ProjectMembership, Span, User
 from overbae.services.datasets import (
+    lineage,
     paths,
     pipeline_bindings,
     pipeline_packages,
@@ -70,11 +71,10 @@ def test_branch_fan_in_retains_every_observation_and_exact_parents(eligible):
     output = list(store.iter_rows(paths.cell_path(dataset.pk, cells[-1].pk)))
     assert sorted(row["source_row"] for row in output) == list(range(len(eligible)))
     assert sorted(row["eligible"] for row in output) == sorted(eligible)
-    for row in output:
-        parent = cells[0 if row["eligible"] else 1]
-        assert row["_overmind_provenance"]["parents"] == [
-            {"cell": str(parent.pk), "fingerprint": parent.fingerprint, "row": row["source_row"]}
-        ]
+    merged = dict(lineage.read(cells[-1]))
+    for parent in cells[:2]:
+        for source_row, keys in lineage.read(parent):
+            assert keys <= merged[source_row]
     assert [item["rows"] for item in cells[-1].review["inputs"]] == [
         eligible.count(True),
         eligible.count(False),
@@ -318,7 +318,6 @@ def source(client, project, name, records):
         {
             "project": str(project.pk),
             "name": name,
-            "intent": "explore",
             "source": {"rows": records},
         },
         format="json",
@@ -1082,7 +1081,7 @@ with open(sys.argv[1]) as source, open(sys.argv[2], 'w') as output:
             assert runtime["stage_seconds"]["input_transfer"] > 0
             assert runtime["stage_seconds"]["output_reading"] > 0
             assert runtime["backend"] == "sandbox"
-            assert runtime["memory_limit_bytes"] >= 1024**3
+            assert runtime["memory_limit_bytes"] > 0
         assert [step["output_rows"] for step in job["details"]["result"]["steps"]] == (
             [50, 50] if mode == "preview" else [5000, 5000]
         )

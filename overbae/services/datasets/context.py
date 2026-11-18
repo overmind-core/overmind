@@ -1,13 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
-
-from overbae.models import EvalMatrix
-from overbae.services.codebase.flow import build_capability_flow
-from overbae.services.datasets import paths, store
-from overbae.services.datasets.profile import profile_records
-
 CONSUMERS = {
     "decision_training": {
         "reads": ["decision"],
@@ -43,7 +35,8 @@ CONSUMERS = {
 }
 
 
-def workshop_context(dataset, *, measure_missing=True) -> dict:
+def workshop_context(dataset) -> dict:
+    """The consumer contracts, and the columns of the source and active versions."""
     versions = dataset.versions()
     profiles = {}
     for name, cell in (("source", dataset.source), ("active", dataset.active_cell)):
@@ -51,68 +44,10 @@ def workshop_context(dataset, *, measure_missing=True) -> dict:
             continue
         if name == "active" and profiles.get("source", {}).get("cell") == str(cell.id):
             continue
-        path = paths.cell_path(dataset.id, cell.id)
-        if not path.exists():
-            profiles[name] = {"cell": str(cell.id), "error": "Frame unavailable"}
-            continue
         profiles[name] = {
             "cell": str(cell.id),
             "version": versions.get(cell.id),
-            "fingerprint": cell.fingerprint,
-            **(
-                cell.stats.get("preparation_profile")
-                or (
-                    profile_records(store.iter_rows(path))
-                    if measure_missing
-                    else {
-                        "status": "unmeasured",
-                        "next_action": "explore_dataset",
-                        "source_cell": str(cell.id),
-                    }
-                )
-            ),
+            "rows": cell.rows,
+            "columns": cell.columns,
         }
-    return {
-        "consumers": CONSUMERS,
-        "profiles": profiles,
-        "preparation_plan": dataset.preparation_plan,
-    }
-
-
-def preparation_context(capability) -> dict:
-    if capability is None:
-        return {"capability": None, "expectations": []}
-    flow = build_capability_flow(capability)
-    metadata = capability.improvement_metadata or {}
-    card = metadata.get("capability_card") or {}
-    expectations = capability.eval_matrix.filter(enabled=True, type=EvalMatrix.Type.LLM)
-    return {
-        "capability": str(capability.id),
-        "name": capability.name,
-        "description": capability.description,
-        "decision_logic": capability.decision_logic,
-        "policy": capability.policy_markdown,
-        "output_schema": card.get("output_schema") or {},
-        **{
-            key: flow.get(key)
-            for key in (
-                "task",
-                "domain",
-                "modality",
-                "system_prompt",
-                "input_schema",
-                "expected_output",
-                "tool_spec",
-                "success_criteria",
-                "failure_modes",
-            )
-        },
-        "expectations": [
-            {"name": row.name, "expectation": row.source} for row in expectations.order_by("name")
-        ],
-    }
-
-
-def context_fingerprint(capability) -> str:
-    raw = json.dumps(preparation_context(capability), sort_keys=True, default=str)
-    return hashlib.sha256(raw.encode()).hexdigest()
+    return {"consumers": CONSUMERS, "profiles": profiles}

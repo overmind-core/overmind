@@ -5,10 +5,9 @@ import pytest
 from conftest import import_version
 
 from overbae.models import Dataset, Project
-from overbae.services.datasets import land, paths, store, use
+from overbae.services.datasets import land, lineage, paths, store, use
 from overbae.services.datasets.examples import prepare_examples
 from overbae.services.datasets.profile import profile_records
-from overbae.services.datasets.review import decision_changed
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("data-logic")]
 
@@ -33,20 +32,6 @@ def flat(index=0, **changes):
         group_id=f"case-{index}",
         **changes,
     )
-
-
-def test_flat_supervision_changes_are_visible_to_workshop_review():
-    original = flat(weight=2.5, target_semantics="posterior", target_provenance={"field": "p"})
-    for field, value in {
-        "weight": 1.0,
-        "target_semantics": "teacher_distribution",
-        "target_provenance": {"field": "teacher_p"},
-    }.items():
-        assert decision_changed(original, {**original, field: value})
-    prepared = prepare_examples(pd.DataFrame([original]), "train").iloc[0]["decision"]
-    assert prepared["weight"] == 2.5
-    assert prepared["target_semantics"] == "posterior"
-    assert prepared["target_provenance"] == {"field": "p"}
 
 
 def test_flat_semantics_cannot_hide_invalid_gold_supervision():
@@ -127,16 +112,10 @@ def test_native_preparation_keeps_empty_evidence_soft_targets_and_multiplicity(
     assert prepared[0]["decision"]["target_probabilities"] == [1 - 0.7, 0.7]
     assert prepared[0]["decision"] == prepared[1]["decision"]
     assert prepared[2]["decision"] == rows[2]["decision"]
-    original = list(store.iter_rows(paths.cell_path(ds.id, ds.source.id)))
-    for result_row, source_row in zip(prepared, original, strict=True):
-        assert all(
-            result_row["_overmind_provenance"][k] == v
-            for k, v in source_row["_overmind_provenance"].items()
-        )
-        if "parents" in result_row["_overmind_provenance"]:
-            assert (
-                result_row["_overmind_provenance"]["parents"][0]["row"] == source_row["source_row"]
-            )
+    for (_, result_keys), (_, source_keys) in zip(
+        lineage.read(cell), lineage.read(ds.source), strict=True
+    ):
+        assert source_keys <= result_keys
     assert cell.intent_report[intent]["ok"]
     if intent == "eval":
         for row in prepared:

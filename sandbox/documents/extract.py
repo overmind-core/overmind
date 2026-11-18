@@ -195,7 +195,7 @@ def extract(
             "regions": row.pop("regions", []),
         }
         row.update(_overmind_document_id=identity, source_name=filename)
-        row["_overmind_provenance"] = {
+        row["_overmind_evidence"] = {
             "evidence": [evidence],
             "extraction": row.pop("extraction", {"method": method, "version": parser_version}),
         }

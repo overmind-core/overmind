@@ -51,7 +51,6 @@ def test_pipeline_conflicts_and_project_isolation_preserve_the_source():
         {
             "project": str(project.pk),
             "name": "Source",
-            "intent": "explore",
             "source": {"rows": [{"text": "evidence"}]},
         },
         format="json",
@@ -101,7 +100,6 @@ def test_failed_external_lineage_and_cancelled_runs_never_publish():
         {
             "project": str(project.pk),
             "name": "Bound source",
-            "intent": "explore",
             "source": {"rows": [{"text": "Source evidence"}]},
         },
         format="json",
@@ -195,7 +193,6 @@ def test_external_output_records_attribution_and_preserves_frozen_inputs():
     dataset.refresh_from_db()
     output = dataset.active_cell
     assert output.review["execution"] == "external_attributed"
-    assert output.quality_report == {}
     assert not next(store.iter_rows(paths.cell_path(dataset.pk, output.pk))).get("human_reviewed")
     assert repeated["run"]["provenance"] == "Local script revision abc123"
     assert (
@@ -221,7 +218,6 @@ def test_large_external_artifact_is_project_scoped_and_retained():
         {
             "project": str(project.pk),
             "name": "Evidence",
-            "intent": "explore",
             "source": {"rows": [{"text": "Original evidence"}]},
         },
         format="json",
@@ -234,7 +230,6 @@ def test_large_external_artifact_is_project_scoped_and_retained():
         {
             "project": str(project.pk),
             "name": "External artifact",
-            "intent": "explore",
             "source": {
                 "rows": [
                     {"text": f"Derived {i}", "_overmind_parent_rows": [identity]}
@@ -312,7 +307,6 @@ def test_queued_source_cancellation_releases_the_dataset_without_publishing():
             {
                 "project": str(project.pk),
                 "name": "Queued source",
-                "intent": "explore",
                 "source": {"rows": [{"text": "Evidence"}]},
             },
             format="json",

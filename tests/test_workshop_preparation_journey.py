@@ -1,17 +1,14 @@
 import pytest
 from mcp_fixtures import call_tool
 
-from overbae.models import Activity, DatasetPipelineRun
+from overbae.models import DatasetPipelineRun
 from overbae.services import operational_progress
 from overbae.services.datasets import (
     attachments,
     exploration,
     land,
     partition_plans,
-    paths,
     pipeline_runner,
-    review,
-    store,
     workbench,
 )
 from overbae.services.mcp.catalog import CATALOG
@@ -99,81 +96,6 @@ def test_partition_canvas_replaces_corrected_process_and_preserves_pinned_inputs
     assert final["details"]["output_cell"] == str(selected.pk)
 
 
-@pytest.mark.parametrize("fail_last", [False, True])
-def test_explicit_row_batches_publish_atomically_and_preserve_order(fail_last):
-    project, client, context = workspace()
-    dataset = source(client, project, "Batched input", [{"value": i} for i in range(11)])
-    original = dataset.active_cell
-    recipe = call(
-        context,
-        "save_dataset_pipeline",
-        name="Batched decisions",
-        request_key="batch-recipe",
-        package=retained_package(
-            project,
-            context.user,
-            [
-                decision_step(
-                    batch_rows=4,
-                    consumer="decision_train",
-                    checks={"preserve_rows": True, "min_rows": 11},
-                )
-            ],
-        ),
-    )["pipeline"]
-    receipt = call(
-        context,
-        "run_dataset_pipeline",
-        dataset=str(dataset.pk),
-        pipeline=recipe["id"],
-        source_cell=str(original.pk),
-        source_fingerprint=original.fingerprint,
-        request_key="batch-run",
-    )
-    task_activity = Activity.objects.get(task_id=receipt["run"]["id"])
-    inventory = client.get("/api/datasets/", {"project": str(project.pk)}).data["results"]
-    active_work = next(item["work"] for item in inventory if item["id"] == str(dataset.pk))
-    assert active_work["label"] == "Transforming"
-    assert active_work["status"] == "queued"
-    assert active_work["actor_kind"] == task_activity.actor_kind
-    seen = []
-
-    def executor(run, index, path, directory, step, files, progress):
-        task_activity.refresh_from_db()
-        assert task_activity.status == "running"
-        receipt = run.result["steps"][index]
-        assert "exit_code" not in receipt
-        assert "provider_execution" not in receipt
-        receipt["exit_code"] = 0
-        receipt["provider_execution"] = f"batch-{len(seen) + 1}"
-        records = list(store.iter_rows(path))
-        seen.append([row["value"] for row in records])
-        if fail_last and len(seen) == 3:
-            raise ValueError("Last batch failed")
-        return execute_fixture(run, index, path, directory, step, files, progress)
-
-    workbench.execute(receipt["run"]["id"], script_executor=executor)
-    run = DatasetPipelineRun.objects.get(pk=receipt["run"]["id"])
-    dataset.refresh_from_db()
-    task_activity.refresh_from_db()
-    assert task_activity.status == ("failed" if fail_last else "completed")
-    assert Activity.objects.filter(task_id=str(run.pk)).count() == 1
-    inventory = client.get("/api/datasets/", {"project": str(project.pk)}).data["results"]
-    assert next(item["work"] for item in inventory if item["id"] == str(dataset.pk)) is None
-    assert seen == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10]]
-    if fail_last:
-        assert run.state == "failed"
-        assert dataset.active_cell.pk == original.pk
-        assert dataset.cells.count() == 1
-    else:
-        assert run.state == "completed", run.error
-        assert [
-            row["decision"]["state"]
-            for row in store.iter_rows(paths.cell_path(dataset.pk, dataset.active_cell.pk))
-        ] == [str(i) for i in range(11)]
-        assert run.result["steps"][0]["batches"]["completed"] == 3
-
-
 def test_worker_redelivery_never_replays_claimed_work_and_expiry_preserves_source():
     project, client, context = workspace()
     dataset = source(client, project, "Interrupted source", [{"value": 1}])
@@ -227,7 +149,7 @@ def test_worker_redelivery_never_replays_claimed_work_and_expiry_preserves_sourc
     assert repeated["run"]["state"] == "failed"
 
 
-def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_progress(monkeypatch):
+def test_runner_heartbeat_survives_long_measurement_without_claiming_progress(monkeypatch):
     project, client, context = workspace()
     dataset = source(client, project, "Long measurement", [{"value": 1}])
     recipe = call(
@@ -247,10 +169,10 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
         request_key="measurement-run",
     )
     run_id = submitted["run"]["id"]
-    measure = review.impact_files
+    measure = workbench.measure.describe_frame
     observed = []
 
-    def slow_measurement(before, after, **kwargs):
+    def slow_measurement(*args, **kwargs):
         previous = workbench.runner_status()["last_heartbeat_at"]
         progress = operational_progress.latest(project.pk, "dataset_pipeline", run_id)
         pipeline_runner.heartbeat()
@@ -262,11 +184,11 @@ def test_runner_heartbeat_survives_long_impact_measurement_without_claiming_prog
             operational_progress.latest(project.pk, "dataset_pipeline", run_id)["last_progress_at"]
             == progress["last_progress_at"]
         )
-        return measure(before, after, **kwargs)
+        return measure(*args, **kwargs)
 
     pipeline_runner.heartbeat()
     monkeypatch.setattr(pipeline_runner, "execute_script", execute_fixture)
-    monkeypatch.setattr(review, "impact_files", slow_measurement)
+    monkeypatch.setattr(workbench.measure, "describe_frame", slow_measurement)
     from overbae.tasks.datasets import execute_pipeline
 
     execute_pipeline(str(run_id))

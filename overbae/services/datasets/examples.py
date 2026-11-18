@@ -28,12 +28,14 @@ def decode(value):
 
 
 def normalize_record(record: dict) -> dict:
-    row = copy.deepcopy(record)
+    """``record`` with JSON-encoded transcript fields decoded; ``record`` is not changed."""
+    row = dict(record)
     for key in ("messages", "tools"):
         if key in row:
             row[key] = None if missing(row[key]) else decode(row[key])
     payload = decode(row.get("input"))
     if isinstance(payload, dict) and "messages" in payload:
+        payload = dict(payload)
         for key in ("messages", "tools"):
             if key in payload:
                 payload[key] = None if missing(payload[key]) else decode(payload[key])

@@ -24,7 +24,7 @@ A customer's coding agent over MCP and the Console assistant own interpretation,
 
 ## Sources and landing
 
-- A dataset may start from a written `brief` with no source or capability. Purpose is explicit (`train`, `eval`, `explore`) and otherwise stays pending; when no capability is given, REST and MCP landing assign the top-ranked capability if its score is above zero; CLI transfers never infer one.
+- A dataset may start from a written `brief` with no source or capability. Intent is explicit (`train` with `train_format` `sft` or `decision`, or `eval`) and otherwise stays pending; when no capability is given, REST and MCP landing assign the top-ranked capability if its score is above zero; CLI transfers never infer one.
 - The first source attaches to the draft; later uploads append versions. Original bytes, extraction metadata and row evidence are retained.
 - CLI uploads use `DatasetTransfer`: a project request key binds SHA-256, byte count and destination. Up to 100 ordered files and 2 GiB per transfer; file order is part of identity; one batch becomes one source cell or one version. Repeat the identical command after an interruption. `get_job(kind=dataset_transfer)` reads byte and publication state; `dataset_run` reports landing. An explicit `--json-rows-field` selects a top-level JSON row array and is recorded.
 - Local upload, export and checkpoint download authenticate separately from MCP. Without an explicit or repository key they use the address-bound account connection at `$XDG_CONFIG_HOME/overmind/connection.toml` (mode `0600`); repository keys are endpoint-bound too. `overmind connection check --project-id PROJECT --json` verifies MCP and transfer access from the invoking environment; MCP connectivity alone is not readiness. Verify the installed CLI from the workspace and from a repository-free directory.
@@ -49,7 +49,8 @@ A customer's coding agent over MCP and the Console assistant own interpretation,
 - Cells carry receipt-backed `transformation` attribution (run, revision, package checksum, entrypoint). External imports and unrecorded history never claim platform execution. Every retained package file is inspectable with checksum-verified pagination.
 - Recovery is lease expiry: the `reap_stuck_runs` beat task calls `workbench.expire_runs`, which fails runs past their lease without publishing partial output or replaying scripts.
 - Failure or cancellation leaves source and consumer versions unchanged. Cancellation prevents publication; it does not claim to stop a running calculation.
-- `batch_rows` (1–100,000) splits a row-independent step into separate sandbox runs (`pipeline_execution.py`); global sorting, grouping, splitting and deduplication must not batch.
+- A step is one sandbox request. `batch_rows` (1–100,000) runs a row-independent script once per batch, each in a fresh process, one after another under one memory reservation (`sandbox/execute.py`); global sorting, grouping, splitting and deduplication must not batch. The worker streams the stored Parquet; the sandbox writes JSONL for the script unless the step declares `io: parquet`. A full sandbox makes the request wait inside the run lease.
+- `packages.runtime_id()` hashes only what a script observes (the I/O contract, the interpreter, `uv.lock`, `package_child.py`, `kernel.py`). Changing the sandbox server leaves saved packages runnable.
 - Bindings start paused, pin a revision, and rebuild full source snapshots; checkpoint and cells commit together.
 - Keep each step's logic in its visible entrypoint; helpers hold reusable utilities, not an opaque dispatcher. Change a recipe through a new revision and run; never rewrite historical scripts.
 - `save_dataset_pipeline(dataset=..., package=...)` associates the script with the dataset's preparation; retrying an older request never resets a newer association.
@@ -62,15 +63,17 @@ External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-sco
 ## Storage and queries
 
 - Frames are Parquet at `MEDIA_ROOT/datasets/<dataset>/cells/<cell>.parquet`. Cell IDs bind versions; version labels are derived. Source identity is `source_row`, not display position.
+- Lineage lives in a key file beside each frame (`<cell>.keys.parquet`, `lineage.py`): every row's `source_row` and its contamination keys, its own and its parents'. Leakage counts, partitions and validation splits read it; key strings must stay byte-identical across releases. Frames written before key files carry lineage in `_overmind_provenance`, and their key file is derived from it on first read. Document rows keep page regions and extraction method in `_overmind_evidence`.
+- A frame is measured once, in one pass (`measure.describe_frame`): format fit for SFT training, decision training and evaluation, the training stats, decision analytics, column null rates and examples, and the key file. A dataset's intent is train (with `train_format` sft or decision), eval, or pending; publication sets it from a declared final consumer when it is pending.
 - A column becomes JSON when it mixes kinds, holds an integer outside signed 64-bit range, or mixes floats with an integer a float cannot represent exactly (`store.py`). Shared pandas readers must not coerce these values again.
 - `query_dataset` caps output at 100 rows and 32 KiB and returns `query_result_too_large` without clipping; a configurable ten-second deadline returns `query_timeout`. Redis admission bounds MCP SQL globally and per project; busy admission returns a retryable error with the cell and retry delay.
 - `overmind dataset export --source SHA256` downloads retained originals with byte verification.
 
 ## Checks and consumers
 
-- The platform measures format and change impact. Semantic quality stays unmeasured without attributable evidence; technical compatibility is not semantic correctness. Do not add a universal quality gate.
+- The platform measures format. Semantic quality stays unmeasured without attributable evidence; technical compatibility is not semantic correctness. Do not add a universal quality gate.
 - Preserve probability targets, option order, weights, duplicates, blank states and declared groups. Never argmax soft targets or invent distributions from means. Decision recipes publish a typed `decision` with tied maxima and supervision metadata.
-- The native agent declares target meaning per family from evidence in retained code and output metadata; unknown meaning stays unknown. Historical preparation plans are not a writable API. Profiles and impact checks keep declared supervision metadata, so a changed weight or semantic declaration shows in review.
+- The native agent declares target meaning per family from evidence in retained code and output metadata; unknown meaning stays unknown. Analytics keep declared supervision metadata.
 - Publication measures analytics on the full rows, bound to the exact fingerprint and rule version. They are advisory; `explore_dataset` backfills older cells, and reads never scan.
 - Raw tables have no inferred feature or target mapping; column names such as `label` or `score` never select columns.
 - Column contracts use `object` for a nested decision. A final step's `consumer` (`decision_train`, `decision_eval`, `chat_train`, `model_eval`) validates targets in preview and publication.
@@ -79,19 +82,19 @@ External results arrive inline (at most 2,000 rows or 4 MiB) or as a project-sco
 
 ## Console canvas
 
-The landing page opens on the assistant composer (`components/assistant/assistant-composer.tsx`): files or attached datasets plus one sentence start a thread on the working dataset. The project dataset table is a sheet below it; a row opens its cells on a grid-snapped flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. Positions persist in the browser and never change execution. The folder button opens project-scoped dataset navigation. The assistant chat is a bar at the bottom of the canvas that opens into a resizable left panel (`components/assistant/`). There is no funding control, cell search or cell-selector strip.
+The landing page opens on the assistant composer (`components/assistant/assistant-composer.tsx`): files or attached datasets plus one sentence start a thread on the working dataset. The project dataset table is a sheet below it; a row opens its cells on a flow canvas. Cells stay full-size at scale 1; zoom and Fit view change only the camera. Steps run downward and sibling branches share a horizontal layer. The layered layout owns every position and reruns when a cell's height changes, so cells are not draggable. The folder button opens project-scoped dataset navigation. The assistant chat is a bar at the bottom of the canvas that opens into a resizable left panel (`components/assistant/`). There is no funding control, cell search or cell-selector strip.
 
-The dataset inventory exposes current work from retained pipeline and transfer receipts.
-Uploads attached to a dataset report measured bytes; transformations and previews stay
-indeterminate unless measured progress exists. The table retains the published version
-and row count during work, and shows no row count before a version is published.
-
-The inventory Role column and filter derive roles from completed partition memberships
-and recorded training/evaluation consumers, not intent or names. Source datasets
-include every role produced by their completed partition plans. Multiple roles remain
-visible. Raw-only published datasets without a consumer role show Source; other
-unassigned datasets show an em dash. MCP retains its existing partition and consumer
-facts; this Console grouping adds no MCP operation or intent mutation.
+The inventory columns are Name, Role, Capability, Datapoints, Source and Updated
+(`components/datasets/datasets-table.tsx`); every value is one chip shape or an em dash.
+Current work (`list_activity.current_work`) shows beside the name only while busy or
+failed: upload bytes, landing rows written then measured, and a run's stage with the
+sandbox's counted batches or rows written and measured; anything else stays
+indeterminate. Role is the intent (Train · SFT, Train · Decision, Train, Eval); a dot marks
+a dataset that completed partitions or recorded consumers used (`roles`), and its tooltip
+names the uses; with no intent, a used dataset (often a split's source) shows its uses in
+muted text ("Train + Eval"). Datapoints are compact above 10,000. Source is one chip for
+files (first name and `+N`), pasted rows, inline rows, traces, LLM calls, a derived version
+or a split.
 
 The Console inventory groups datasets by `workspace_id`, resolved from completed
 partition and exploration lineage. One source workspace row combines output roles

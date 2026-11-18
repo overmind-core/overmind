@@ -96,6 +96,7 @@ def validate_manifest(manifest, files, *, require_runtime=True):
             "checks",
             "batch_rows",
             "consumer",
+            "io",
         }:
             raise error(
                 "Each step needs a name, entrypoint, column contracts and optional row checks."
@@ -117,6 +118,8 @@ def validate_manifest(manifest, files, *, require_runtime=True):
             raise error(
                 "batch_rows must be an integer between 1 and 100000. Only declare it for independent row transformations."
             )
+        if step.get("io", "jsonl") not in {"jsonl", "parquet"}:
+            raise error("io is jsonl (the default) or parquet.")
         if step.get("consumer") not in {
             None,
             "decision_train",

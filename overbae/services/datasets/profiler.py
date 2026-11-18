@@ -234,13 +234,6 @@ def dataset_has_closed_form_reference(dataset, *, sample_size: int = _SAMPLE_SIZ
     return seen > 0 and hits / seen >= 0.6
 
 
-def closed_form_reference_for(*, capability=None, dataset=None) -> bool:
-    # Capability is accepted so card-sync can pass it; a sibling eval set
-    # must not rewrite this dataset's evaluator.
-    _ = capability
-    return dataset_has_closed_form_reference(dataset)
-
-
 def enqueue_refresh(dataset_id) -> None:
     # Lazy: overbae.tasks imports this module through the recommendation services.
     from overbae.tasks import refresh_dataset_context  # noqa: PLC0415

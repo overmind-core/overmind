@@ -8,14 +8,21 @@ def _get(row, key, default=None):
 
 
 def split_datapoint_ids(
-    datapoints, val_ratio: float, *, method="random", group_by=(), stratify_by=None
+    datapoints, val_ratio: float, *, method="random", group_by=(), stratify_by=None, lineage=None
 ):
+    """Training and validation ids, keeping rows that share content, lineage or a declared
+    group on one side. ``lineage`` holds each row's lineage keys, in datapoint order."""
     if not 0 < val_ratio < 1 or method not in {"ordered", "random"}:
         raise ValueError(
             "Choose a validation ratio between zero and one and a random or ordered split."
         )
     records = []
-    for row in datapoints:
+    keyed = (
+        zip(datapoints, lineage, strict=True)
+        if lineage is not None
+        else ((row, frozenset()) for row in datapoints)
+    )
+    for row, inherited in keyed:
         record = {
             **(_get(row, "extra", {}) or {}),
             "source_row": _get(row, "id"),
@@ -23,7 +30,7 @@ def split_datapoint_ids(
             "expected_output": _get(row, "expected_output"),
             "source_trace_id": _get(row, "source_trace_id", ""),
         }
-        keys = contamination_keys(record, group_by)
+        keys = contamination_keys(record, group_by) | inherited
         records.append(
             {
                 "source_row": record["source_row"],

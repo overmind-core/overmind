@@ -333,64 +333,7 @@ def frozen_dataset(project, rows=None, *, capability=None, name="ds", contract=N
     )
     land.land_rows(dataset, [_lift_messages(r) for r in rows], user=user)
     dataset.refresh_from_db()
-    review_fixture(dataset)
     return dataset
-
-
-def plan_fixture(dataset, cell=None):
-    from overbae.models import Cell
-
-    cell = cell or dataset.active_cell
-    plan = {
-        "id": str(cell.pk),
-        "specification": {
-            "checks": [
-                {
-                    "name": name,
-                    "category": category,
-                    "method": "deterministic",
-                    "question": "Controlled fixture",
-                }
-                for name, category in {
-                    "task_alignment": "semantic",
-                    "input_evidence": "preservation",
-                    "answer_support": "semantic",
-                    "output_schema": "technical",
-                }.items()
-            ]
-        },
-    }
-    cell.preparation_plan = plan
-    Cell.objects.filter(pk=cell.pk).update(preparation_plan=plan)
-    return plan
-
-
-def review_fixture(dataset, cell=None, *, failed=None, unknown=None):
-    from overbae.models import Cell
-    from overbae.services.datasets.context import context_fingerprint
-
-    cell = cell or dataset.active_cell
-    plan = plan_fixture(dataset, cell)
-    # Consumer tests load a recorded review; the platform no longer runs semantic judges.
-    report = {
-        "fingerprint": cell.fingerprint,
-        "context_fingerprint": context_fingerprint(dataset.capability),
-        "intent": dataset.intent,
-        "plan_id": plan["id"],
-        "audit": {"method": "row_results"},
-        "checks": [
-            {
-                "name": name,
-                "result": "fail" if name == failed else "unknown" if name == unknown else "pass",
-                "evidence": "Known test fixture.",
-                "rows_checked": cell.rows,
-            }
-            for name in ("task_alignment", "input_evidence", "answer_support", "output_schema")
-        ],
-    }
-    cell.quality_report = report
-    Cell.objects.filter(pk=cell.pk).update(quality_report=report)
-    return report
 
 
 def import_version(dataset, records, *, name="Native transformation"):
@@ -405,9 +348,7 @@ def import_version(dataset, records, *, name="Native transformation"):
         from overbae.models import Dataset
         from overbae.services.datasets import land
 
-        artifact = Dataset.objects.create(
-            project=dataset.project, name="Native artifact", intent="explore"
-        )
+        artifact = Dataset.objects.create(project=dataset.project, name="Native artifact")
         land.land_rows(artifact, records)
         imported = {
             "artifact_cell": artifact.source.pk,

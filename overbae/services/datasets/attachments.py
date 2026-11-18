@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import itertools
 import shutil
-from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.utils import timezone
 
 from overbae.models import Cell, Dataset
-from overbae.services.datasets import measure, operations, paths, store
+from overbae.services.datasets import lineage, measure, operations, paths, store
 from overbae.services.datasets.lifecycle import DatasetError
-from overbae.services.datasets.partition import preserve_lineage
 
 if TYPE_CHECKING:
     from overbae.services.datasets.land import Landing
@@ -30,7 +29,9 @@ def merge(dataset: Dataset, cell: Cell, previous: Cell, output: Path) -> Path:
         raise DatasetError("Row identities changed before this import. Add the files again.")
 
     def rows():
-        for index, row in enumerate(chain(store.iter_rows(before), store.iter_rows(batch_path))):
+        for index, row in enumerate(
+            itertools.chain(store.iter_rows(before), store.iter_rows(batch_path))
+        ):
             if index % 1000 == 0:
                 operations.check_cancelled(dataset.id)
             yield row
@@ -60,7 +61,6 @@ def commit(dataset: Dataset, landing: Landing, *, user=None) -> Cell:
                 operations.check_cancelled(dataset.id)
             row = dict(original)
             row[store.SOURCE_ROW] = next_row + offset
-            row["_overmind_provenance"] = preserve_lineage(row)
             yield row
 
     sources = {item["id"]: item for item in dataset.source_spec.get("sources", [])}
@@ -101,5 +101,14 @@ def commit(dataset: Dataset, landing: Landing, *, user=None) -> Cell:
         updated_at=timezone.now(),
     )
     dataset.refresh_from_db()
-    measure.frame(dataset, cell, output, input_fingerprint=previous.fingerprint, seconds=0.0)
+    measure.frame(
+        dataset,
+        cell,
+        output,
+        inherited=itertools.chain(
+            (keys for _, keys in lineage.read(previous)), itertools.repeat(lineage.NONE)
+        ),
+        input_fingerprint=previous.fingerprint,
+        seconds=0.0,
+    )
     return cell

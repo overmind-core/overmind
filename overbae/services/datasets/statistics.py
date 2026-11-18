@@ -19,6 +19,7 @@ class StatisticsUnavailableError(ValueError):
 
 
 def profile(path, manifest, *, fingerprint="", top=5):
+    """The frame's column statistics from a fixed sample, and its exact duplicate rows."""
     path = Path(path).resolve()
     stat = path.stat()
     identity = hashlib.sha256(
@@ -101,6 +102,19 @@ def compute(path, manifest, top):
             f"CREATE TEMP TABLE sample AS SELECT * FROM source USING SAMPLE reservoir({SAMPLE_ROWS} ROWS) REPEATABLE (73491)"
         )
         n = con.execute("SELECT count(*) FROM sample").fetchone()[0]
+        compared = [
+            '"' + spec["name"].replace('"', '""') + '"'
+            for spec in manifest
+            if spec["name"] != "source_row" and not spec["name"].startswith("_overmind_")
+        ]
+        # Exact over every row: a duplicate the sample missed would still train twice.
+        duplicates = (
+            con.execute(
+                f"SELECT count(*) - count(DISTINCT hash({', '.join(compared)})) FROM source"
+            ).fetchone()[0]
+            if compared
+            else 0
+        )
         result = []
         for spec in manifest:
             name, kind = spec["name"], spec["type"]
@@ -136,7 +150,7 @@ def compute(path, manifest, top):
                 ).fetchall()
                 entry["top"] = [{"value": v, "count": int(c)} for v, c in values]
             result.append(entry)
-        return result
+        return {"columns": result, "duplicate_rows": int(duplicates), "rows": int(total)}
 
 
 if __name__ == "__main__":

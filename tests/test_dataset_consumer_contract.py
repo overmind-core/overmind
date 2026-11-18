@@ -8,10 +8,12 @@ from factories import make_matrix_row
 
 from overbae.innermind import generation, runs
 from overbae.models import Capability, Dataset, EvalRun, Project
-from overbae.services.datasets import alignment, contract, land, paths, review, rows, store, use
+from overbae.services.datasets import alignment, contract, land, lineage, paths, rows, store, use
 from overbae.services.datasets.examples import prepare_examples
-from overbae.services.datasets.partition import contamination_keys, split_rows
+from overbae.services.datasets.partition import contamination_keys
+from overbae.services.datasets.pipeline_execution import Parents, carry
 from overbae.services.datasets.sampling import select_rows
+from overbae.services.finetuning_split import split_datapoint_ids
 
 pytestmark = pytest.mark.covers("data-logic")
 
@@ -143,27 +145,28 @@ def test_prepared_request_keeps_prior_assistant_context_on_repeat_preparation():
 
 
 def test_lineage_survives_projection_and_keeps_related_rows_in_one_split(tmp_path):
-    original = pd.DataFrame([{**example(i), "source_row": i} for i in range(6)])
-    shaped = pd.DataFrame(
-        [{"source_row": i, "input": f"rephrased {i}", "expected_output": "yes"} for i in range(6)]
-    )
-    original_rows = original.to_dict(orient="records")
-    before, after, destination = (
-        tmp_path / f"{name}.parquet" for name in ("before", "after", "output")
-    )
+    original_rows = [{**example(i), "source_row": i} for i in range(6)]
+    before, after = tmp_path / "before.parquet", tmp_path / "after.parquet"
     store.write_rows(before, original_rows)
-    store.write_rows(after, shaped.to_dict(orient="records"))
-    review.preserve_file_provenance(before, after, destination)
-    shaped_rows = list(store.iter_rows(destination))
-    assert all(
-        contamination_keys(a) & contamination_keys(b)
-        for a, b in zip(original_rows, shaped_rows, strict=True)
+    lineage.write(before, ((row["source_row"], lineage.own_keys(row)) for row in original_rows))
+    shaped = [
+        {"source_row": i, "input": f"rephrased {i}", "expected_output": "yes"} for i in range(6)
+    ]
+    inherited = []
+    parents = Parents([(before, lineage.load(before))], ())
+    store.write_rows(after, carry(shaped, parents, inherited))
+    shaped_keys = [
+        lineage.own_keys(row) | parent
+        for row, parent in zip(store.iter_rows(after), inherited, strict=True)
+    ]
+    original_keys = [lineage.own_keys(row) for row in original_rows]
+    assert all(a <= b for a, b in zip(original_keys, shaped_keys, strict=True))
+    datapoints = [{"id": f"o{i}", "extra": row} for i, row in enumerate(original_rows)]
+    datapoints += [{"id": f"s{i}", "extra": row} for i, row in enumerate(shaped)]
+    training, evaluation, _ = split_datapoint_ids(
+        datapoints, 0.3, lineage=original_keys + shaped_keys
     )
-    training, evaluation, _ = split_rows(
-        original_rows + shaped_rows, eval_percent=30, position="random"
-    )
-    train_keys = set().union(*(contamination_keys(row) for row in training))
-    assert not any(train_keys & contamination_keys(row) for row in evaluation)
+    assert {i[1:] for i in training}.isdisjoint({i[1:] for i in evaluation})
 
 
 def test_identifier_only_inputs_warn_without_failing_the_format_contract():
@@ -172,14 +175,6 @@ def test_identifier_only_inputs_warn_without_failing_the_format_contract():
     )
     assert report["eval"]["ok"]
     assert "without evidence" in report["eval"]["warnings"][0]
-
-
-def test_projecting_domain_evidence_to_an_identifier_is_a_reviewed_change():
-    before = pd.DataFrame(
-        [{"source_row": 0, "input": {"case_id": "one", "documents": ["evidence"]}}]
-    )
-    after = pd.DataFrame([{"source_row": 0, "input": {"case_id": "one"}}])
-    assert review.impact(before, after)["input_evidence_removed"] == 1
 
 
 def test_model_transcript_is_not_validated_as_an_application_entry_point():
@@ -218,8 +213,7 @@ def test_mechanical_preparation_and_context_loss_record_impact_and_keep_source()
     lost_rows = list(store.iter_rows(paths.cell_path(dataset.pk, active.pk)))
     for row in lost_rows:
         row["input"] = {"onboarding_packet_id": "case-1"}
-    lost = import_version(dataset, lost_rows, name="Identifier projection")
-    assert lost.review["input_evidence_removed"] == 1
+    import_version(dataset, lost_rows, name="Identifier projection")
     assert use.use(dataset, "eval", cell=active).id == active.id
     assert store.head(paths.cell_path(dataset.id, active.id), 1)[0]["input"]["messages"]
 

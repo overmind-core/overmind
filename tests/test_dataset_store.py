@@ -147,17 +147,6 @@ def test_query_is_sandboxed(table):
         store.query("set enable_external_access = true", limit=None, t=table)
 
 
-def test_write_frame_round_trips_and_hashes(table, tmp_path):
-    df = store.read_frame(table).assign(n=[1, 2, 3])
-    out = tmp_path / "p.parquet"
-    manifest = store.write_frame(out, df)
-    assert {c["name"]: c["type"] for c in manifest}["n"] == "integer"
-    assert store.row_count(out) == 3
-    first = store.file_sha256(out)
-    store.write_frame(out, df)
-    assert store.file_sha256(out) == first
-
-
 def test_csv_numbers_become_numeric(tmp_path):
     path = tmp_path / "rows.csv"
     path.write_text("name,count,score,note\nA,1,1.5,x\nB,2,2.5,\n", encoding="utf-8")

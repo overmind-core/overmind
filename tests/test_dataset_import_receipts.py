@@ -201,13 +201,13 @@ def test_stale_import_cannot_write_or_publish_landing_progress(imported_source, 
     DatasetImport.objects.filter(pk=run.pk).update(owner=uuid.uuid4())
     published = []
     monkeypatch.setattr(imports.events, "publish", lambda *args: published.append(args))
-    imports._read_parts(stale, [dataset])
+    imports._read_parts(stale, [dataset], imports._landing_progress(stale, [dataset]))
     dataset.refresh_from_db()
     assert dataset.source_spec == original_spec
     assert published == []
 
     run.refresh_from_db()
-    imports._read_parts(run, [dataset])
+    imports._read_parts(run, [dataset], imports._landing_progress(run, [dataset]))
     dataset.refresh_from_db()
     assert dataset.source_spec["landing_progress"]["completed"] == 1
     assert published
