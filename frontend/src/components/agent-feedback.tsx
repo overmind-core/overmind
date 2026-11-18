@@ -14,8 +14,6 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
 export const AGENT_FEEDBACK_DOCS = "https://docs.overmindlab.ai/reference/agent-feedback";
-const SENT =
-  "Agents are told to leave out data rows, prompts, code, file contents and credentials. Known credential formats, emails, web links, home-directory paths and IPv4 addresses are removed.";
 
 /**
  * What Connect saves: the choice the person made on the screen, or the ticked default when the
@@ -71,10 +69,11 @@ export function AgentFeedbackCheckbox({
       />
       <div className="space-y-1">
         <label className={tone === "auth" ? "text-auth-text" : undefined} htmlFor={id}>
-          Let my coding agents report friction with Overmind
+          Let my coding agents send feedback to Overmind
         </label>
         <p className={cn("text-xs leading-relaxed", muted)}>
-          {SENT} <DocsLink />
+          Feedback is about Overmind itself, never your code, prompts or data. Turn off anytime in
+          Settings. <DocsLink />
         </p>
       </div>
     </div>
@@ -94,8 +93,8 @@ export function AgentFeedbackNotice() {
     >
       <Icon.agent aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <p className="min-w-0 flex-1">
-        Coding agents you connect can report friction with Overmind to the Overmind team.{" "}
-        <span className="text-muted-foreground">{SENT}</span>{" "}
+        Your coding agents can send feedback to Overmind when something fails, is unclear or is
+        missing. <span className="text-muted-foreground">Never your code, prompts or data.</span>{" "}
         <DocsLink className="text-muted-foreground" />
       </p>
       <div className="flex shrink-0 gap-2">
@@ -127,8 +126,8 @@ export function AgentFeedbackSetting() {
           Agent feedback
         </label>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Coding agents you connect report friction with Overmind: failed or contradictory
-          operations, unclear guidance and missing capabilities. {SENT} <DocsLink />
+          Your coding agents send feedback about Overmind itself, never your code, prompts or data.{" "}
+          <DocsLink />
         </p>
         <p className="text-xs text-muted-foreground">
           {decidedAt ? (
