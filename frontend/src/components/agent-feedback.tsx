@@ -10,16 +10,27 @@ import { Icon } from "@/components/ui/icons";
 import { Switch } from "@/components/ui/switch";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useOnboardingStatus } from "@/hooks/use-query";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
 export const AGENT_FEEDBACK_DOCS = "https://docs.overmindlab.ai/reference/agent-feedback";
 const SENT = "Never data rows, prompts, code, file contents or credentials.";
+
+/**
+ * What Connect saves: the choice the person made on the screen, or the ticked default for an
+ * account that has none. An untouched box never overwrites a stored or still-loading choice.
+ */
+export function choiceToRecord(touched: boolean | null, stored: boolean | null | undefined) {
+  if (touched !== null) return touched === stored ? null : touched;
+  return stored === null ? true : null;
+}
 
 export function useAgentFeedbackChoice() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (agentFeedback: boolean) =>
       apiClient.auth.authMePartialUpdate({ patchedUserPreferencesRequest: { agentFeedback } }),
+    onError: (e) => notify.error(e, "Couldn't save your agent feedback choice"),
     onSuccess: (user) => client.setQueryData(["auth-me"], user),
   });
 }

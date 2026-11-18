@@ -1512,7 +1512,7 @@ class FeedbackViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
             user=self.request.user,
             project=project,
             kind=data["kind"],
-            area=data["area"],
+            area=data.get("area", Feedback.Area.OTHER),
             message=data["message"].strip(),
             page=data.get("page", ""),
         )

@@ -39,8 +39,8 @@ def _definition(**overrides) -> ToolDefinition:
     return ToolDefinition(**values)
 
 
-def _context(permission: str) -> MCPContext:
-    user = User(email="mcp-catalog@example.com")
+def _context(permission: str, agent_feedback: bool | None = None) -> MCPContext:
+    user = User(email="mcp-catalog@example.com", agent_feedback=agent_feedback)
     project = Project(name="MCP", slug="mcp-catalog")
     token = APIToken(scope={"scope": "project", "permission": [permission]})
     return MCPContext(user=user, token=token, project=project)
@@ -107,3 +107,6 @@ async def test_unexpected_failure_is_logged_but_not_exposed_to_the_client(caplog
     assert "MCP tool read_state failed" in caplog.text
     assert "private database diagnostic" in caplog.text
     assert "user data" not in caplog.text
+    assert result.structuredContent["error"]["next_actions"] == []
+    reporting = await catalog.call("read_state", {"query": "ok"}, _context("read", True))
+    assert reporting.structuredContent["error"]["next_actions"] == ["submit_feedback"]

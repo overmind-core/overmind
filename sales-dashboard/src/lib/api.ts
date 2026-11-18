@@ -59,7 +59,7 @@ export type Overview = Cached & {
   spend_by_service: Record<string, string>;
 };
 
-export type Activation = {
+export type Activation = Cached & {
   steps: { step: string; users: number }[];
   median_hours_to_first_span: number | null;
 };
@@ -207,7 +207,7 @@ export async function overwatchGet<T>(
     | `feedback/${string}`,
   params: Record<string, string | number | undefined>,
   token = getToken()
-): Promise<T & Cached> {
+): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) query.set(key, String(value));

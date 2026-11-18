@@ -19,12 +19,14 @@ Area = Literal[
     "billing",
     "other",
 ]
-# A catalog tool, an overmind:// resource, or an `overmind` CLI command without arguments.
-ACTION = r"^([a-z][a-z0-9_]{0,63}|overmind://[A-Za-z0-9_\-./{}]{1,120}|overmind( [a-z][a-z-]{0,30}){1,4})$"
+# An overmind:// resource with an optional identifier query, e.g. project/current?project_id=ID.
+RESOURCE = r"overmind://[A-Za-z0-9_\-./{}]{1,120}(\?[A-Za-z0-9_\-.=&]{1,200})?"
+# A catalog tool, a resource, or an `overmind` CLI command without arguments.
+ACTION = rf"^([a-z][a-z0-9_]{{0,63}}|{RESOURCE}|overmind( [a-z][a-z-]{{0,30}}){{1,4}})$"
 
 
 class TrailStep(MCPModel):
-    action: str = Field(pattern=ACTION, max_length=140)
+    action: str = Field(pattern=ACTION, max_length=340)
     result: Literal["ok", "error", "unexpected", "no_progress"]
     error_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,63}$")
     attempts: int = Field(default=1, ge=1, le=50)
@@ -57,7 +59,7 @@ class SubmitFeedbackInput(MCPModel):
     observed: str | None = Field(default=None, max_length=500)
     suggestion: str | None = Field(default=None, max_length=500)
     trail: list[TrailStep] = Field(default_factory=list, max_length=30)
-    resources: list[Annotated[str, Field(pattern=r"^overmind://\S{1,500}$")]] = Field(
+    resources: list[Annotated[str, Field(pattern=rf"^{RESOURCE}$")]] = Field(
         default_factory=list, max_length=10
     )
     tool_calls: int | None = Field(default=None, ge=0, le=10_000)

@@ -43,6 +43,18 @@ _DESTRUCTIVE_TOOLS = frozenset({"cancel_dataset", "delete_eval_matrix_row"})
 _READ_CREDENTIAL_WRITES = frozenset({"submit_feedback"})
 # Listed only for a person who allowed their coding agents to report friction.
 _AGENT_FEEDBACK_TOOLS = frozenset({"submit_feedback"})
+_REPORTABLE_ERRORS = frozenset({"internal_error", "invalid_output"})
+
+
+def _server_failure(error: MCPError, context: MCPContext) -> types.CallToolResult:
+    """A server failure points a caller who allowed agent reports at submit_feedback."""
+    if error.data.code in _REPORTABLE_ERRORS and agent_reports_allowed(context.user):
+        error.data = error.data.model_copy(
+            update={"next_actions": [*error.data.next_actions, "submit_feedback"]}
+        )
+    return error_result(error)
+
+
 _SCHEMA_NOISE_KEYS = frozenset({"default", "discriminator", "title"})
 _KNOWN_SCOPES = frozenset(
     {
@@ -275,7 +287,7 @@ class ToolCatalog:
                 result = await result
             output = entry.definition.output_model.model_validate(result)
         except MCPError as error:
-            failure = error_result(error)
+            failure = _server_failure(error, context)
             if receipt and error.data.retryable:
                 await sync_to_async(mutations.release, thread_sensitive=True)(receipt)
             elif receipt:
@@ -286,14 +298,16 @@ class ToolCatalog:
         except ValidationError:
             if receipt:
                 await sync_to_async(mutations.mark_unknown, thread_sensitive=True)(receipt)
-            return error_result(MCPError("invalid_output", "The tool returned an invalid result."))
+            return _server_failure(
+                MCPError("invalid_output", "The tool returned an invalid result."), context
+            )
         except Exception:
             if receipt:
                 await sync_to_async(mutations.mark_unknown, thread_sensitive=True)(receipt)
             logger.exception(
                 "MCP tool %s failed for project %s", name, getattr(context.project, "id", None)
             )
-            return error_result(internal_error())
+            return _server_failure(internal_error(), context)
 
         structured = output.model_dump(mode="json", by_alias=True)
 

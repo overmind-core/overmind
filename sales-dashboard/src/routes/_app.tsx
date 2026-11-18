@@ -88,7 +88,7 @@ function Shell() {
                 aria-pressed={value === days}
                 key={value}
                 onClick={() =>
-                  void navigate({ search: (prev) => ({ ...prev, days: value }), to: "." })
+                  void navigate({ search: (prev) => ({ ...prev, days: value, page: undefined }), to: "." })
                 }
                 size="sm"
                 variant={value === days ? "default" : "secondary"}

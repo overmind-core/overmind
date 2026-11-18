@@ -109,8 +109,6 @@ _NEXT_ACTIONS = {
     "dataset_busy": ["inspect_dataset", "get_job"],
     "insufficient_credits": ["get_credit_balance"],
     "deployment_not_ready": ["get_job"],
-    "internal_error": ["submit_feedback"],
-    "invalid_output": ["submit_feedback"],
 }
 
 

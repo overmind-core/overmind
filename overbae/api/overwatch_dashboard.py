@@ -9,7 +9,6 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError
-from django.db.models import Count, OuterRef, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -348,19 +347,6 @@ class FeedbackFilterSerializer(serializers.Serializer):
     kind = serializers.ChoiceField(choices=Feedback.Kind.choices, required=False)
 
 
-def _feedback_rows():
-    same_problem = Feedback.objects.filter(
-        fingerprint=OuterRef("fingerprint"),
-        created_at__gte=OuterRef("created_at") - feedback_service.SEEN_WINDOW,
-        created_at__lte=OuterRef("created_at"),
-    )
-    return Feedback.objects.select_related("user").annotate(
-        seen=Subquery(
-            same_problem.order_by().values("fingerprint").annotate(n=Count("id")).values("n")[:1]
-        )
-    )
-
-
 def _fresh(response: Response) -> Response:
     response["Cache-Control"] = "private, no-store"
     response["Referrer-Policy"] = "no-referrer"
@@ -376,7 +362,7 @@ class FeedbackListView(OverwatchView, generics.ListAPIView):
         filters = FeedbackFilterSerializer(data=self.request.query_params)
         filters.is_valid(raise_exception=True)
         return (
-            _feedback_rows()
+            feedback_service.reports_with_seen()
             .filter(created_at__gte=_since(self.request), **filters.validated_data)
             .order_by("-created_at")
         )
@@ -388,7 +374,7 @@ class FeedbackListView(OverwatchView, generics.ListAPIView):
 @extend_schema(exclude=True)
 class FeedbackDetailView(OverwatchView, APIView):
     def get(self, request, pk):
-        feedback = get_object_or_404(_feedback_rows(), pk=pk)
+        feedback = get_object_or_404(feedback_service.reports_with_seen(), pk=pk)
         feedback.server_trail = (
             overwatch_insights.mcp_calls_before(
                 feedback.user.clerk_user_id if feedback.user else "", feedback.created_at

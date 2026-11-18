@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count, OuterRef, Subquery
 from django.utils import timezone
 
 from overbae.models import Feedback, Project, User
@@ -118,7 +119,10 @@ def record_agent_report(
         ),
     }
     with transaction.atomic():
-        existing = Feedback.objects.select_for_update().filter(pk=report_id).first()
+        # One account's reports run one at a time: a retried report_id and the hourly count
+        # both read rows the other request may be creating.
+        User.objects.select_for_update().filter(pk=user.pk).first()
+        existing = Feedback.objects.filter(pk=report_id).first()
         if existing is not None:
             if existing.user_id != user.pk or existing.source != Feedback.Source.AGENT:
                 raise FeedbackError(
@@ -158,6 +162,20 @@ def seen(feedback: Feedback) -> int:
         created_at__gte=feedback.created_at - SEEN_WINDOW,
         created_at__lte=feedback.created_at,
     ).count()
+
+
+def reports_with_seen():
+    """Feedback annotated with `seen`, the same problem's reports in the week up to each one."""
+    same_problem = Feedback.objects.filter(
+        fingerprint=OuterRef("fingerprint"),
+        created_at__gte=OuterRef("created_at") - SEEN_WINDOW,
+        created_at__lte=OuterRef("created_at"),
+    )
+    return Feedback.objects.select_related("user").annotate(
+        seen=Subquery(
+            same_problem.order_by().values("fingerprint").annotate(n=Count("id")).values("n")[:1]
+        )
+    )
 
 
 def posted_recently(feedback: Feedback) -> bool:

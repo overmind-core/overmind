@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import api from "@/client";
-import { AgentFeedbackCheckbox } from "@/components/agent-feedback";
+import { AgentFeedbackCheckbox, choiceToRecord } from "@/components/agent-feedback";
 import { ConnectionPanel, ConnectionScene, connectionHeading } from "@/components/connection-scene";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -35,10 +35,10 @@ function AuthorizeConnection() {
   const reports = agentFeedback ?? me.data?.agentFeedback ?? true;
   const decision = useMutation({
     mutationFn: async (approve: boolean) => {
-      // Connecting records the account's agent feedback choice shown on this screen.
-      if (approve && me.data && reports !== me.data.agentFeedback)
+      const record = choiceToRecord(agentFeedback, me.data?.agentFeedback);
+      if (approve && record !== null)
         await api.auth.authMePartialUpdate({
-          patchedUserPreferencesRequest: { agentFeedback: reports },
+          patchedUserPreferencesRequest: { agentFeedback: record },
         });
       return api.mcpOauth.mcpOauthConsentCreate({
         consentDecisionRequest: { approve, request: request ?? "" },

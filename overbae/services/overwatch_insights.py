@@ -183,13 +183,15 @@ def mcp_calls_before(distinct_id: str, until: datetime) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", distinct_id or ""):
         return {"available": False, "reason": "This account has no analytics identity."}
     start = until - timedelta(minutes=TRAIL_MINUTES)
+    # HogQL compares whole seconds here; round the end up so calls in the report's second stay in.
+    end = until.replace(microsecond=0) + timedelta(seconds=1)
     stamp = "%Y-%m-%d %H:%M:%S"
     query = (
         "SELECT timestamp, properties.$mcp_tool_name, toBool(properties.$mcp_is_error), "
         "properties.error_code FROM events WHERE event = '$mcp_tool_call' "
         f"AND distinct_id = '{distinct_id}' "
         f"AND timestamp >= toDateTime('{start.strftime(stamp)}', 'UTC') "
-        f"AND timestamp <= toDateTime('{until.strftime(stamp)}', 'UTC') "
+        f"AND timestamp < toDateTime('{end.strftime(stamp)}', 'UTC') "
         f"ORDER BY timestamp LIMIT {TRAIL_LIMIT}"
     )
     try:

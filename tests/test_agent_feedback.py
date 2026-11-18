@@ -136,6 +136,24 @@ def test_a_resent_report_updates_it_and_a_repeated_problem_posts_once(slack):
 
 
 @pytest.mark.covers("mcp-surface")
+def test_trails_name_resources_with_queries_and_refuse_free_text():
+    context = reporting()
+    current = f"overmind://project/current?project_id={uuid.uuid4()}"
+    named = call_tool(
+        "submit_feedback",
+        report(trail=[{"action": current, "result": "ok"}], resources=[current]),
+        context,
+    )
+    leaky = call_tool(
+        "submit_feedback", report(resources=["overmind://datasets/alice@acme.com"]), context
+    )
+
+    assert not named.isError, named.structuredContent
+    assert Feedback.objects.get().detail["trail"][0]["action"] == current
+    assert leaky.structuredContent["error"]["code"] == "invalid_input"
+
+
+@pytest.mark.covers("mcp-surface")
 def test_reports_per_hour_are_bounded():
     context = reporting()
     Feedback.objects.bulk_create(
@@ -194,8 +212,14 @@ def test_console_feedback_keeps_only_the_sender_project(slack):
         )
         assert response.status_code == 201
 
+    without_area = api.post(
+        "/api/feedback/", {"kind": "failure", "message": "Upload failed"}, format="json"
+    )
+
+    assert without_area.status_code == 201
     rows = Feedback.objects.order_by("created_at")
-    assert [row.project_id for row in rows] == [own.pk, None]
+    assert [row.project_id for row in rows] == [own.pk, None, None]
+    assert rows[2].area == "other"
     assert rows[0].title == "Show the row count"
     assert "person@example.com" not in json.dumps([call.json for call in slack.calls])
 
