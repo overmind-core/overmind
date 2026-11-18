@@ -34,6 +34,7 @@ import {
   workText,
 } from "@/hooks/use-datasets";
 import { useGuestGate } from "@/hooks/use-guest-gate";
+import type { WorkspaceDataset } from "@/lib/dataset-workspaces";
 import { parseDrfOrdering } from "@/lib/drf-ordering";
 import { ResolvedStatusBadge, resolveStatus } from "@/lib/job-status";
 import { cn } from "@/lib/utils";
@@ -366,7 +367,11 @@ function getColumns(opts: {
             <span className="truncate font-mono">
               {fromUses
                 ? USES.filter(([use]) => row.original.roles.includes(use as never))
-                    .map(([, short]) => short)
+                    .map(([use, short]) => {
+                      // The training half of a split names its format: "Train · SFT + Eval".
+                      const format = (row.original as WorkspaceDataset).useFormat;
+                      return use === "training" && format ? intentLabel("train", format) : short;
+                    })
                     .join(" + ")
                 : ROLE_LABEL[role]}
             </span>

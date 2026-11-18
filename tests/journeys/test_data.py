@@ -258,11 +258,19 @@ def keep_the_brief_when_the_cli_attaches_data(
     )
     console.goto(f"/datasets/{dataset}?projectId={project}")
     console.sees("Retry rows")
-    console._browser.call(
-        lambda: console._page.get_by_role("searchbox", name="Search rows", exact=True).fill(
-            "Refund order 0"
-        )
-    )
+
+    # The searched page must fail while the routes are still blocked; if its request went
+    # out after unroute it would succeed and leave no Retry rows button to press.
+    def search_fails():
+        with console._page.expect_event(
+            "requestfailed", predicate=lambda request: "search=Refund" in request.url
+        ):
+            console._page.get_by_role("searchbox", name="Search rows", exact=True).fill(
+                "Refund order 0"
+            )
+
+    console._browser.call(search_fails)
+    console.sees("Retry rows")
     console.save_evidence("dataset-rows-retry")
     console._browser.call(lambda: console._page.unroute("**/api/datasets/*/rows/**"))
     console.press("Retry rows")

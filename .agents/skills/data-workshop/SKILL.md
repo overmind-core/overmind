@@ -91,7 +91,8 @@ failed: upload bytes, landing rows written then measured, and a run's stage with
 sandbox's counted batches or rows written and measured; anything else stays
 indeterminate. Role is the intent (Train · SFT, Train · Decision, Train, Eval); its tooltip
 names the uses that completed partitions or recorded consumers made (`roles`). With no
-intent, a used dataset (often a split's source) shows its uses ("Train + Eval"). Datapoints are compact above 10,000. Source is one chip for
+intent, a used dataset (often a split's source) shows its uses, with the training
+member's format ("Train · SFT + Eval"). Datapoints are compact above 10,000. Source is one chip for
 files (first name and `+N`), pasted rows, inline rows, traces, LLM calls, a derived version
 or a split.
 
