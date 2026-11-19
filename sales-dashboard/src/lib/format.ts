@@ -56,3 +56,9 @@ export const MILESTONES = [
 
 export const milestoneLabel = (key: string) =>
   MILESTONES.find((milestone) => milestone.step === key)?.label ?? humanize(key);
+
+export const SEVERITY_VARIANT: Record<string, "error" | "warning" | "neutral"> = {
+  blocked: "error",
+  degraded: "warning",
+  minor: "neutral",
+};

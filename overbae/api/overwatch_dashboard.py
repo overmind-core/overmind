@@ -19,6 +19,8 @@ from rest_framework.views import APIView
 
 from overbae.api.config import PageNumberPagination
 from overbae.api.ordering import TableOrderingFilter
+from overbae.models import Feedback
+from overbae.services import feedback as feedback_service
 from overbae.services import overwatch_insights, user_insights
 
 ACTIVE_DAYS = 7
@@ -307,3 +309,77 @@ class UsersView(OverwatchView, generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         return _cached(request, lambda: super(UsersView, self).list(request).data)
+
+
+class FeedbackRowSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    created_at = serializers.DateTimeField()
+    source = serializers.CharField()
+    kind = serializers.CharField()
+    area = serializers.CharField()
+    severity = serializers.CharField()
+    outcome = serializers.CharField()
+    title = serializers.CharField()
+    user_id = serializers.IntegerField(allow_null=True)
+    user_email = serializers.EmailField(source="user.email", allow_null=True, default=None)
+    project_id = serializers.UUIDField(allow_null=True)
+    client = serializers.SerializerMethodField()
+    seen = serializers.IntegerField()
+
+    def get_client(self, feedback) -> str:
+        environment = feedback.environment or {}
+        return (
+            environment.get("reported", {}).get("harness")
+            or environment.get("observed", {}).get("client")
+            or ""
+        )
+
+
+class FeedbackDetailSerializer(FeedbackRowSerializer):
+    message = serializers.CharField()
+    detail = serializers.DictField()
+    environment = serializers.DictField()
+    server_trail = serializers.DictField()
+
+
+class FeedbackFilterSerializer(serializers.Serializer):
+    source = serializers.ChoiceField(choices=Feedback.Source.choices, required=False)
+    kind = serializers.ChoiceField(choices=Feedback.Kind.choices, required=False)
+
+
+def _fresh(response: Response) -> Response:
+    response["Cache-Control"] = "private, no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@extend_schema(exclude=True)
+class FeedbackListView(OverwatchView, generics.ListAPIView):
+    serializer_class = FeedbackRowSerializer
+    pagination_class = PageNumberPagination
+
+    def get_queryset(self):
+        filters = FeedbackFilterSerializer(data=self.request.query_params)
+        filters.is_valid(raise_exception=True)
+        return (
+            feedback_service.reports_with_seen()
+            .filter(created_at__gte=_since(self.request), **filters.validated_data)
+            .order_by("-created_at")
+        )
+
+    def list(self, request, *args, **kwargs):
+        return _fresh(super().list(request, *args, **kwargs))
+
+
+@extend_schema(exclude=True)
+class FeedbackDetailView(OverwatchView, APIView):
+    def get(self, request, pk):
+        feedback = get_object_or_404(feedback_service.reports_with_seen(), pk=pk)
+        feedback.server_trail = (
+            overwatch_insights.mcp_calls_before(
+                feedback.user.clerk_user_id if feedback.user else "", feedback.created_at
+            )
+            if feedback.source == Feedback.Source.AGENT
+            else {"available": False, "reason": "Console feedback has no tool calls."}
+        )
+        return _fresh(Response(FeedbackDetailSerializer(feedback).data))

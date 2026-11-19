@@ -1073,9 +1073,13 @@ class TraceDetailSerializer(serializers.Serializer):
 
 
 class FeedbackCreateSerializer(serializers.ModelSerializer):
+    project = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+    page = serializers.CharField(required=False, allow_blank=True, max_length=200, write_only=True)
+    message = serializers.CharField(max_length=5000)
+
     class Meta:
         model = Feedback
-        fields = ["id", "category", "feedback", "created_at"]
+        fields = ["id", "kind", "area", "message", "project", "page", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 

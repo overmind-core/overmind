@@ -25,6 +25,7 @@ import type {
   LocalSessionRequest,
   PaginatedAPITokenMetadataList,
   PatchedUserOnboardingRequest,
+  PatchedUserPreferencesRequest,
   PublicTokenRefresh,
   PublicTokenRefreshRequest,
   TokenObtainPair,
@@ -53,6 +54,8 @@ import {
     PaginatedAPITokenMetadataListToJSON,
     PatchedUserOnboardingRequestFromJSON,
     PatchedUserOnboardingRequestToJSON,
+    PatchedUserPreferencesRequestFromJSON,
+    PatchedUserPreferencesRequestToJSON,
     PublicTokenRefreshFromJSON,
     PublicTokenRefreshToJSON,
     PublicTokenRefreshRequestFromJSON,
@@ -88,6 +91,10 @@ export interface AuthGuestClaimCreateRequest {
 
 export interface AuthLocalCreateRequest {
     localSessionRequest: LocalSessionRequest;
+}
+
+export interface AuthMePartialUpdateRequest {
+    patchedUserPreferencesRequest?: PatchedUserPreferencesRequest;
 }
 
 export interface AuthOnboardingPartialUpdateRequest {
@@ -487,6 +494,60 @@ export class AuthApi extends runtime.BaseAPI {
      */
     async authLocalCreate(requestParameters: AuthLocalCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AuthTokensResponse> {
         const response = await this.authLocalCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Records whether the user\'s coding agents may send friction reports.
+     * Update account preferences
+     */
+    async authMePartialUpdateRaw(requestParameters: AuthMePartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UserMe>> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("ClerkBearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("BearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/auth/me/`;
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedUserPreferencesRequestToJSON(requestParameters['patchedUserPreferencesRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UserMeFromJSON(jsonValue));
+    }
+
+    /**
+     * Records whether the user\'s coding agents may send friction reports.
+     * Update account preferences
+     */
+    async authMePartialUpdate(requestParameters: AuthMePartialUpdateRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UserMe> {
+        const response = await this.authMePartialUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

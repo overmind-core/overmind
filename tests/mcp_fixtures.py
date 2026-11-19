@@ -28,6 +28,7 @@ EXPECTED_TOOL_NAMES = {
     "list_objects",
     "get_project_overview",
     "report_onboarding_progress",
+    "submit_feedback",
     "save_training_plan",
     "deploy_finetune",
     "list_dedicated_gpus",

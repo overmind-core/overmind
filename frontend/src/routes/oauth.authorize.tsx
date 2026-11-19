@@ -1,16 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import api from "@/client";
+import { AgentFeedbackCheckbox, choiceToRecord } from "@/components/agent-feedback";
 import { ConnectionPanel, ConnectionScene, connectionHeading } from "@/components/connection-scene";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState, Spinner } from "@/components/ui/spinner";
 import { useAuthContext } from "@/contexts/auth-context";
+import { useOnboardingStatus } from "@/hooks/use-query";
 
 export const Route = createFileRoute("/oauth/authorize")({
   component: AuthorizeConnection,
@@ -28,11 +30,25 @@ function AuthorizeConnection() {
     queryKey: ["mcp-consent", request],
     retry: false,
   });
+  const me = useOnboardingStatus(ready);
+  const [agentFeedback, setAgentFeedback] = useState<boolean | null>(null);
+  const reports = agentFeedback ?? me.data?.agentFeedback ?? true;
   const decision = useMutation({
-    mutationFn: (approve: boolean) =>
-      api.mcpOauth.mcpOauthConsentCreate({
+    mutationFn: async (approve: boolean) => {
+      if (approve) {
+        // The untouched default reads the account's value fresh: another session may have chosen.
+        const current =
+          agentFeedback === null ? (await me.refetch()).data?.agentFeedback : undefined;
+        const record = choiceToRecord(agentFeedback, current);
+        if (record !== null)
+          await api.auth.authMePartialUpdate({
+            patchedUserPreferencesRequest: { agentFeedback: record },
+          });
+      }
+      return api.mcpOauth.mcpOauthConsentCreate({
         consentDecisionRequest: { approve, request: request ?? "" },
-      }),
+      });
+    },
     onSuccess: (result) => window.location.assign(result.redirectUrl),
   });
 
@@ -81,10 +97,23 @@ function AuthorizeConnection() {
               </ul>
               <p className="text-muted-foreground">Access continues until revoked.</p>
             </div>
+            <div className="-mx-5 border-t border-border px-5 pt-4 sm:-mx-7 sm:px-7">
+              <AgentFeedbackCheckbox checked={reports} onCheckedChange={setAgentFeedback} />
+            </div>
             <div className="-mx-5 space-y-1 border-t border-border px-5 pt-4 text-xs leading-relaxed sm:-mx-7 sm:px-7">
               <p className="text-muted-foreground">Return address</p>
               <p className="break-all">{details.data.redirectUri}</p>
             </div>
+            {me.isError ? (
+              <Alert variant="destructive">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Account details did not load.</span>
+                  <Button onClick={() => void me.refetch()} size="sm" variant="secondary">
+                    Retry
+                  </Button>
+                </div>
+              </Alert>
+            ) : null}
             {decision.isError ? (
               <Alert variant="destructive">
                 The connection could not be completed. Start again from your MCP client.
@@ -99,7 +128,11 @@ function AuthorizeConnection() {
               >
                 Cancel
               </Button>
-              <Button disabled={decision.isPending} onClick={() => decision.mutate(true)} size="lg">
+              <Button
+                disabled={decision.isPending || !me.data}
+                onClick={() => decision.mutate(true)}
+                size="lg"
+              >
                 {decision.isPending ? <Spinner /> : null}Connect
               </Button>
             </div>

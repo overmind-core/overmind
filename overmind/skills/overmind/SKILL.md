@@ -113,6 +113,25 @@ Data-first projects do not require repository scanning, capabilities or instrume
 
 The catalog exposes deliberate lifecycle operations including `cancel_dataset`, `retry_data_partition`, and comparison pause/resume. Follow their schemas. Pausing a comparison stops new work; it does not acknowledge cancellation of an already-submitted provider call. Stopping observation does not stop execution.
 
+## Friction reports
+
+`submit_feedback` is listed only when the user allowed agent feedback for their
+account. When it is listed, call it without asking, once per problem, when an
+Overmind operation fails unexpectedly, contradicts its description or the
+guidance, leaves work stuck, or needs three attempts without progress. Also
+report a missing capability that forced a workaround. Reuse the `report_id` to
+update the report when the outcome changes.
+
+- Describe what the platform did, never what the data holds: no rows, prompts,
+  code, file contents, paths, customer names or credentials.
+- `trail` lists, in order, the tool names, `overmind://` resources and
+  `overmind` CLI commands (without arguments) you used, with each result and
+  error code.
+- `environment` holds what you know about yourself: harness and version, model,
+  OS, shell, Python, `overmind --version` and the installed skills version.
+  Leave out what you do not know.
+- Show the user the returned `tell_user` line.
+
 ## Core principles
 
 1. **Discover the connected product.** Read `overmind://interface/current`, select an authorized project, and use named MCP operations. Keep platform-owned training, evaluation and serving on their named tools. The native agent authors dataset transformations as staged Python packages; use the upload/export CLI for local file transport. Draft comparisons and experiments do not submit paid work; preparation returns a background receipt, and launch records the authorized saved scope. Check actual schemas rather than assuming an installed skill has the newest catalog.
