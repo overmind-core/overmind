@@ -40,6 +40,8 @@ MCP `run_inference` and REST `POST /api/deployed-models/{id}/inference/` (chat o
 
 `DeployedModel.inference_contract` separates chat from typed probability serving. Native deployments pin the serving release, recorded training GPU and context, and the verified artifact identity. READY requires a real probability prediction. There is no chat-gateway registration or implicit activation. Output keeps the original option order.
 
+A SageMaker fine-tune has no shared pool. Its final and checkpoint evals call `sagemaker://` on the deployment endpoint, and that endpoint is deleted once those evals are terminal.
+
 ## Operational receipts
 
 `services/operational_progress.py` stores `OperationalRun` attempts and append-only `OperationalEvent`s for preparation, training, deployment, activation and inference. Background controllers copy provider events (`provider_progress.py`); status reads never call a worker. MCP `inspect_operation` and `overmind://operations/{id}` page them. Shared-pool events never prove tenant-adapter readiness. Missing telemetry, cursor backlog and dropped publications stay explicit. New worker instrumentation needs a new pinned release and a Modal deployment before its events exist.

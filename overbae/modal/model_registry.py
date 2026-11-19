@@ -115,8 +115,8 @@ def min_sft_context_length(backend: str) -> int | None:
 
 
 def _catalog_backend(backend: str | None) -> str | None:
-    """models.json has no ``modal`` rows — Modal trains the Baseten catalog."""
-    return "baseten" if backend == "modal" else backend
+    """models.json has no ``modal`` or ``sagemaker`` rows — they train the Baseten catalog."""
+    return "baseten" if backend in ("modal", "sagemaker") else backend
 
 
 def _finetune_entry(model_id: str, *, backend: str | None = None) -> dict[str, Any] | None:

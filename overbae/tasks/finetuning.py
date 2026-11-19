@@ -390,6 +390,20 @@ def _persist_snapshot_progress(job, snap, *, tick_evals: bool) -> None:
         )
 
 
+def _drop_sagemaker_run(job, *, keep_final: bool) -> None:
+    if getattr(job, "provider", "") != "sagemaker":
+        return
+    run_id = (getattr(job, "remote_job_id", "") or "").split(":", 1)[0]
+    if not run_id:
+        return
+    from overbae.sagemaker.s3_store import delete_run
+
+    try:
+        delete_run(run_id, keep_final=keep_final)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not delete SageMaker run prefix %s", run_id)
+
+
 def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     from overbae.models import FinetuningJob
 
@@ -456,6 +470,7 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         logger.exception("Failed to queue inference deployment for job %s — continuing", job.id)
     _enqueue_baseten_cost_sync(job)
+    _drop_sagemaker_run(job, keep_final=True)
     return {"status": "deploying", "job_id": remote}
 
 
@@ -497,14 +512,15 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
             job.baseline_model = incumbent
 
     runner = get_runner(job=job)
+    runtime = (job.requested_configuration or {}).get("runtime")
     backend = (
-        "modal"
-        if (job.requested_configuration or {}).get("runtime")
+        runtime.get("backend", "modal")
+        if isinstance(runtime, dict) and runtime
         else getattr(settings, "FINETUNING_BACKEND", "baseten")
     )
-    # Baseten and Modal are self-hosted-script backends whose train.py reads an
+    # Baseten, Modal and SageMaker are self-hosted-script backends whose train.py reads an
     # optional val.jsonl; Together needs its own separate eval dataset API.
-    supports_validation = backend in {"baseten", "modal"}
+    supports_validation = backend in {"baseten", "modal", "sagemaker"}
 
     # An existing remote id means this is a re-drive — skip submission, go to polling.
     existing_remote_id = _remote_id(job)
@@ -517,10 +533,11 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
                 "together": FinetuningJob.Provider.TOGETHER_AI,
                 "baseten": FinetuningJob.Provider.BASETEN,
                 "modal": FinetuningJob.Provider.MODAL,
+                "sagemaker": FinetuningJob.Provider.SAGEMAKER,
             }.get(backend, FinetuningJob.Provider.BASETEN)
             FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
             job.provider = provider
-            if backend == "modal":
+            if backend in {"modal", "sagemaker"}:
                 newly_preparing = job.status != FinetuningJob.Status.PREPARING
                 if newly_preparing:
                     _transition(
@@ -777,6 +794,7 @@ def observe_finetuning_job(job) -> dict[str, Any]:
         if job.status != FinetuningJob.Status.CANCELLED:
             _transition(job, FinetuningJob.Status.CANCELLED, message="Fine-tuning cancelled")
             _enqueue_baseten_cost_sync(job)
+        _drop_sagemaker_run(job, keep_final=False)
         return {"status": "cancelled", "job_id": remote}
 
     job.refresh_from_db(fields=["status", "progress"])
@@ -813,4 +831,5 @@ def _handle_failure(job, error: str) -> None:
         return
 
     _transition(job, FinetuningJob.Status.FAILED, error=error)
+    _drop_sagemaker_run(job, keep_final=False)
     _enqueue_baseten_cost_sync(job)

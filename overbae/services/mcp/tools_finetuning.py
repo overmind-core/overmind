@@ -362,10 +362,9 @@ def monitoring_policy(payload, cell=None, *, has_development=True):
     hyperparameters = {**hyperparameters, "objective": contract(cell, hyperparameters)["objective"]}
     try:
         profile_options(hyperparameters)
-        if (
-            hyperparameters.get("runtime_limit_seconds") is not None
-            and settings.FINETUNING_BACKEND != "modal"
-        ):
+        if hyperparameters.get(
+            "runtime_limit_seconds"
+        ) is not None and settings.FINETUNING_BACKEND not in {"modal", "sagemaker"}:
             raise ValueError("runtime_limit_seconds requires Modal provider enforcement")
         return training_monitoring.resolve(
             hyperparameters,

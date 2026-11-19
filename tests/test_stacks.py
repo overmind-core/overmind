@@ -75,6 +75,13 @@ def test_worker_cls_table() -> None:
         assert image in SERVE_STACKS
 
 
+def test_train_dockerfile_defines_every_stack() -> None:
+    text = (_MODELS_JSON.parents[2] / "docker" / "Dockerfile.train").read_text()
+    for stack in TRAIN_STACKS:
+        assert f"AS {stack}" in text
+    assert "ARG STACK=" in text
+
+
 def test_image_tables_match_stack_ids() -> None:
     from modal_shared.images.serve import SERVE_IMAGES
     from modal_shared.images.train import TRAIN_IMAGES

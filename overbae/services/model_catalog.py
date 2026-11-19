@@ -13,6 +13,7 @@ from django.core.cache import cache
 
 from overbae.core.model_registry import (
     OPENROUTER_MODEL_SLUGS,
+    bedrock_configured,
     is_decision_model,
     normalize_model_name,
     openrouter_configured,
@@ -91,6 +92,8 @@ def fetch_model_catalog() -> tuple[list[dict], bool]:
     list is empty and ``upstream_available`` is False. A short failure cache
     avoids adding a catalog timeout to every evaluation request during an outage.
     """
+    if not openrouter_configured() and bedrock_configured():
+        return [], False
     cached = cache.get(_CACHE_KEY)
     if cached is not None:
         return cached, True

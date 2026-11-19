@@ -68,7 +68,7 @@ def serves_as_adapter(job: FinetuningJob) -> bool:
         return False
     training_type = (job.hyperparameters or {}).get("training_type")
     kind = training_type.get("type") if isinstance(training_type, dict) else "Lora"
-    if job.provider != "modal" or (kind or "Lora") != "Lora":
+    if job.provider not in ("modal", "sagemaker") or (kind or "Lora") != "Lora":
         return False
     config = get_model_config_any_backend(job.base_model) or {}
     return (config.get("inference") or {}).get("lora_supported", not config.get("moe", False))
@@ -344,7 +344,16 @@ def _launch_archive(deployed: DeployedModel) -> None:
     if runtime.get("archive_call_id"):
         return
     job = deployed.finetuning_job
-    if not job or job.provider != "modal":
+    if not job or job.provider not in ("modal", "sagemaker"):
+        return
+    if job.provider == "sagemaker":
+        from overbae.sagemaker import deployment_ops
+
+        call_id = deployment_ops.launch_archive(deployed)
+        if call_id:
+            runtime["archive_call_id"] = call_id
+            DeployedModel.objects.filter(pk=deployed.pk).update(serving_runtime=runtime)
+            deployed.serving_runtime = runtime
         return
     env = (
         deployed.serving_runtime["environment"]
@@ -512,11 +521,19 @@ def verification_operation(deployed: DeployedModel):
 
 
 def spawn_verification(deployed: DeployedModel) -> str:
+    from overbae.sagemaker import deployment_ops
+
+    if deployment_ops.is_sagemaker_deployment(deployed):
+        return deployment_ops.spawn_verification(deployed)
     fn, kwargs = verification_operation(deployed)
     return _bounded(fn.spawn.aio, **kwargs).object_id
 
 
 def spawn_operation(deployed: DeployedModel) -> str:
+    from overbae.sagemaker import deployment_ops
+
+    if deployment_ops.is_sagemaker_deployment(deployed):
+        return deployment_ops.spawn_operation(deployed)
     fn, kwargs = _remote_operation(deployed)
     return _bounded(fn.spawn.aio, **kwargs).object_id
 
@@ -529,6 +546,10 @@ def _bounded(method, *args, **kwargs):
 
 
 def poll_operation(call_id: str) -> tuple[str, object]:
+    if str(call_id).startswith("sm-"):
+        from overbae.sagemaker import deployment_ops
+
+        return deployment_ops.poll_operation(call_id)
     call = modal.FunctionCall.from_id(call_id)
     try:
         return "complete", _bounded(call.get.aio, timeout=0)
@@ -588,6 +609,10 @@ def _call_tree(nodes):
 
 
 def cancel_operation(call_id: str) -> bool:
+    if str(call_id).startswith("sm-"):
+        from overbae.sagemaker import deployment_ops
+
+        return deployment_ops.cancel_operation(call_id)
     call = modal.FunctionCall.from_id(call_id)
     try:
         graph = _bounded(call.get_call_graph.aio)
@@ -675,7 +700,7 @@ def _finish(deployed: DeployedModel, *, error: str = "") -> None:
 
 def _publish_progress(deployed: DeployedModel) -> None:
     operation = operational_progress.deployment(deployed)
-    if deployed.deployment_call_id:
+    if deployed.deployment_call_id and not str(deployed.deployment_call_id).startswith("sm-"):
         provider_progress.collect(
             operation,
             environment=deployed.serving_runtime["environment"]
@@ -792,7 +817,7 @@ def _complete_stage(deployed: DeployedModel, result) -> None:
     if stage == "base":
         # The zip is the download and rebuild copy. Serving reads final/ on the
         # training volume, so the archive runs beside the rest of the deploy.
-        if deployed.finetuning_job and deployed.finetuning_job.provider == "modal":
+        if deployed.finetuning_job and deployed.finetuning_job.provider in ("modal", "sagemaker"):
             _launch_archive(deployed)
         values["deployment_stage"] = "weights"
     elif stage == "archive":
@@ -895,15 +920,16 @@ def advance_deployment(deployment_id) -> None:
             _finish(deployed, error="Deployment deadline exceeded. Checkpoint preserved.")
             return
         if deployed.deployment_call_id:
-            operation = operational_progress.deployment(deployed)
-            provider_progress.collect(
-                operation,
-                environment=deployed.serving_runtime["environment"]
-                if deployed.inference_contract == "decision"
-                else modal_environment(),
-                call_id=deployed.deployment_call_id,
-                deployed=deployed,
-            )
+            if not str(deployed.deployment_call_id).startswith("sm-"):
+                operation = operational_progress.deployment(deployed)
+                provider_progress.collect(
+                    operation,
+                    environment=deployed.serving_runtime["environment"]
+                    if deployed.inference_contract == "decision"
+                    else modal_environment(),
+                    call_id=deployed.deployment_call_id,
+                    deployed=deployed,
+                )
             state, result = poll_operation(deployed.deployment_call_id)
             if state == "complete":
                 try:
