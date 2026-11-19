@@ -756,9 +756,16 @@ INFERENCE_API_KEY: str = os.environ.get("INFERENCE_API_KEY", "")
 
 SANDBOX_URL = os.environ.get("SANDBOX_URL", "").rstrip("/")
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
-# Where the assistant runs Python: native (the sandbox service) or daytona.
+# Where the assistant runs Python: native (the sandbox service), daytona, or nitro
+# (a workspace server on an EC2 parent that runs AWS Nitro Sandboxes).
 WORKSPACE_PROVIDER = os.environ.get("WORKSPACE_PROVIDER", "native")
 DAYTONA_API_KEY = os.environ.get("DAYTONA_API_KEY", "")
+NITRO_SANDBOX_URL = os.environ.get("NITRO_SANDBOX_URL", "").rstrip("/")
+NITRO_SANDBOX_TOKEN = os.environ.get("NITRO_SANDBOX_TOKEN", "")
+if WORKSPACE_PROVIDER == "nitro" and not (NITRO_SANDBOX_URL and NITRO_SANDBOX_TOKEN.strip()):
+    raise ImproperlyConfigured(
+        "WORKSPACE_PROVIDER=nitro needs NITRO_SANDBOX_URL and NITRO_SANDBOX_TOKEN."
+    )
 # Prompt tokens of one assistant reply above which the older conversation is summarized.
 ASSISTANT_COMPACT_TOKENS = int(os.environ.get("ASSISTANT_COMPACT_TOKENS", "120000"))
 

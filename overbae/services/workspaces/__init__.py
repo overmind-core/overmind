@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import BinaryIO, Protocol
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 
 DEFAULT_SECONDS = 120
@@ -63,8 +64,15 @@ class Provider(Protocol):
 PROVIDERS = {
     "native": "overbae.services.workspaces.native.NativeProvider",
     "daytona": "overbae.services.workspaces.daytona.DaytonaProvider",
+    "nitro": "overbae.services.workspaces.nitro.NitroProvider",
 }
 
 
 def provider() -> Provider:
-    return import_string(PROVIDERS[settings.WORKSPACE_PROVIDER])()
+    path = PROVIDERS.get(settings.WORKSPACE_PROVIDER)
+    if path is None:
+        raise ImproperlyConfigured(
+            f"WORKSPACE_PROVIDER is {settings.WORKSPACE_PROVIDER!r}; "
+            f"set one of {', '.join(PROVIDERS)}."
+        )
+    return import_string(path)()
