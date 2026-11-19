@@ -50,6 +50,7 @@ export const tracesSearchSchema = z.object({
   /** A Conversation UUID, not a span or trace id. */
   session: z.string().optional(),
   signal: z.string().optional(),
+  signal_capability: z.string().uuid().optional().catch(undefined),
   signal_event: z.string().uuid().optional().catch(undefined),
   source: z.string().optional(),
 
