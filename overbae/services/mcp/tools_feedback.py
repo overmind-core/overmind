@@ -61,7 +61,7 @@ def submit_feedback(payload, context):
             "environment": feedback.environment.get("reported", {}),
         },
         tell_user=(
-            f"Sent a friction report to Overmind: “{feedback.title}”. "
+            f"Sent feedback to Overmind: “{feedback.title}”. "
             f"Agent feedback can be turned off in Settings: {settings.FRONTEND_URL.rstrip('/')}/settings"
         ),
     )
