@@ -3,19 +3,20 @@ import { useEffect } from "react";
 import { useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 
 import { useProjectsList } from "@/hooks/use-projects";
+import { localStore } from "@/lib/storage";
 
 const SELECTED_PROJECT_STORAGE_KEY = "__selectedProject";
 
 function getStoredProjectId(): string {
-  return localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY) || "";
+  return localStore.get(SELECTED_PROJECT_STORAGE_KEY) || "";
 }
 
 export function setStoredProjectId(projectId: string) {
-  localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, projectId);
+  localStore.set(SELECTED_PROJECT_STORAGE_KEY, projectId);
 }
 
 function clearStoredProjectId() {
-  localStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+  localStore.remove(SELECTED_PROJECT_STORAGE_KEY);
 }
 
 export function selectProject(projectId: string) {

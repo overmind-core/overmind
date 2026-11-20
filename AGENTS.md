@@ -60,6 +60,7 @@ Ruff enforces formatting and line length. What it can't:
 - The Console is dark-only, including first paint, authentication, charts and flow canvases. Use semantic tokens, with no `dark:` variants: `border-success/40 bg-success/10 text-success`.
 - Flat surfaces: `shadow-*` utilities are disabled. Depth is surface layering plus 1px borders.
 - Icons come only from `import { Icon } from "@/components/ui/icons"`; `check:design` fails on `lucide-react` or the vendored glyph table.
+- Browser storage goes through `localStore` / `sessionStore` in `lib/storage.ts`. Chrome throws on the `window.localStorage` read itself when a user blocks site data.
 - Tokens, primitives, the border-contrast floor and the two table implementations: frontend-design skill.
 
 ### UI copy

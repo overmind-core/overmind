@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { UNBOUND_CAPABILITY } from "@/hooks/use-traces";
+import { localStore } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 type FilterLookup = "eq" | "icontains" | "gte" | "lte" | "gt" | "lt" | "isnull";
@@ -676,9 +677,8 @@ export function describeFilter(entry: FilterEntry, valueLabel?: string): string 
 
 export function useRecentFilterParams(storageKey = "overmind:traces:recentFilters") {
   const get = useCallback((): SearchParams[] => {
-    if (typeof window === "undefined") return [];
     try {
-      const raw = window.localStorage.getItem(storageKey);
+      const raw = localStore.get(storageKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw) as SearchParams[];
       return Array.isArray(parsed) ? parsed.slice(0, 8) : [];
@@ -688,14 +688,13 @@ export function useRecentFilterParams(storageKey = "overmind:traces:recentFilter
   }, [storageKey]);
   const push = useCallback(
     (entry: SearchParams) => {
-      if (typeof window === "undefined") return;
       const meaningful = Object.entries(entry).filter(([, v]) => v !== undefined && v !== "");
       if (meaningful.length === 0) return;
       const current = get();
       const key = JSON.stringify(entry);
       const deduped = current.filter((e) => JSON.stringify(e) !== key);
       const next = [entry, ...deduped].slice(0, 8);
-      window.localStorage.setItem(storageKey, JSON.stringify(next));
+      localStore.set(storageKey, JSON.stringify(next));
     },
     [get, storageKey]
   );

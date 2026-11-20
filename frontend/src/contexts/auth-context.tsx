@@ -151,8 +151,7 @@ function ClerkAuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 function readIsSignedIn(): boolean {
-  if (typeof window === "undefined") return false;
-  return !!localStorage.getItem("jwt_access");
+  return !!getAccessToken();
 }
 
 function readLocalUser(): AuthUser | null {
@@ -207,7 +206,7 @@ function SelfHostedAuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, [refreshAuth]);
 
-  const getToken = useCallback(async () => localStorage.getItem("jwt_access"), []);
+  const getToken = useCallback(async () => getAccessToken(), []);
 
   const handleSignOut = useCallback(async () => {
     identityRequest.current++;

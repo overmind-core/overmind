@@ -13,6 +13,7 @@ import {
 import { Icon } from "@/components/ui/icons";
 import { writeClipboardText } from "@/lib/clipboard";
 import { isMobileBrowser } from "@/lib/platform";
+import { localStore } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 // OpenCode's desktop link needs a local directory, which the Console does not know.
@@ -31,12 +32,8 @@ let unsavedPreference: string | null = null;
 
 function readPreference() {
   if (unsavedPreference) return unsavedPreference;
-  try {
-    const value = localStorage.getItem(preferenceKey);
-    return agents.some((agent) => agent.id === value) ? value : null;
-  } catch {
-    return null;
-  }
+  const value = localStore.get(preferenceKey);
+  return agents.some((agent) => agent.id === value) ? value : null;
 }
 
 function subscribePreference(listener: () => void) {
@@ -54,10 +51,9 @@ function subscribePreference(listener: () => void) {
 }
 
 function chooseAgent(value: string) {
-  try {
-    localStorage.setItem(preferenceKey, value);
+  if (localStore.set(preferenceKey, value)) {
     unsavedPreference = null;
-  } catch {
+  } else {
     unsavedPreference = value;
     toast.error("Couldn't save the coding-agent preference.");
   }

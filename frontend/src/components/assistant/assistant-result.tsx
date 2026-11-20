@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTableSort } from "@/hooks/use-table-sort";
+import { sessionStore } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import type {
   ChartNode,
@@ -330,7 +331,7 @@ function ResultImage({ node }: { node: Extract<ResultNode, { type: "Image" }> })
 
 function draftOf(key: string): Record<string, unknown> {
   try {
-    return JSON.parse(sessionStorage.getItem(key) ?? "{}");
+    return JSON.parse(sessionStore.get(key) ?? "{}");
   } catch {
     return {};
   }
@@ -357,13 +358,13 @@ function Question({ node }: { node: QuestionNode | ChoicesNode }) {
   const set = (name: string, value: unknown) =>
     setValues((old) => {
       const next = { ...old, [name]: value };
-      sessionStorage.setItem(draftKey, JSON.stringify(next));
+      sessionStore.set(draftKey, JSON.stringify(next));
       return next;
     });
   const answer = (given: Record<string, unknown>, text: string) => {
     // The draft stays until the answer is queued: a failed send keeps it for a retry.
     actions.onAnswer(text, { call, id: node.id, values: given }, () =>
-      sessionStorage.removeItem(draftKey)
+      sessionStore.remove(draftKey)
     );
   };
 
