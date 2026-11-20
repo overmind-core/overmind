@@ -625,12 +625,17 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks, fake_llm):
+@pytest.mark.parametrize("provider", ["modal", "baseten"])
+def test_final_eval_fires_after_ready_deployment(
+    django_capture_on_commit_callbacks, fake_llm, provider
+):
     fake_llm.catalog_models = []
     from overbae.models import DeployedModel
 
     _, _, job, _, _ = _setup()
     _qwen3_job(job)
+    FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
+    job.provider = provider
     job.output_model_name = "runs/abc/final"
     job.status = FinetuningJob.Status.SUCCEEDED
     job.save(update_fields=["output_model_name", "status"])
