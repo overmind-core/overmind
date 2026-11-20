@@ -40,6 +40,7 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { cycleDrfOrdering, parseDrfOrdering } from "@/lib/drf-ordering";
 import { errorMessage } from "@/lib/notify";
+import { localStore } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 /** Structurally matches every generated `Paginated*List` model. */
@@ -254,7 +255,7 @@ export function DataTable<T>({
   useEffect(() => {
     if (!storageKey) return;
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStore.get(storageKey);
       setColumnSizing(
         raw ? clampColumnSizing(JSON.parse(raw) as ColumnSizingState, cappedColumns) : {}
       );
@@ -264,11 +265,7 @@ export function DataTable<T>({
   }, [storageKey, cappedColumns]);
   useEffect(() => {
     if (!storageKey) return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(columnSizing));
-    } catch {
-      // quota / disabled storage
-    }
+    localStore.set(storageKey, JSON.stringify(columnSizing));
   }, [storageKey, columnSizing]);
 
   const table = useReactTable({

@@ -37,6 +37,7 @@ import { ApiError } from "@/lib/api-error";
 import { featureFlags } from "@/lib/feature-flags";
 import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { notify } from "@/lib/notify";
+import { localStore } from "@/lib/storage";
 import { PROSE, TITLE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { PlanEnum } from "@/openapi";
@@ -437,8 +438,8 @@ function DeleteProjectCard({ projectId }: { projectId: string }) {
     onSuccess: () => {
       toast.success("Project deleted.");
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
-      if (localStorage.getItem(SELECTED_PROJECT_KEY) === projectId) {
-        localStorage.removeItem(SELECTED_PROJECT_KEY);
+      if (localStore.get(SELECTED_PROJECT_KEY) === projectId) {
+        localStore.remove(SELECTED_PROJECT_KEY);
       }
       if (activeProjectId === projectId) {
         navigate({ search: {}, to: "/projects" });

@@ -1,21 +1,23 @@
 import { useEffect, useState } from "react";
 
+import { localStore } from "@/lib/storage";
+
 export function useNudgeDismissal(storageKey: string): {
   dismissed: boolean;
   dismiss: () => void;
 } {
   const [dismissed, setDismissed] = useState(
-    () => !!storageKey && localStorage.getItem(storageKey) === "1"
+    () => !!storageKey && localStore.get(storageKey) === "1"
   );
 
   useEffect(() => {
-    setDismissed(!!storageKey && localStorage.getItem(storageKey) === "1");
+    setDismissed(!!storageKey && localStore.get(storageKey) === "1");
   }, [storageKey]);
 
   return {
     dismiss: () => {
       if (!storageKey) return;
-      localStorage.setItem(storageKey, "1");
+      localStore.set(storageKey, "1");
       setDismissed(true);
     },
     dismissed: !storageKey || dismissed,
@@ -31,17 +33,15 @@ export function useNudgeDismissalCount(
   dismissed: boolean;
   dismiss: () => void;
 } {
-  const [dismissedAt, setDismissedAt] = useState(() =>
-    Number(localStorage.getItem(storageKey) ?? 0)
-  );
+  const [dismissedAt, setDismissedAt] = useState(() => Number(localStore.get(storageKey) ?? 0));
 
   useEffect(() => {
-    setDismissedAt(Number(localStorage.getItem(storageKey) ?? 0));
+    setDismissedAt(Number(localStore.get(storageKey) ?? 0));
   }, [storageKey]);
 
   return {
     dismiss: () => {
-      localStorage.setItem(storageKey, String(currentCount));
+      localStore.set(storageKey, String(currentCount));
       setDismissedAt(currentCount);
     },
     dismissed: currentCount <= dismissedAt,

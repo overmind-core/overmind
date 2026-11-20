@@ -1,40 +1,24 @@
 import { trackEvent } from "@/analytics";
 import { isChunkLoadError } from "@/lib/chunk-error";
+import { sessionStore } from "@/lib/storage";
 
 export type AuthLoadFailure = "script" | "chunk";
 
 // One automatic reload per tab: "done" stays set after recovery, so a repeat failure cannot loop.
 const RETRY_KEY = "overmind.auth-load-retry";
 
-function readRetry(): string | null | undefined {
-  try {
-    return window.sessionStorage.getItem(RETRY_KEY);
-  } catch {
-    return undefined;
-  }
-}
-
-function writeRetry(value: string): boolean {
-  try {
-    window.sessionStorage.setItem(RETRY_KEY, value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Reloads once per tab and returns true; returns false when the fallback must show instead. */
 export function retryAuthLoad(failure: AuthLoadFailure): boolean {
-  if (readRetry() !== null) return false;
-  if (!writeRetry(failure)) return false;
+  if (sessionStore.get(RETRY_KEY) !== null) return false;
+  if (!sessionStore.set(RETRY_KEY, failure)) return false;
   window.location.reload();
   return true;
 }
 
 export function markAuthLoaded() {
-  const failure = readRetry();
+  const failure = sessionStore.get(RETRY_KEY);
   if (failure !== "script" && failure !== "chunk") return;
-  if (!writeRetry("done")) return;
+  if (!sessionStore.set(RETRY_KEY, "done")) return;
   trackEvent("auth_load_recovered", { failure });
 }
 
