@@ -57,3 +57,29 @@ it.each([
 
   expect(screen.getByText("Console")).toBeTruthy();
 });
+
+it("keeps a guest's tokens for the page when the browser blocks storage", async () => {
+  const { getAccessToken, getRefreshToken, setTokens } = await import("@/client");
+
+  setTokens("access", "refresh");
+
+  expect([getAccessToken(), getRefreshToken()]).toEqual(["access", "refresh"]);
+});
+
+it("reads a refused write back instead of the older stored value", async () => {
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: () => "rotated-away",
+      removeItem: () => {},
+      setItem: () => {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      },
+    },
+  });
+  const { localStore } = await import("@/lib/storage");
+
+  expect(localStore.set("jwt_access", "current")).toBe(false);
+
+  expect(localStore.get("jwt_access")).toBe("current");
+});

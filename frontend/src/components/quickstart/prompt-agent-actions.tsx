@@ -28,10 +28,8 @@ const agents: { id: string; label: string; url?: string }[] = [
 const MAX_LINK_LENGTH = 10_000;
 const preferenceKey = "preferred-coding-agent";
 const preferenceEvent = "coding-agent-preference";
-let unsavedPreference: string | null = null;
 
 function readPreference() {
-  if (unsavedPreference) return unsavedPreference;
   const value = localStore.get(preferenceKey);
   return agents.some((agent) => agent.id === value) ? value : null;
 }
@@ -39,7 +37,6 @@ function readPreference() {
 function subscribePreference(listener: () => void) {
   const onStorage = (event: StorageEvent) => {
     if (event.key !== null && event.key !== preferenceKey) return;
-    unsavedPreference = null;
     listener();
   };
   window.addEventListener("storage", onStorage);
@@ -51,10 +48,7 @@ function subscribePreference(listener: () => void) {
 }
 
 function chooseAgent(value: string) {
-  if (localStore.set(preferenceKey, value)) {
-    unsavedPreference = null;
-  } else {
-    unsavedPreference = value;
+  if (!localStore.set(preferenceKey, value)) {
     toast.error("Couldn't save the coding-agent preference.");
   }
   window.dispatchEvent(new Event(preferenceEvent));
