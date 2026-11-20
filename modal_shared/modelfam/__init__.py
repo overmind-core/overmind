@@ -1,6 +1,6 @@
 """Pure-stdlib model-family registry shared by training, serving, and Django.
 
-No torch / django / modal imports — ships into bare Modal/Baseten containers.
+No torch / django / modal imports — ships into bare Modal containers.
 """
 
 from modal_shared.modelfam.chat_template import (

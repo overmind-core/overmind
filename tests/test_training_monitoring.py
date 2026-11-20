@@ -41,7 +41,7 @@ def test_monitoring_requires_real_provider_and_development_support():
     with pytest.raises(ValueError, match="development"):
         resolve_policy({"mode": "adaptive"}, has_development=False, provider="modal")
     with pytest.raises(ValueError, match="provider"):
-        resolve_policy({"mode": "adaptive"}, has_development=True, provider="together_ai")
+        resolve_policy({"mode": "adaptive"}, has_development=True, provider="nebius")
     assert resolve_policy(None, has_development=False, provider="modal")["mode"] == "off"
 
 

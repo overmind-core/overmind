@@ -243,7 +243,6 @@ def test_checkpoint_download_resource_describes_cli_boundary_and_availability():
     assert "--api-url" in resource["config"]
     assert "presigned S3" in resource["mcp_boundary"]
     assert "model context" in resource["mcp_boundary"]
-    assert "baseten or modal" in resource["availability"]
     assert "archived checkpoints" in resource["availability"]
     assert "path" in resource["output"]
     assert "bytes_written" in resource["output"]

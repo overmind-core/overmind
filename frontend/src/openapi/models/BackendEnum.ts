@@ -14,14 +14,10 @@
 
 
 /**
- * * `together` - together
- * * `baseten` - baseten
  * * `modal` - modal
  * @export
  */
 export const BackendEnum = {
-    together: 'together',
-    baseten: 'baseten',
     modal: 'modal'
 } as const;
 export type BackendEnum = typeof BackendEnum[keyof typeof BackendEnum];

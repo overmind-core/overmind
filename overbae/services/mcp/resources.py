@@ -352,9 +352,9 @@ def _checkpoint_download_resource(uri: str) -> dict:
             "download URL is used only by the local CLI and must never be exposed to model context."
         ),
         "availability": (
-            "Only archived checkpoints for deployed models linked to fine-tuning jobs from the "
-            "supported providers baseten or modal are downloadable. Deployments without a "
-            "fine-tuning job, unsupported providers, and archives that are not ready are unavailable."
+            "Only archived checkpoints for deployed models linked to fine-tuning jobs are "
+            "downloadable. Deployments without a fine-tuning job and archives that are not ready "
+            "are unavailable."
         ),
         "output": "Parse the JSON result and report the local path and bytes_written.",
         "overwrite": "The CLI refuses to overwrite an existing local file.",

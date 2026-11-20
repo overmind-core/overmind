@@ -140,7 +140,7 @@ def test_a_tier_that_loses_every_model_is_omitted_rather_than_empty(catalog):
 
 
 def test_the_real_catalog_rejects_each_model_at_most_once():
-    with override_settings(FINETUNING_BACKEND="baseten"):
+    with override_settings(FINETUNING_BACKEND="modal"):
         eligible, exclusions = eligible_models(has_tool_calling=True, max_row_tokens=50_000)
 
     rejected = [exclusion.model for exclusion in exclusions]

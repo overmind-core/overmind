@@ -1,4 +1,4 @@
-"""Shared SFT entrypoint for Baseten and Modal.
+"""Shared SFT entrypoint for the Modal training workers.
 
 CRITICAL: do NOT import torch/transformers/trl/peft/datasets at this module's top
 level. unsloth must be the process's first heavyweight import (see engine_unsloth.py),

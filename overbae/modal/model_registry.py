@@ -42,21 +42,6 @@ def library_filters() -> dict[str, Any]:
     return filters if isinstance(filters, dict) else {}
 
 
-@functools.lru_cache(maxsize=1)
-def _raw() -> dict[str, dict[str, Any]]:
-    """Together AI models only, keyed by model ID."""
-    return {m["id"]: m for m in _raw_all() if m.get("backend") == "together"}
-
-
-def all_models() -> dict[str, dict[str, Any]]:
-    """Together AI models only, keyed by model ID."""
-    return _raw()
-
-
-def get_model(together_id: str) -> dict[str, Any] | None:
-    return _raw().get(together_id)
-
-
 def get_sft_context_length(model_id: str, *, backend: str | None = None) -> int | None:
     """With ``backend`` omitted, prefers ``settings.FINETUNING_BACKEND``, then any matching entry
     that has a finetuning sub-config."""
@@ -64,7 +49,6 @@ def get_sft_context_length(model_id: str, *, backend: str | None = None) -> int 
         from django.conf import settings
 
         backend = getattr(settings, "FINETUNING_BACKEND", None)
-    backend = _catalog_backend(backend)
 
     preferred: int | None = None
     fallback: int | None = None
@@ -94,7 +78,7 @@ def get_training_context_policy(backend: str) -> dict[str, Any]:
 
 def context_headroom(backend: str) -> int:
     """Training-context headroom (tokens) required above the longest dataset row.
-    ``0`` when the backend has no policy entry (e.g. Together)."""
+    ``0`` when the backend has no policy entry."""
     try:
         return int(get_training_context_policy(backend)["context_headroom"])
     except (KeyError, TypeError, ValueError):
@@ -114,17 +98,11 @@ def min_sft_context_length(backend: str) -> int | None:
     return min(contexts) if contexts else None
 
 
-def _catalog_backend(backend: str | None) -> str | None:
-    """models.json has no ``modal`` rows — Modal trains the Baseten catalog."""
-    return "baseten" if backend == "modal" else backend
-
-
 def _finetune_entry(model_id: str, *, backend: str | None = None) -> dict[str, Any] | None:
     if backend is None:
         from django.conf import settings
 
         backend = getattr(settings, "FINETUNING_BACKEND", None)
-    backend = _catalog_backend(backend)
     fallback: dict[str, Any] | None = None
     for m in _raw_all():
         if m.get("id") != model_id:
@@ -137,7 +115,7 @@ def _finetune_entry(model_id: str, *, backend: str | None = None) -> dict[str, A
 
 
 def get_hf_base(model_id: str, *, backend: str | None = None) -> str:
-    """HF id for the active finetuning backend (Modal uses Baseten catalog rows)."""
+    """HF id for the active finetuning backend."""
     cfg = _finetune_entry(model_id, backend=backend)
     return cfg["hf_model_id"] if cfg and cfg.get("hf_model_id") else model_id
 
@@ -178,7 +156,7 @@ def get_tier_models(*, backend: str | None = None) -> dict[str, list[dict[str, A
     if backend is None:
         from django.conf import settings
 
-        backend = _catalog_backend(getattr(settings, "FINETUNING_BACKEND", "baseten"))
+        backend = getattr(settings, "FINETUNING_BACKEND", "modal")
 
     buckets: dict[str, list[dict[str, Any]]] = {t: [] for t in TIER_ORDER}
     for cfg in _raw_all():
@@ -192,10 +170,7 @@ def get_tier_models(*, backend: str | None = None) -> dict[str, list[dict[str, A
 
 
 def get_model_config_any_backend(model_id: str) -> dict[str, Any] | None:
-    """The first non-disabled match across backends, or ``None`` when uncatalogued."""
-    cfg = _raw().get(model_id)
-    if cfg:
-        return cfg
+    """The first match across backends, or ``None`` when uncatalogued."""
     for m in _raw_all():
         aliases = {m.get("id"), m.get("hf_model_id"), *(m.get("benchmark_hf_model_ids") or [])}
         if model_id in aliases:
@@ -203,7 +178,7 @@ def get_model_config_any_backend(model_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _finetuning_catalog(
+def finetuning_catalog(
     backend: str, *, include_disabled: bool = False
 ) -> dict[str, list[dict[str, Any]]]:
     """Fine-tuning catalog for a backend, grouped by tier (shared shape)."""
@@ -225,7 +200,7 @@ def _finetuning_catalog(
             "params": m["params"],
             "total_params_b": m["total_params_b"],
             "context_length": ft["context_length"],
-            # Alias under the field name the Together catalog uses.
+            # The recommendation engine reads this key name.
             "context_length_sft": ft["context_length"],
             "max_batch_size": ft["max_batch_size"],
             "min_batch_size": ft["min_batch_size"],
@@ -237,12 +212,6 @@ def _finetuning_catalog(
             entry["disabled_reason"] = m.get("disabled_reason", "")
         buckets[tier].append(entry)
     return {tier: models for tier, models in buckets.items() if models}
-
-
-def baseten_finetuning_catalog(
-    *, include_disabled: bool = False
-) -> dict[str, list[dict[str, Any]]]:
-    return _finetuning_catalog("baseten", include_disabled=include_disabled)
 
 
 def get_all_models_by_backend(

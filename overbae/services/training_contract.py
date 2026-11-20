@@ -54,7 +54,7 @@ def contract(cell, hyperparameters=None):
         if native
         else {"assistant_tokens": "cross_entropy"},
         "methods": ["lora"] if native else ["lora", "full"],
-        "providers": ["modal"] if native else ["modal", "baseten", "together_ai"],
+        "providers": ["modal"],
         "metrics": [
             "cross_entropy",
             "brier",

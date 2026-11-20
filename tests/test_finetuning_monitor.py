@@ -13,7 +13,6 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.models import FinetuningJob, Project, ProjectMembership, User
 from overbae.services.finetuning_runner import (
     PollSnapshot,
-    parse_together_metrics,
     progress_from_snapshot,
 )
 from overbae.tasks.finetuning import observe_finetuning_job
@@ -38,30 +37,6 @@ def _setup():
     ProjectMembership.objects.create(user=u, project=p)
     ds = frozen_dataset(p, TRAIN_ROWS, name="ds", contract="train")
     return u, p, ds
-
-
-def test_parse_together_metrics_splits_series():
-    raw = [
-        {
-            "train/global_step": 1,
-            "train/loss": 2.43,
-            "train/grad_norm": 1.21,
-            "train/learning_rate": 1e-5,
-        },
-        {
-            "train/global_step": 2,
-            "train/loss": 2.11,
-            "train/grad_norm": 0.94,
-            "train/learning_rate": 9e-6,
-        },
-        {"train/global_step": 2, "eval/loss": 2.05},
-    ]
-    loss, lr, grad = parse_together_metrics(raw)
-    assert len(loss) == 2
-    assert loss[1]["train_loss"] == 2.11
-    assert loss[1]["eval_loss"] == 2.05
-    assert [p["value"] for p in lr] == [1e-5, 9e-6]
-    assert [p["value"] for p in grad] == [1.21, 0.94]
 
 
 def test_progress_from_snapshot_computes_percent_and_eta():
@@ -145,7 +120,7 @@ def test_cancel_calls_remote_runner_and_sets_cancelled():
         dataset=ds,
         base_model="m",
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         remote_job_id="proj-1:job-remote-1",
         celery_task_id="celery-abc",
     )
@@ -172,7 +147,7 @@ def test_cancel_still_succeeds_when_remote_cancel_fails():
         dataset=ds,
         base_model="m",
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         remote_job_id="proj-1:job-xyz",
     )
     mock_runner = MagicMock()

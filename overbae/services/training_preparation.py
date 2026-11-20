@@ -34,8 +34,8 @@ from overbae.services import operational_progress, training_release
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
-    baseten_context_length,
     estimated_training_context_length,
+    snap_context_length,
     validate_requested_context_length,
 )
 from overbae.services.finetuning_validator import row_to_finetuning_line
@@ -201,7 +201,7 @@ def _adopt_measured_context(prep):
         return prep
     if not _matches_estimate(context, _estimated_tokens(prep.cell, prep.validation_cell), maximum):
         return prep
-    raised = baseten_context_length(model_max=maximum, requested=exact)
+    raised = snap_context_length(model_max=maximum, requested=exact)
     if raised == context:
         return prep
     measured = request_preparation(
@@ -557,7 +557,7 @@ def for_job(job):
         and (maximum is None or exact_tokens <= maximum)
     ):
         # Recheck every row at the measured size; length can coexist with other errors.
-        context = baseten_context_length(model_max=maximum, requested=exact_tokens)
+        context = snap_context_length(model_max=maximum, requested=exact_tokens)
         prep = request_preparation(
             job.cell,
             job.base_model,

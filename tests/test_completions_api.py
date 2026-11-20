@@ -1124,7 +1124,7 @@ class TestActiveModelValidation:
             capability=sibling,
             dataset=frozen_dataset(p, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
-            provider=FinetuningJob.Provider.BASETEN,
+            provider=FinetuningJob.Provider.MODAL,
         )
         m.save(update_fields=["finetuning_job"])
 
@@ -1145,7 +1145,7 @@ class TestBenchmarkSelection:
             capability=capability,
             dataset=frozen_dataset(project, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
-            provider=FinetuningJob.Provider.BASETEN,
+            provider=FinetuningJob.Provider.MODAL,
             baseline_model="",  # not snapshotted yet → resolve live
         )
 

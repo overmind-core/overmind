@@ -9,7 +9,6 @@ from datetime import timedelta
 
 import modal
 from asgiref.sync import async_to_sync
-from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
@@ -462,10 +461,8 @@ def _remote_operation(deployed: DeployedModel):
             "remote_job_id": job.remote_job_id,
             "model_id": deployed.model_id,
             "provider": job.provider,
-            "baseten_api_key": getattr(settings, "BASETEN_API_KEY", "") or "",
             "user_id": str(job.triggered_by_id) if job.triggered_by_id else "",
             "job_id": str(job.id),
-            "job_result": job.result if isinstance(job.result, dict) else {},
             "quantize": cfg.get("fp8_supported", True),
             "merge_base_model": base,
             "params_b": float(cfg.get("total_params_b") or 0),

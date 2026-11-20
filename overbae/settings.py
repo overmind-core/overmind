@@ -347,7 +347,7 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
-        "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
+        "BackendEnum": [("modal", "modal")],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
         # Lane provenance shares the field name with finetuning evidence; pinned so
@@ -526,11 +526,6 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-finetuning-jobs": {
         "task": "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs",
         "schedule": 15.0,
-    },
-    # Hourly because Baseten's billing lags the job.
-    "sync-baseten-finetuning-costs": {
-        "task": "overbae.tasks.baseten_billing_sync.sync_baseten_finetuning_costs",
-        "schedule": 3600.0,
     },
     # Fails runs stuck in RUNNING with no row progress and no healthy generation wait.
     "reap-stalled-eval-runs": {
@@ -726,11 +721,6 @@ LOGGING = {
         },
     },
 }
-
-TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
-
-BASETEN_API_KEY = os.environ.get("BASETEN_API_KEY", "")
-BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 

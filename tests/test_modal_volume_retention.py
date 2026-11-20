@@ -178,7 +178,7 @@ def test_unknown_run_dir_is_reported_not_deleted():
 
 
 def test_non_modal_jobs_do_not_match_a_run_dir():
-    """Baseten run ids share the volume's namespace only by coincidence."""
+    """Historic Baseten run ids share the volume's namespace only by coincidence."""
     run_id = _job(status=FinetuningJob.Status.FAILED, age_days=30, provider="baseten")
 
     plan = _plan([run_id])

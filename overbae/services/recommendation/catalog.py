@@ -13,18 +13,13 @@ from overbae.modal.model_registry import get_all_models_by_backend, get_tier_mod
 
 
 def active_backend() -> str:
-    return getattr(settings, "FINETUNING_BACKEND", "baseten")
-
-
-def catalog_backend() -> str:
-    """models.json backend key for FINETUNING_BACKEND — Modal reuses Baseten's rows."""
-    backend = active_backend()
-    return "baseten" if backend == "modal" else backend
+    """models.json backend key for ``FINETUNING_BACKEND``."""
+    return getattr(settings, "FINETUNING_BACKEND", "modal")
 
 
 def tier_models(*, backend: str | None = None) -> dict[str, list[dict[str, Any]]]:
     """Tier catalog for ``backend``, defaulting to the active one."""
-    return get_tier_models(backend=backend or catalog_backend())
+    return get_tier_models(backend=backend or active_backend())
 
 
 def find_catalog_model(model_id: str, *, decision: bool = False) -> dict[str, Any] | None:
@@ -45,11 +40,3 @@ def gpu_config(model_id: str, backend: str) -> dict[str, Any]:
         "num_gpus": 1,
         "max_model_len": inference.get("max_model_len"),
     }
-
-
-# Together-only lookup — used by TogetherAIRunner for min-batch coercion.
-MODEL_MIN_BATCH: dict[str, int] = {
-    m["id"]: m["min_batch_size"]
-    for models in get_tier_models(backend="together").values()
-    for m in models
-}

@@ -1211,15 +1211,6 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "When true, only models that support function-calling fine-tuning are returned."
                 ),
             ),
-            OpenApiParameter(
-                "max_context",
-                int,
-                required=False,
-                description=(
-                    "Only return models whose context window is at least this many tokens. "
-                    "Non-numeric values are ignored. Together only; ignored for Baseten."
-                ),
-            ),
         ],
         responses={200: FinetuningModelCatalogResponseSerializer},
     )
@@ -1227,27 +1218,17 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     def models(self, request):
         """Return the curated model catalog organised by tier.
 
-        When ``FINETUNING_BACKEND`` is ``baseten``, the Baseten catalog from
-        models.json is returned. Pass ``?has_tool_calling=true`` to receive
-        only models that support function-calling fine-tuning. Tiers that
-        contain no eligible models are omitted from the response.
+        The catalog is the ``FINETUNING_BACKEND`` rows of models.json. Pass
+        ``?has_tool_calling=true`` to receive only models that support
+        function-calling fine-tuning. Tiers that contain no eligible models are
+        omitted from the response.
         """
         raw = request.query_params.get("has_tool_calling", "").lower()
         has_tool_calling = raw in {"true", "1", "yes"}
 
-        max_context: int | None = None
-        raw_ctx = request.query_params.get("max_context", "")
-        if raw_ctx.isdigit():
-            max_context = int(raw_ctx)
-
         from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 
-        return Response(
-            fetch_finetuning_model_catalog(
-                has_tool_calling=has_tool_calling,
-                max_context=max_context,
-            )
-        )
+        return Response(fetch_finetuning_model_catalog(has_tool_calling=has_tool_calling))
 
     @extend_schema(
         summary="Validate a dataset for fine-tuning",
@@ -1256,7 +1237,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["post"], url_path="validate-dataset")
     def validate_dataset(self, request):
-        """Check whether a dataset's datapoints conform to Together AI's format."""
+        """Check whether a dataset's datapoints conform to the fine-tuning format."""
         from overbae.services.finetuning_validator import validate_dataset
 
         body = DatasetValidateRequestSerializer(data=request.data)

@@ -59,7 +59,7 @@ def _setup(*, with_eval_link=True):
         eval_incumbent_before=True,
         eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         remote_job_id="proj-1:job-x",
         triggered_by=u,
     )
@@ -291,7 +291,7 @@ def test_cancel_revokes_related_eval_runs(sft, fake_modal):
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
 def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbacks):
     _, p, job_a, eval_ds, eset = _setup()
-    _basetenify(job_a)
+    _qwen3_job(job_a)
     gid = uuid.uuid4()
     job_a.group_id = gid
     job_a.baseline_model = "openai/gpt-5.6-sol"
@@ -307,7 +307,7 @@ def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbac
         eval_incumbent_before=True,
         eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         group_id=gid,
         baseline_model="openai/gpt-5.6-sol",
         triggered_by=job_a.triggered_by,
@@ -322,7 +322,7 @@ def test_group_jobs_share_one_baseline_eval_run(django_capture_on_commit_callbac
         eval_incumbent_before=True,
         eval_model_before=False,
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         group_id=gid,
         baseline_model="openai/gpt-5.6-sol",
         triggered_by=job_a.triggered_by,
@@ -364,7 +364,7 @@ def test_cancel_leaves_shared_group_baseline_running():
         eval_set=eset,
         base_model="other/model",
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         group_id=gid,
         triggered_by=u,
     )
@@ -400,8 +400,8 @@ def test_cancel_leaves_shared_group_baseline_running():
     assert FinetuningJobEval.objects.get(job=job_b).status == FinetuningJobEval.Status.RUNNING
 
 
-def _basetenify(job):
-    job.provider = FinetuningJob.Provider.BASETEN
+def _qwen3_job(job):
+    job.provider = FinetuningJob.Provider.MODAL
     job.base_model = "Qwen/Qwen3-8B"
     job.remote_job_id = f"proj-1:{job.id}"
     job.save(update_fields=["provider", "base_model", "remote_job_id"])
@@ -438,12 +438,12 @@ def _ready_base_deployment(project, base="Qwen/Qwen3-8B"):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_baseline_uses_an_existing_ready_base_deployment(
+def test_baseline_uses_an_existing_ready_base_deployment(
     django_capture_on_commit_callbacks, fake_llm
 ):
     fake_llm.catalog_models = []
     _, _, job, _, _ = _setup()
-    _basetenify(job)
+    _qwen3_job(job)
 
     dep = _ready_base_deployment(job.project)
     # The enqueue is deferred to transaction.on_commit — execute the callbacks.
@@ -474,7 +474,7 @@ def test_baseten_baseline_uses_an_existing_ready_base_deployment(
 
 def test_baseline_delta_computes_when_baseline_lands_after_final():
     _, _, job, _, _ = _setup()
-    _basetenify(job)
+    _qwen3_job(job)
     final_run = EvalRun.objects.create(
         project=job.project,
         name="final",
@@ -562,7 +562,7 @@ def test_deploy_base_model_for_eval_does_not_provision_an_unavailable_route(
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
     _, _, job, _, _ = _setup()
-    _basetenify(job)
+    _qwen3_job(job)
 
     calls: list = []
     _fake_modal(monkeypatch, calls)
@@ -586,7 +586,7 @@ def test_deploy_base_model_dedupes_ready_deployment(
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
     _, _, job, _, _ = _setup()
-    _basetenify(job)
+    _qwen3_job(job)
     _ready_base_deployment(job.project)
 
     calls: list = []
@@ -610,7 +610,7 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
     from overbae.tasks.model_deployment import deploy_base_model_for_eval
 
     _, _, job, _, _ = _setup()
-    _basetenify(job)
+    _qwen3_job(job)
     job.status = FinetuningJob.Status.CANCELLED
     job.save(update_fields=["status"])
 
@@ -625,15 +625,13 @@ def test_deploy_base_model_skips_cancelled_job(monkeypatch):
 
 
 @override_settings(INFERENCE_API_URL="https://gateway.example.modal.run")
-def test_baseten_final_eval_fires_after_ready_deployment(
-    django_capture_on_commit_callbacks, fake_llm
-):
+def test_final_eval_fires_after_ready_deployment(django_capture_on_commit_callbacks, fake_llm):
     fake_llm.catalog_models = []
     from overbae.models import DeployedModel
 
     _, _, job, _, _ = _setup()
-    _basetenify(job)
-    job.output_model_name = "baseten/abc/final"
+    _qwen3_job(job)
+    job.output_model_name = "runs/abc/final"
     job.status = FinetuningJob.Status.SUCCEEDED
     job.save(update_fields=["output_model_name", "status"])
 
@@ -655,7 +653,7 @@ def test_baseten_final_eval_fires_after_ready_deployment(
 
     assert apply.call_count == 1
     final = FinetuningJobEval.objects.get(job=job, kind=FinetuningJobEval.Kind.FINAL)
-    # Eval targets the served vLLM model id, not the synthetic baseten name.
+    # Eval targets the served vLLM model id, not the job's output model name.
     assert final.model_id == "ft-abc-qwen3-8b"
     assert final.status == FinetuningJobEval.Status.RUNNING
     ref = final.eval_run.model_ref

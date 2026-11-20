@@ -1,4 +1,4 @@
-"""Download fine-tune checkpoints (Nebius, Baseten, or Modal), merge LoRA, and FP8-quantize for
+"""Download fine-tune checkpoints (Nebius, Modal, or the S3 archive), merge LoRA, and FP8-quantize for
 serving. ``quantize=False`` skips FP8 and serves merged BF16 — see
 ``weight_ops.quantize_checkpoint`` for which models need that.
 
@@ -16,7 +16,7 @@ Storage layout:
   /weights/.drafts/{org--draft}/       DFlash drafts for the bases that use one
   /weights/.adapters/{job_id}/         LoRA adapters served on a shared base
 
-S3 (baseten/modal only), the durable provider-independent home the UI's checkpoint-download
+S3, the durable provider-independent home the UI's checkpoint-download
 button reads from. Archiving is idempotent, and a metadata-only zip counts as missing so the
 next deploy retries:
   {user_id}/{finetuning_job_id}/checkpoints/checkpoint.zip
@@ -25,9 +25,7 @@ next deploy retries:
 
 Modal secrets, under secret name "overmind-inference":
   INFERENCE_API_KEY     — bearer token for RegisterAPIServer HTTP endpoints
-  TOGETHER_API_KEY      — Together SDK checkpoint download + job validation
   NEBIUS_API_KEY        — Nebius download; MUST be the key that submitted the job
-  BASETEN_API_KEY       — Baseten checkpoint download
   HF_TOKEN              — optional, needed for gated base models during merge
   AWS_ACCESS_KEY_ID     — S3 checkpoint archive (CloudBucketMount)
   AWS_SECRET_ACCESS_KEY — S3 checkpoint archive (CloudBucketMount)
@@ -225,14 +223,14 @@ def _resolve_staged_base(
 
 
 def resolve_artifact_dir(staging: Path) -> tuple[Path, bool]:
-    """Returns ``(dir, is_lora)``. Baseten produces two real layouts: the final artifact at the
-    staging ROOT, or ONLY nested ``checkpoint-N/`` dirs when the root save did not sync, in which
-    case the artifact is the highest-step checkpoint. Handing the staging root to AutoConfig in
-    the nested case raises "Unrecognized model".
+    """Returns ``(dir, is_lora)``. Archived checkpoints have two real layouts: the final artifact
+    at the staging ROOT, or ONLY nested ``checkpoint-N/`` dirs when the root save did not sync, in
+    which case the artifact is the highest-step checkpoint. Handing the staging root to AutoConfig
+    in the nested case raises "Unrecognized model".
 
-    A config file alone does NOT make a directory the artifact: Baseten's listing can surface
-    config.json before the larger weight files finish syncing, so a directory is trusted only once
-    it also holds a weight file.
+    A config file alone does NOT make a directory the artifact: an archive can hold config.json
+    without the larger weight files, so a directory is trusted only once it also holds a weight
+    file.
     """
     if (staging / "adapter_config.json").exists() and _dir_has_weights(staging):
         return staging, True
@@ -401,7 +399,7 @@ def _read_json(path: Path) -> dict | None:
 )
 @modal.concurrent(max_inputs=50)
 class RegisterAPIServer:
-    """CPU gateway: cache check → Baseten download → GPU merge/quantize."""
+    """CPU gateway: cache check → checkpoint staging → GPU merge/quantize."""
 
     @modal.method()
     def register(
@@ -409,19 +407,17 @@ class RegisterAPIServer:
         *,
         remote_job_id: str,
         model_id: str,
-        provider: str = "baseten",
-        baseten_api_key: str = "",
+        provider: str = "modal",
         user_id: str = "",
         job_id: str = "",
-        job_result: dict | None = None,
         quantize: bool = True,
         merge_base_model: str = "",
         params_b: float = 0.0,
     ) -> dict:
         """Runs download + quantize (or copy) on a cache miss.
 
-        ``user_id``/``job_id``/``job_result`` apply only to the baseten and modal providers, where
-        they address the S3 archive. ``quantize`` carries models.json's ``fp8_supported``.
+        ``user_id``/``job_id`` address the S3 archive. Historic Baseten checkpoints live
+        only there. ``quantize`` carries models.json's ``fp8_supported``.
         ``merge_base_model`` is the catalog HF id, used when adapter_config points at a quantized
         remapped repo. ``params_b`` only picks the merge/quantize GPU tier.
         """
@@ -436,9 +432,9 @@ class RegisterAPIServer:
 
         weights_vol.reload()
 
-        # Cache key: Baseten remote_id is "project_id:job_id", stable part LAST; Modal
-        # remote_id is "run_id:function_call_id", stable part FIRST, because a
-        # FunctionCall id is not reusable across retries. This is the FP8-cache key,
+        # Cache key: Modal remote_id is "run_id:function_call_id", stable part FIRST, because a
+        # FunctionCall id is not reusable across retries. Historic Baseten remote_ids are
+        # "project_id:job_id", stable part LAST. This is the FP8-cache key,
         # independent of the S3 archive's {user_id}/{job_id} namespace.
         if provider == "baseten":
             cache_key = remote_job_id.split(":")[-1]
@@ -459,16 +455,7 @@ class RegisterAPIServer:
 
         def _dispatch_download() -> dict:
             if provider == "baseten":
-                key = baseten_api_key or os.environ.get("BASETEN_API_KEY", "")
-                print(f"[RegisterAPI] Archiving {remote_job_id} (Baseten) to S3")
-                sync_baseten_checkpoint_to_s3.remote(
-                    remote_id=remote_job_id,
-                    user_id=user_id,
-                    job_id=job_id,
-                    baseten_api_key=key,
-                    job_result=job_result or {},
-                )
-                print(f"[RegisterAPI] Pulling {job_id} checkpoint back from S3")
+                print(f"[RegisterAPI] Pulling {job_id} checkpoint from S3")
                 return download_checkpoint_from_s3.remote(
                     user_id=user_id,
                     job_id=job_id,
@@ -649,11 +636,9 @@ class RegisterAPIServer:
         class RegisterRequest(BaseModel):
             remote_job_id: str
             model_id: str
-            provider: str = "baseten"
-            baseten_api_key: str = ""
+            provider: str = "modal"
             user_id: str = ""
             job_id: str = ""
-            job_result: dict | None = None
             quantize: bool = True
 
         @web.get("/health")
@@ -666,10 +651,8 @@ class RegisterAPIServer:
                 remote_job_id=req.remote_job_id,
                 model_id=req.model_id,
                 provider=req.provider,
-                baseten_api_key=req.baseten_api_key,
                 user_id=req.user_id,
                 job_id=req.job_id,
-                job_result=req.job_result,
                 quantize=req.quantize,
             )
 
@@ -681,35 +664,6 @@ class RegisterAPIServer:
             return meta
 
         return web
-
-
-def _fetch_baseten_logs_text(project_id: str, job_id: str, headers: dict, api_base: str) -> str:
-    """Same pagination shape as ``BasetenRunner._fetch_logs``, but standalone: this module has no
-    Django import and calls Baseten's API directly."""
-    import requests  # noqa: PLC0415
-
-    lines: list[str] = []
-    cursor_ms = 0
-    last_ns = -1
-    for _ in range(30):
-        resp = requests.get(
-            f"{api_base}/v1/training_projects/{project_id}/jobs/{job_id}/logs",
-            headers=headers,
-            params={"limit": 1000, "direction": "asc", "start_epoch_millis": cursor_ms},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        page = resp.json().get("logs", [])
-        fresh = (
-            [e for e in page if int(e.get("timestamp") or 0) > last_ns] if last_ns >= 0 else page
-        )
-        for entry in fresh:
-            lines.append(str(entry.get("message") or "").rstrip("\n"))
-        if len(page) < 1000 or (last_ns >= 0 and not fresh):
-            break
-        last_ns = int(page[-1].get("timestamp") or 0)
-        cursor_ms = last_ns // 1_000_000
-    return "\n".join(lines)
 
 
 def _archive_to_s3(
@@ -732,191 +686,6 @@ def _s3_checkpoint_exists(user_id: str, job_id: str) -> bool:
     it forever: an archive can be written before the provider finishes syncing the weights."""
     zip_path = _s3_prefix(user_id, job_id) / "checkpoints" / "checkpoint.zip"
     return zip_path.exists() and zip_path.stat().st_size > 0 and _zip_has_weights(zip_path)
-
-
-@app.function(
-    image=download_image,
-    timeout=2 * 60 * 60,
-    scaledown_window=2,
-    volumes={S3_MOUNT: _s3_mount(read_only=False)},
-    secrets=[inference_secret, aws_secret],
-)
-@modal.concurrent(max_inputs=1)
-def sync_baseten_checkpoint_to_s3(
-    *,
-    remote_id: str,
-    user_id: str,
-    job_id: str,
-    baseten_api_key: str = "",
-    job_result: dict | None = None,
-) -> dict:
-    """``remote_id`` is ``"{project_id}:{baseten_job_id}"``; ``job_id`` is the Django FinetuningJob
-    PK, the S3 addressing key and distinct from ``baseten_job_id``. Idempotent."""
-    import requests  # noqa: PLC0415
-
-    if _s3_checkpoint_exists(user_id, job_id):
-        print(f"[Baseten→S3] {job_id} already archived — skipping")
-        return {"job_id": job_id, "skipped": True}
-
-    # Drop a metadata-only zip left by a mid-sync archive, or it poisons the bucket
-    # next to the fresh one.
-    stale = _s3_prefix(user_id, job_id) / "checkpoints" / "checkpoint.zip"
-    if stale.exists():
-        print(f"[Baseten→S3] {job_id} has incomplete checkpoint.zip — re-archiving")
-        stale.unlink(missing_ok=True)
-
-    baseten_api_key = baseten_api_key or os.environ.get("BASETEN_API_KEY", "")
-    if not baseten_api_key:
-        raise RuntimeError(
-            "BASETEN_API_KEY is not set (pass it from Django settings or add to Modal overmind-inference secret)"
-        )
-
-    project_id, baseten_job_id = remote_id.split(":", 1)
-    headers = {"Authorization": f"Bearer {baseten_api_key}"}
-    api_base = "https://api.baseten.co"
-
-    # TRAINING_JOB_COMPLETED alone is not enough: Baseten surfaces tiny config files
-    # in the listing before the large weight shards land, so archiving mid-sync writes
-    # a metadata-only zip. The sync status must be checked too.
-    job_resp = requests.get(
-        f"{api_base}/v1/training_projects/{project_id}/jobs/{baseten_job_id}",
-        headers=headers,
-        timeout=30,
-    )
-    job_resp.raise_for_status()
-    job_data = job_resp.json().get("training_job", {})
-    job_status = job_data.get("current_status", "")
-    if job_status != "TRAINING_JOB_COMPLETED":
-        raise ValueError(f"Baseten job {baseten_job_id} not completed (status={job_status})")
-    sync_status = job_data.get("checkpoint_sync_status", "")
-    if sync_status != "COMPLETED":
-        raise ValueError(
-            f"Baseten job {baseten_job_id} checkpoint sync not done "
-            f"(checkpoint_sync_status={sync_status!r}) — retry later"
-        )
-
-    print(f"[Baseten→S3] Listing checkpoint files for {baseten_job_id}")
-    all_files: list[dict] = []
-    page_token = 0
-    while True:
-        resp = requests.get(
-            f"{api_base}/v1/training_projects/{project_id}/jobs/{baseten_job_id}/checkpoint_files",
-            headers=headers,
-            params={"page_size": 500, "page_token": page_token},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        all_files.extend(data.get("presigned_urls", []))
-        next_token = data.get("next_page_token")
-        if next_token is None:
-            break
-        page_token = next_token
-
-    if not all_files:
-        raise RuntimeError(f"No checkpoint files found for Baseten job {baseten_job_id}")
-
-    # Two real artifact layouts: adapter at the listing root, or ONLY nested
-    # checkpoint-N/ dirs when the root save did not sync — then pull just the
-    # highest-step checkpoint, since each carries a full adapter_model.safetensors.
-    # A root config file is NOT proof the root artifact is usable, so an actual root
-    # weight file is required before the nested fallback is skipped.
-    rel_names = [f["relative_file_name"] for f in all_files]
-    root_names = {r for r in rel_names if "/" not in r}
-    root_has_config = any(r in ("adapter_config.json", "config.json") for r in root_names)
-    root_has_weights = any(
-        n == "adapter_model.safetensors" or n == "pytorch_model.bin" or n.startswith("model")
-        for n in root_names
-        if n.endswith((".safetensors", ".bin"))
-    )
-    root_has_artifact = root_has_config and root_has_weights
-    ckpt_dirs = {r.split("/")[0] for r in rel_names if r.split("/")[0].startswith("checkpoint-")}
-    latest_ckpt = max(ckpt_dirs, key=lambda n: _checkpoint_step(Path(n))) if ckpt_dirs else None
-    # The fallback flattens the nested dir onto the local staging root, because every
-    # downstream check reads the root, not a nested checkpoint-N/.
-    use_nested_ckpt = not root_has_artifact and latest_ckpt is not None
-    if use_nested_ckpt:
-        print(f"[Baseten→S3] Root artifact incomplete — using nested {latest_ckpt}/ instead")
-
-    # A LoRA job needs only the adapter + tokenizer, so the large base-model shards TRL
-    # may have copied are skipped. A full-SFT job's trained weights ARE the
-    # model*.safetensors, so those must be pulled. Optimizer state is skipped either way.
-    listing_is_lora = any(Path(r).name == "adapter_config.json" for r in rel_names)
-    skip_patterns = (
-        ("model.safetensors", "optimizer.pt", "model-")
-        if listing_is_lora
-        else ("optimizer.pt", "scheduler.pt", "rng_state")
-    )
-    always_download = (
-        "adapter_config.json",
-        "adapter_model.safetensors",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "tokenizer.json",
-        "tokenizer.model",
-        "trainer_state.json",
-    )
-    print(f"[Baseten→S3] Checkpoint type: {'LoRA adapter' if listing_is_lora else 'full SFT'}")
-
-    local_dir = Path(f"/tmp/baseten_ckpt_{job_id}")
-    if local_dir.exists():
-        shutil.rmtree(local_dir)
-    local_dir.mkdir(parents=True, exist_ok=True)
-
-    for file_info in all_files:
-        rel = file_info["relative_file_name"]
-
-        if use_nested_ckpt:
-            prefix = f"{latest_ckpt}/"
-            if not rel.startswith(prefix):
-                continue  # skip root-level (incomplete) and other checkpoints
-            rel = rel[len(prefix) :]  # flatten onto local root
-        elif "/" not in rel:
-            pass  # root-level artifact path — use as-is
-        else:
-            continue  # root artifact is usable; ignore other checkpoint-N/ dirs
-
-        fname = Path(rel).name
-        size_mb = file_info.get("size_bytes", 0) / 1e6
-
-        is_critical = any(fname == a for a in always_download)
-        is_large = any(fname.startswith(p) for p in skip_patterns)
-
-        if is_large and not is_critical:
-            print(f"[Baseten→S3]   (skip large) {rel}  ({size_mb:.0f} MB)")
-            continue
-
-        dest = local_dir / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        r = requests.get(file_info["url"], timeout=600, stream=True)
-        r.raise_for_status()
-        with dest.open("wb") as f:
-            for chunk in r.iter_content(chunk_size=4 << 20):
-                f.write(chunk)
-        print(f"[Baseten→S3]   ✓ {rel}  ({dest.stat().st_size / 1e3:.0f} KB)")
-
-    if not any(local_dir.iterdir()):
-        raise RuntimeError(f"No files staged for Baseten job {baseten_job_id} — nothing to archive")
-
-    # Never write a metadata-only zip: Celery retries until the listing includes real
-    # weights, or the nested-checkpoint fallback finds them.
-    if not _dir_has_weights(local_dir):
-        raise RuntimeError(
-            f"Baseten job {baseten_job_id} staged without weight files "
-            f"(files: {sorted(p.name for p in local_dir.iterdir())}) — "
-            "checkpoint listing incomplete, retry later"
-        )
-
-    zip_path = Path(f"/tmp/{job_id}_checkpoint.zip")
-    _zip_directory(local_dir, zip_path)
-
-    print(f"[Baseten→S3] Fetching full job log for {baseten_job_id}")
-    log_text = _fetch_baseten_logs_text(project_id, baseten_job_id, headers, api_base)
-
-    _archive_to_s3(user_id, job_id, zip_path, log_text, job_result or {})
-    shutil.rmtree(local_dir, ignore_errors=True)
-    zip_path.unlink(missing_ok=True)
-    return {"job_id": job_id, "skipped": False}
 
 
 @app.function(
@@ -1257,7 +1026,7 @@ def download_checkpoint_from_s3(
     cache_key: str,
     merge_base_model: str = "",
 ) -> dict:
-    """The common download path for both the baseten and modal providers: once a checkpoint is
+    """The common download path for every archived checkpoint: once a checkpoint is
     archived, the FP8 pipeline no longer cares which provider trained it.
 
     ``job_id``/``user_id`` address the S3 archive; ``cache_key`` is the SEPARATE FP8-cache key

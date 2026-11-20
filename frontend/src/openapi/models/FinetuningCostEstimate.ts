@@ -30,19 +30,7 @@ export interface FinetuningCostEstimate {
      * @type {number}
      * @memberof FinetuningCostEstimate
      */
-    pricePerMillionUsd: number | null;
-    /**
-     *
-     * @type {number}
-     * @memberof FinetuningCostEstimate
-     */
     trainedTokens: number;
-    /**
-     *
-     * @type {boolean}
-     * @memberof FinetuningCostEstimate
-     */
-    minimumApplied: boolean;
 }
 
 /**
@@ -50,9 +38,7 @@ export interface FinetuningCostEstimate {
  */
 export function instanceOfFinetuningCostEstimate(value: object): value is FinetuningCostEstimate {
     if (!('usd' in value) || value['usd'] === undefined) return false;
-    if (!('pricePerMillionUsd' in value) || value['pricePerMillionUsd'] === undefined) return false;
     if (!('trainedTokens' in value) || value['trainedTokens'] === undefined) return false;
-    if (!('minimumApplied' in value) || value['minimumApplied'] === undefined) return false;
     return true;
 }
 
@@ -67,9 +53,7 @@ export function FinetuningCostEstimateFromJSONTyped(json: any, ignoreDiscriminat
     return {
 
         'usd': json['usd'],
-        'pricePerMillionUsd': json['price_per_million_usd'],
         'trainedTokens': json['trained_tokens'],
-        'minimumApplied': json['minimum_applied'],
     };
 }
 
@@ -85,8 +69,6 @@ export function FinetuningCostEstimateToJSONTyped(value?: FinetuningCostEstimate
     return {
 
         'usd': value['usd'],
-        'price_per_million_usd': value['pricePerMillionUsd'],
         'trained_tokens': value['trainedTokens'],
-        'minimum_applied': value['minimumApplied'],
     };
 }

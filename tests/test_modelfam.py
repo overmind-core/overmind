@@ -193,8 +193,6 @@ def test_finetune_hf_base_uses_unsloth_catalog_row() -> None:
 
     with override_settings(FINETUNING_BACKEND="modal"):
         assert get_hf_base("Qwen/Qwen3-8B") == "unsloth/Qwen3-8B"
-    with override_settings(FINETUNING_BACKEND="together"):
-        assert get_hf_base("Qwen/Qwen3-8B") == "Qwen/Qwen3-8B"
 
 
 def test_trust_and_llama31() -> None:
@@ -495,10 +493,10 @@ def test_full_ft_disabled_above_30b() -> None:
     assert not hits, f"full FT must be off above 30B: {hits}"
 
 
-def test_baseten_real_max_context_length() -> None:
+def test_modal_real_max_context_length() -> None:
     data = json.loads(_MODELS_JSON.read_text())
     for entry in data["models"]:
-        if entry.get("backend") != "baseten":
+        if entry.get("backend") != "modal":
             continue
         ft = entry["finetuning"]
         real = ft.get("real_max_context_length")

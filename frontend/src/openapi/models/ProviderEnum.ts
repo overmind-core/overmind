@@ -14,18 +14,14 @@
 
 
 /**
- * * `together_ai` - Together Ai
  * * `nebius` - Nebius
  * * `tinker` - Tinker
- * * `baseten` - Baseten
  * * `modal` - Modal
  * @export
  */
 export const ProviderEnum = {
-    together_ai: 'together_ai',
     nebius: 'nebius',
     tinker: 'tinker',
-    baseten: 'baseten',
     modal: 'modal'
 } as const;
 export type ProviderEnum = typeof ProviderEnum[keyof typeof ProviderEnum];

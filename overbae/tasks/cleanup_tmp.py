@@ -28,7 +28,7 @@ def cleanup_data_tmp() -> dict[str, int]:
 
     for entry in os.scandir(tmpdir):
         # HOME == TMPDIR in our containers — dotfiles are config
-        # (.trussrc, .aws, …), not scratch. Never sweep them.
+        # (.aws, .cache, …), not scratch. Never sweep them.
         if entry.name.startswith("."):
             continue
         try:
