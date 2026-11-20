@@ -68,7 +68,7 @@ def test_call_llm_sends_the_response_schema(fake_llm):
 
 @pytest.fixture
 def only_openrouter(monkeypatch):
-    for env in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "TOGETHER_API_KEY"):
+    for env in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.delenv(env, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
 
@@ -96,11 +96,6 @@ def test_catalog_models_route_through_openrouter(fake_llm, only_openrouter, argu
     ("spec", "env", "url"),
     [
         (
-            ModelSpec(provider="together", model_id="ft-model"),
-            "TOGETHER_API_KEY",
-            "https://api.together.xyz/v1/chat/completions",
-        ),
-        (
             ModelSpec(
                 provider="custom",
                 model_id="ft-model",
@@ -111,7 +106,7 @@ def test_catalog_models_route_through_openrouter(fake_llm, only_openrouter, argu
             "https://models.example.test/v1/chat/completions",
         ),
     ],
-    ids=["together", "custom"],
+    ids=["custom"],
 )
 def test_openai_compatible_specs_call_their_own_endpoint(fake_llm, monkeypatch, spec, env, url):
     monkeypatch.setenv(env, "provider-key")

@@ -1,6 +1,6 @@
 """Training policy: every fine-tuning heuristic in one module.
 
-Shared by the recommender (pre-launch wizard) and the Baseten runner (submission
+Shared by the recommender (pre-launch wizard) and the Modal runner (submission
 time) so the values the wizard shows are the values the training script receives —
 no silent recommendation → job → config drops.
 """
@@ -37,8 +37,8 @@ TRAINING_SEED = 42
 PACKING_MIN_EXAMPLES = 1000
 PACKING_MAX_FILL = 0.25
 
-# Baseten training GPUs (VRAM in GB) — hardware facts for the pre-submission
-# memory guardrail, mirroring BasetenRunner's GPU table.
+# Training GPUs (VRAM in GB) — hardware facts for the pre-submission memory
+# guardrail, mirroring ModalRunner's GPU table.
 TRAINING_GPU_VRAM_GB: dict[str, float] = {"H100": 80.0, "H200": 141.0}
 _BF16_BYTES_PER_PARAM = 2
 # QLoRA 4-bit weight floor (Unsloth docs: 70B QLoRA ≈41 GB ≈0.59 B/param with
@@ -168,7 +168,7 @@ def openai_batch_size(
     return min(max(min_batch, raw), max_batch)
 
 
-def baseten_context_length(
+def snap_context_length(
     needed_tokens: int = 0,
     *,
     model_max: int | None = None,
@@ -180,7 +180,7 @@ def baseten_context_length(
     training targets. Buckets and headroom come from models.json, never from code.
     Raises when the model cannot cover the dataset's longest row (plus headroom).
     """
-    policy = get_training_context_policy("baseten")
+    policy = get_training_context_policy("modal")
     buckets: list[int] = sorted(int(b) for b in policy["context_buckets"])
     need = int(needed_tokens or 0)
     if need > 0:
@@ -207,7 +207,7 @@ def validate_requested_context_length(context_length: int, *, model_max: int | N
         )
     if not 128 <= context_length <= 2_000_000:
         raise InputValidationError("Context length must be between 128 and 2,000,000 tokens.")
-    supported = baseten_context_length(model_max=model_max, requested=context_length)
+    supported = snap_context_length(model_max=model_max, requested=context_length)
     if supported != context_length:
         raise InputValidationError(
             f"context_length={context_length} is unsupported; choose {supported} "
@@ -224,10 +224,10 @@ def estimated_training_context_length(
     # Estimates size the first exact preprocessing pass; only tokenization can reject data.
     target = max(0, estimated_tokens)
     if target:
-        target += context_headroom("baseten")
+        target += context_headroom("modal")
     if model_max:
         target = min(target, model_max)
-    return baseten_context_length(model_max=model_max, requested=max(target, requested or 0))
+    return snap_context_length(model_max=model_max, requested=max(target, requested or 0))
 
 
 def should_pack(num_examples: int, avg_row_tokens: int, context_length: int) -> bool:
@@ -246,10 +246,10 @@ class TrainingPlanError(ValueError):
 
 
 @dataclass
-class BasetenTrainingPlan:
-    """Everything the Baseten training script is parameterised with — the single seam
-    between job hyperparameters and the env vars pushed to Baseten. ``notes`` records
-    every gap-fill and clamp.
+class TrainingPlan:
+    """Everything the training script is parameterised with — the single seam
+    between job hyperparameters and the env vars pushed to the training worker. ``notes``
+    records every gap-fill and clamp.
     """
 
     context_length: int
@@ -370,7 +370,7 @@ def _resolve_memory_plan(
     return True, qlora_budget
 
 
-def derive_baseten_training_plan(
+def derive_training_plan(
     *,
     hyperparameters: dict[str, Any] | None,
     num_train_examples: int,
@@ -383,13 +383,13 @@ def derive_baseten_training_plan(
     gpu_count: int = 1,
     model_id: str | None = None,
     hidden_size: int = 0,
-) -> BasetenTrainingPlan:
-    """Derive the full Baseten training plan from data + catalog context.
+) -> TrainingPlan:
+    """Derive the full training plan from data + catalog context.
 
     Explicit hyperparameters are preserved or rejected; anything absent
     is gap-filled from the same heuristics the recommender uses, never a hardcoded
     constant. Raises :class:`TrainingPlanError` when the combination cannot work, so a
-    job fails pre-submission instead of mid-run on Baseten.
+    job fails pre-submission instead of mid-run.
 
     ``hidden_size`` enables the activation token budget (0 = weight-only checks).
     """
@@ -412,7 +412,7 @@ def derive_baseten_training_plan(
     tt_name = str(training_type.get("type") or "Lora")
     if tt_name not in ("Lora", "Full"):
         raise TrainingPlanError(
-            f"Unknown training_type={tt_name!r}; the Baseten training script "
+            f"Unknown training_type={tt_name!r}; the training script "
             "implements 'Lora' and 'Full' fine-tuning."
         )
     use_lora = tt_name == "Lora"
@@ -430,7 +430,7 @@ def derive_baseten_training_plan(
             "would be truncated, corrupting training targets."
         )
     requested_ctx = int(hp.get("context_length") or 0) or None
-    context_length = baseten_context_length(
+    context_length = snap_context_length(
         max_row_tokens, model_max=model_max_context, requested=requested_ctx
     )
 
@@ -598,7 +598,7 @@ def derive_baseten_training_plan(
     if packing:
         notes.append(f"packing enabled (avg row ≈{avg_row_tokens} tokens ≪ ctx {context_length})")
 
-    return BasetenTrainingPlan(
+    return TrainingPlan(
         context_length=context_length,
         n_epochs=n_epochs,
         batch_size=batch_size,

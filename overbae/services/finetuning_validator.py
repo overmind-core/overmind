@@ -3,9 +3,8 @@
 Two accepted formats: conversational ``{"messages": [...]}`` and instruction
 ``{"prompt": ..., "completion": ...}``.
 
-Runs entirely in-process — no SDK, no network. The checks replicate what Together's
-``check_file`` does locally (UTF-8, JSON per line, minimum samples) and add the
-semantic validation Together otherwise defers to its server.
+Runs entirely in-process — no SDK, no network: UTF-8, JSON per line, minimum
+samples, and the semantic validation the training worker would otherwise fail on.
 """
 
 from __future__ import annotations
@@ -324,9 +323,7 @@ def _long_row_warning_threshold() -> int | None:
     from overbae.modal.model_registry import min_sft_context_length
 
     backend = getattr(settings, "FINETUNING_BACKEND", None)
-    # Modal reuses the Baseten catalog verbatim — models.json has no "modal" rows.
-    catalog_backend = "baseten" if backend == "modal" else backend
-    return min_sft_context_length(catalog_backend) if catalog_backend else None
+    return min_sft_context_length(backend) if backend else None
 
 
 def _apply_tool_calling_checks(

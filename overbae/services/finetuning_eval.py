@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 def _is_self_hosted(job) -> bool:
-    """Baseten and Modal ship weight-only artifacts with no provider chat endpoint, so
-    their evals route through OUR Modal deployment. Together serves its own fine-tunes.
+    """Modal ships weight-only artifacts with no provider chat endpoint, so its evals
+    route through OUR Modal deployment.
     """
     from overbae.models import FinetuningJob
 
-    return job.provider in (FinetuningJob.Provider.BASETEN, FinetuningJob.Provider.MODAL)
+    return job.provider == FinetuningJob.Provider.MODAL
 
 
 def job_wants_evals(job) -> bool:
@@ -741,7 +741,7 @@ def _provider_routing(job, *, kind: str, target: _BaselineTarget | None) -> tupl
                 "INFERENCE_API_URL is not configured — cannot eval Modal deployments"
             )
         return ModelRef.Provider.CUSTOM, f"{gateway}/v1", "INFERENCE_API_KEY"
-    return ModelRef.Provider.TOGETHER, "", "TOGETHER_API_KEY"
+    raise RuntimeError(f"{job.provider} jobs have no evaluation route")
 
 
 def _get_or_create_model_ref(

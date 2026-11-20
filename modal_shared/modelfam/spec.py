@@ -17,7 +17,7 @@ class FamilySpec:
     # Ordered substrings matched against lowercased model_id. First match wins
     # across the global registry order — put specific patterns before general ones.
     patterns: tuple[str, ...]
-    # Modal/Baseten Unsloth image key — frozen stack id in modal_shared.stacks.
+    # Modal Unsloth image key — frozen stack id in modal_shared.stacks.
     train_image: str = "u2026_8_18"
     # Family default. Per-model shared-pool overrides live in serverless_engine.
     serve_image: str = "vllm"

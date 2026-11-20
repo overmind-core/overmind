@@ -14,7 +14,7 @@ Include the affected component (API, Console, SDK, MCP server), steps to reprodu
 - This repository: the API (`overbae/`), the Console (`frontend/`), the SDK and CLI (`overmind/`, published to PyPI as `overmind`), and the MCP server at `/api/mcp/`.
 - The hosted service at `console.overmindlab.ai` and `api.overmindlab.ai`.
 
-Third-party services the platform integrates with (model providers, Modal, Baseten, Stripe, Clerk) are out of scope; report those upstream.
+Third-party services the platform integrates with (model providers, Modal, Stripe, Clerk) are out of scope; report those upstream.
 
 ## Supported versions
 

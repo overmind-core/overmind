@@ -172,7 +172,6 @@ export interface FinetuningJobsModelSwapPromptRetrieveRequest {
 
 export interface FinetuningJobsModelsRetrieveRequest {
     hasToolCalling?: boolean;
-    maxContext?: number;
 }
 
 export interface FinetuningJobsMonitoringEvidenceRetrieveRequest {
@@ -1074,7 +1073,7 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Return the curated model catalog organised by tier.  When ``FINETUNING_BACKEND`` is ``baseten``, the Baseten catalog from models.json is returned. Pass ``?has_tool_calling=true`` to receive only models that support function-calling fine-tuning. Tiers that contain no eligible models are omitted from the response.
+     * Return the curated model catalog organised by tier.  The catalog is the ``FINETUNING_BACKEND`` rows of models.json. Pass ``?has_tool_calling=true`` to receive only models that support function-calling fine-tuning. Tiers that contain no eligible models are omitted from the response.
      * List available fine-tuning models by tier
      */
     async finetuningJobsModelsRetrieveRaw(requestParameters: FinetuningJobsModelsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FinetuningModelCatalogResponse>> {
@@ -1082,10 +1081,6 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
 
         if (requestParameters['hasToolCalling'] != null) {
             queryParameters['has_tool_calling'] = requestParameters['hasToolCalling'];
-        }
-
-        if (requestParameters['maxContext'] != null) {
-            queryParameters['max_context'] = requestParameters['maxContext'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -1124,7 +1119,7 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Return the curated model catalog organised by tier.  When ``FINETUNING_BACKEND`` is ``baseten``, the Baseten catalog from models.json is returned. Pass ``?has_tool_calling=true`` to receive only models that support function-calling fine-tuning. Tiers that contain no eligible models are omitted from the response.
+     * Return the curated model catalog organised by tier.  The catalog is the ``FINETUNING_BACKEND`` rows of models.json. Pass ``?has_tool_calling=true`` to receive only models that support function-calling fine-tuning. Tiers that contain no eligible models are omitted from the response.
      * List available fine-tuning models by tier
      */
     async finetuningJobsModelsRetrieve(requestParameters: FinetuningJobsModelsRetrieveRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FinetuningModelCatalogResponse> {
@@ -1686,7 +1681,7 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Check whether a dataset\'s datapoints conform to Together AI\'s format.
+     * Check whether a dataset\'s datapoints conform to the fine-tuning format.
      * Validate a dataset for fine-tuning
      */
     async finetuningJobsValidateDatasetCreateRaw(requestParameters: FinetuningJobsValidateDatasetCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetValidationResponse>> {
@@ -1738,7 +1733,7 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Check whether a dataset\'s datapoints conform to Together AI\'s format.
+     * Check whether a dataset\'s datapoints conform to the fine-tuning format.
      * Validate a dataset for fine-tuning
      */
     async finetuningJobsValidateDatasetCreate(requestParameters: FinetuningJobsValidateDatasetCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetValidationResponse> {
@@ -1752,11 +1747,9 @@ export class FinetuningJobsApi extends runtime.BaseAPI {
  * @export
  */
 export const FinetuningJobsEventsListProviderEnum = {
-    baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
-    tinker: 'tinker',
-    together_ai: 'together_ai'
+    tinker: 'tinker'
 } as const;
 export type FinetuningJobsEventsListProviderEnum = typeof FinetuningJobsEventsListProviderEnum[keyof typeof FinetuningJobsEventsListProviderEnum];
 /**
@@ -1779,11 +1772,9 @@ export type FinetuningJobsEventsListStatusEnum = typeof FinetuningJobsEventsList
  * @export
  */
 export const FinetuningJobsListProviderEnum = {
-    baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
-    tinker: 'tinker',
-    together_ai: 'together_ai'
+    tinker: 'tinker'
 } as const;
 export type FinetuningJobsListProviderEnum = typeof FinetuningJobsListProviderEnum[keyof typeof FinetuningJobsListProviderEnum];
 /**
@@ -1844,11 +1835,9 @@ export type FinetuningJobsRunsListOrderingEnum = typeof FinetuningJobsRunsListOr
  * @export
  */
 export const FinetuningJobsRunsListProviderEnum = {
-    baseten: 'baseten',
     modal: 'modal',
     nebius: 'nebius',
-    tinker: 'tinker',
-    together_ai: 'together_ai'
+    tinker: 'tinker'
 } as const;
 export type FinetuningJobsRunsListProviderEnum = typeof FinetuningJobsRunsListProviderEnum[keyof typeof FinetuningJobsRunsListProviderEnum];
 /**

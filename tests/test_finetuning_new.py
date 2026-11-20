@@ -3,8 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import uuid
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from conftest import EVAL_ROWS, frozen_dataset
@@ -20,7 +19,7 @@ from factories import (
 from rest_framework.test import APIClient
 
 from modal_shared.training_data import row_key
-from overbae.modal.model_registry import baseten_finetuning_catalog
+from overbae.modal.model_registry import finetuning_catalog
 from overbae.models import (
     Capability,
     Dataset,
@@ -33,12 +32,7 @@ from overbae.models import (
 )
 from overbae.services.datasets.rows import row as _dataset_row
 from overbae.services.datasets.rows import row_from_record
-from overbae.services.finetuning_runner import (
-    BasetenRunner,
-    TogetherAIRunner,
-    get_runner,
-    together_suffix,
-)
+from overbae.services.finetuning_runner import ModalRunner, get_runner
 from overbae.services.finetuning_tool_validation import check_tool_calling_rows
 from overbae.services.finetuning_validator import (
     validate_dataset,
@@ -232,8 +226,7 @@ class TestValidatorDB:
 class TestRecommenderLogic:
     pytestmark = pytest.mark.django_db(transaction=False)
 
-    def test_hyperparams_small_dataset(self, settings):
-        settings.FINETUNING_BACKEND = "together"
+    def test_hyperparams_small_dataset(self):
         hp = compute_hyperparams(50, use_lora=True)
         assert hp["n_epochs"] == 2  # 100 // 50
         # OpenAI 0.2%-of-examples rule: round(0.002 * 50) → 0, floored to 1
@@ -241,8 +234,7 @@ class TestRecommenderLogic:
         assert hp["learning_rate"] == 1e-4
         assert "training_type" in hp
 
-    def test_hyperparams_medium_dataset(self, settings):
-        settings.FINETUNING_BACKEND = "together"
+    def test_hyperparams_medium_dataset(self):
         hp = compute_hyperparams(500, use_lora=True)
         assert hp["n_epochs"] == 3
         assert hp["batch_size"] == 1  # round(0.002 * 500) == 1
@@ -275,18 +267,18 @@ class TestRecommenderLogic:
         assert hp["learning_rate"] == 5e-5
 
     def test_hyperparam_provenance_covers_stamped_knobs(self, settings):
-        settings.FINETUNING_BACKEND = "baseten"
+        settings.FINETUNING_BACKEND = "modal"
         hp = compute_hyperparams(49, model_entry={"total_params_b": 8.0}, use_lora=True)
         reasons = hyperparam_provenance(
-            hp, num_examples=49, params_b=8.0, use_lora=True, backend="baseten"
+            hp, num_examples=49, params_b=8.0, use_lora=True, backend="modal"
         )
         assert {"n_epochs", "learning_rate", "batch_size", "warmup_ratio", "lora_r"} <= set(reasons)
         assert "49 examples" in reasons["n_epochs"]
         assert all(isinstance(v, str) and v for v in reasons.values())
 
-    def test_baseten_catalog_includes_batch_size_limits(self):
+    def test_catalog_includes_batch_size_limits(self):
         # Model-agnostic: any entry can be disabled in models.json at any time.
-        entries = [m for tier in baseten_finetuning_catalog().values() for m in tier]
+        entries = [m for tier in finetuning_catalog("modal").values() for m in tier]
         assert entries
         for m in entries:
             assert isinstance(m["min_batch_size"], int), m["id"]
@@ -295,171 +287,15 @@ class TestRecommenderLogic:
 
 
 class TestRunnerAbstraction:
-    def test_get_runner_returns_together_runner_by_default(self, settings):
-        settings.FINETUNING_BACKEND = "together"
-        runner = get_runner()
-        assert isinstance(runner, TogetherAIRunner)
+    def test_get_runner_returns_the_configured_backend(self):
+        assert isinstance(get_runner(), ModalRunner)
 
     def test_get_runner_unknown_backend_raises(self):
         with pytest.raises(ValueError, match="Unknown fine-tuning backend"):
             get_runner("nonexistent_backend")
 
-    def test_together_suffix_strips_unsafe_characters(self):
-        assert (
-            together_suffix(
-                "huge rhinoceros · Qwen 2.5 7B Instruct",
-                fallback="ft-deadbeef",
-            )
-            == "huge-rhinoceros-qwen-2-5-7b-instruct"
-        )
-        assert together_suffix(None, fallback="ft-abc12345") == "ft-abc12345"
-        assert together_suffix("   ", fallback="ft-fallback1") == "ft-fallback1"
-
-    def test_together_runner_submit_uploads_and_creates_job(self):
-        runner = TogetherAIRunner()
-
-        job = SimpleNamespace(
-            id=uuid.uuid4(),
-            base_model="meta-llama/Llama-3.2-3B-Instruct",
-            name="smoke-test",
-            hyperparameters={
-                "n_epochs": 2,
-                "learning_rate": 1e-4,
-                "training_type": {
-                    "type": "Lora",
-                    "lora_r": 8,
-                    "lora_alpha": 16,
-                    "lora_dropout": 0.0,
-                    "lora_trainable_modules": "all-linear",
-                },
-            },
-        )
-
-        mock_client = MagicMock()
-        mock_client.files.upload.return_value = SimpleNamespace(id="file-123")
-        mock_client.fine_tuning.create.return_value = SimpleNamespace(id="ft-job-456")
-
-        with patch.object(runner, "_client", return_value=mock_client):
-            result = runner.submit(
-                job=job,
-                training_file_path="/tmp/fake.jsonl",
-                num_examples=50,
-            )
-
-        assert result.remote_id == "ft-job-456"
-        assert result.training_file_id == "file-123"
-        assert result.num_examples == 50
-        assert "ft-job-456" in result.run_url
-        mock_client.files.upload.assert_called_once_with(
-            file="/tmp/fake.jsonl", purpose="fine-tune"
-        )
-        assert mock_client.fine_tuning.create.call_args.kwargs["suffix"] == "smoke-test"
-
-    def test_together_runner_submit_sanitizes_display_name_suffix(self):
-        runner = TogetherAIRunner()
-        job = SimpleNamespace(
-            id=uuid.uuid4(),
-            base_model="Qwen/Qwen2.5-7B-Instruct",
-            name="huge rhinoceros · Qwen 2.5 7B Instruct",
-            hyperparameters={"n_epochs": 1},
-        )
-        mock_client = MagicMock()
-        mock_client.files.upload.return_value = SimpleNamespace(id="file-123")
-        mock_client.fine_tuning.create.return_value = SimpleNamespace(id="ft-job-789")
-
-        with patch.object(runner, "_client", return_value=mock_client):
-            runner.submit(job=job, training_file_path="/tmp/fake.jsonl", num_examples=10)
-
-        assert (
-            mock_client.fine_tuning.create.call_args.kwargs["suffix"]
-            == "huge-rhinoceros-qwen-2-5-7b-instruct"
-        )
-
-    def test_together_runner_submit_reuses_existing_file(self):
-        runner = TogetherAIRunner()
-
-        job = SimpleNamespace(
-            id=uuid.uuid4(),
-            base_model="meta-llama/Llama-3.2-3B-Instruct",
-            name="reuse-test",
-            hyperparameters={"n_epochs": 1},
-        )
-
-        mock_client = MagicMock()
-        mock_client.fine_tuning.create.return_value = SimpleNamespace(id="ft-reuse-789")
-
-        with patch.object(runner, "_client", return_value=mock_client):
-            result = runner.submit(
-                job=job,
-                training_file_path="",
-                num_examples=None,
-                existing_file_id="file-already-uploaded",
-            )
-
-        mock_client.files.upload.assert_not_called()
-        assert result.training_file_id == "file-already-uploaded"
-        assert result.remote_id == "ft-reuse-789"
-        assert result.num_examples is None
-
-    def test_together_runner_poll_parses_response(self):
-        """Loss comes from event messages; step from the step field on each event."""
-        runner = TogetherAIRunner()
-        mock_client = MagicMock()
-
-        fake_ft = SimpleNamespace(
-            status="running",
-            epochs_completed=1,
-            token_count=10000,
-            x_model_output_name=None,
-            x_model_output_path=None,
-            events=[
-                # Chronological order: oldest first (Together AI's natural order)
-                SimpleNamespace(
-                    step=38,
-                    type="checkpoint_save",
-                    message="Step 38 train_loss=0.61",
-                ),
-                SimpleNamespace(
-                    step=42,
-                    type="checkpoint_save",
-                    message="Step 42 train_loss=0.5432 eval_loss=0.6123",
-                ),
-            ],
-        )
-        mock_client.fine_tuning.retrieve.return_value = fake_ft
-
-        with patch.object(runner, "_client", return_value=mock_client):
-            snap = runner.poll("ft-job-abc")
-
-        assert snap.state == "running"
-        assert snap.train_loss == pytest.approx(0.5432)
-        assert snap.eval_loss == pytest.approx(0.6123)
-        assert snap.step == 42  # highest step from events
-
-    def test_together_runner_poll_completed_state(self):
-        """x_model_output_name / x_model_output_path are the SDK's Pydantic field names."""
-        runner = TogetherAIRunner()
-        mock_client = MagicMock()
-
-        fake_ft = SimpleNamespace(
-            status="completed",
-            epochs_completed=3,
-            token_count=50000,
-            x_model_output_name="myspace/llama-ft-abc",
-            x_model_output_path="https://weights.example.com/ft.bin",
-            events=[],
-        )
-        mock_client.fine_tuning.retrieve.return_value = fake_ft
-
-        with patch.object(runner, "_client", return_value=mock_client):
-            snap = runner.poll("ft-job-done")
-
-        assert runner.is_terminal_ok(snap.state)
-        assert snap.output_model_name == "myspace/llama-ft-abc"
-        assert snap.weights_url == "https://weights.example.com/ft.bin"
-
     def test_terminal_state_classification(self):
-        runner = BasetenRunner()
+        runner = ModalRunner()
         assert runner.is_terminal_ok("succeeded")
         assert not runner.is_terminal_ok("running")
         assert runner.is_terminal_fail("failed")
@@ -574,23 +410,12 @@ class TestValidateDatasetEndpoint:
 
 
 class TestModelsEndpoint:
-    def test_models_returns_backend(self, settings):
+    def test_models_returns_the_configured_backend(self):
         u, _, _ = _setup()
-        settings.FINETUNING_BACKEND = "together"
 
         r = auth_client(u).get(reverse("finetuningjob-models"))
         assert r.status_code == 200
-        assert r.data["backend"] == "together"
-        assert "tiers" in r.data
-        assert "models" in r.data
-
-    def test_models_returns_baseten_backend(self, settings):
-        u, _, _ = _setup()
-        settings.FINETUNING_BACKEND = "baseten"
-
-        r = auth_client(u).get(reverse("finetuningjob-models"))
-        assert r.status_code == 200
-        assert r.data["backend"] == "baseten"
+        assert r.data["backend"] == "modal"
         assert set(r.data["tiers"]) == {"compact", "small", "mid", "large"}
 
 
@@ -612,7 +437,7 @@ class TestRecommendEndpoint:
         assert 1 <= len(r.data["shown"]) <= 3
 
     def test_recommend_includes_provenance(self, settings):
-        settings.FINETUNING_BACKEND = "baseten"
+        settings.FINETUNING_BACKEND = "modal"
         u, p, a = _setup()
         ds = _dataset_with_pairs(a, n=10)
 
@@ -1366,20 +1191,19 @@ class TestGPUSelectorLogic:
 class TestModelRegistryAnyBackend:
     pytestmark = pytest.mark.django_db(transaction=False)
 
-    def test_together_model_is_found(self):
+    def test_catalogued_model_is_found(self):
         from overbae.modal.model_registry import get_model_config_any_backend
 
         cfg = get_model_config_any_backend("Qwen/Qwen3-8B")
         assert cfg is not None
         assert cfg["id"] == "Qwen/Qwen3-8B"
 
-    def test_baseten_only_model_is_found(self):
-        """Qwen2.5-32B is baseten-only; must not return None."""
+    def test_modal_model_is_found(self):
         from overbae.modal.model_registry import get_model_config_any_backend
 
         cfg = get_model_config_any_backend("Qwen/Qwen2.5-32B-Instruct")
         assert cfg is not None
-        assert cfg["backend"] == "baseten"
+        assert cfg["backend"] == "modal"
 
     def test_arch_constants_present_on_result(self):
         from overbae.modal.model_registry import get_model_config_any_backend
@@ -1402,10 +1226,10 @@ class TestModelRegistryAnyBackend:
 
         assert get_model_config_any_backend("totally-unknown/model-xyz") is None
 
-    def test_all_non_disabled_baseten_models_have_arch_constants(self):
+    def test_all_non_disabled_modal_models_have_arch_constants(self):
         from overbae.modal.model_registry import get_all_models_by_backend
 
-        models = get_all_models_by_backend("baseten", include_disabled=False)
+        models = get_all_models_by_backend("modal", include_disabled=False)
         assert models
         for model_id, cfg in models.items():
             assert cfg.get("num_attn_layers") is not None, f"{model_id} missing num_attn_layers"
@@ -1413,88 +1237,16 @@ class TestModelRegistryAnyBackend:
             assert cfg.get("head_dim") is not None, f"{model_id} missing head_dim"
 
 
-class TestBasetenContextLengthPersistence:
-    """``submit()`` persists context_length so model_deployment can size the GPU.
-    The stubbed push response is Baseten's real push-API shape."""
-
+class TestTrainingPlan:
     pytestmark = pytest.mark.django_db
-
-    def _make_job(self, base_model: str = "Qwen/Qwen3-8B", max_token_length: int = 500):
-        _, p, a = _setup()
-        ds = _dataset_with_messages(a, n=5)
-        version = ds.active_cell
-        version.stats = {**version.stats, "max_token_length": max_token_length}
-        version.save(update_fields=["stats"])
-        return FinetuningJob.objects.create(
-            project=p,
-            dataset=ds,
-            cell=version,
-            base_model=base_model,
-            hyperparameters={"n_epochs": 2, "training_type": {"type": "Lora", "lora_r": 8}},
-        )
-
-    @staticmethod
-    def _submit(job, tmp_path):
-        train = tmp_path / "train.jsonl"
-        train.write_text(
-            json.dumps(
-                {
-                    "messages": [
-                        {"role": "user", "content": "hi"},
-                        {"role": "assistant", "content": "yo"},
-                    ]
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        truss_train = MagicMock()
-        truss_train.push.return_value = {
-            "id": "bt-job-1",
-            "training_project": {"id": "bt-proj-1"},
-        }
-        runner = BasetenRunner()
-        # truss is a worker-only dep; stub auth rewrite + push at the boundary.
-        with (
-            patch.dict("sys.modules", {"truss_train": truss_train}),
-            patch.object(BasetenRunner, "_ensure_trussrc"),
-        ):
-            return runner.submit(job=job, training_file_path=str(train), num_examples=4)
-
-    def test_submit_writes_context_length_to_db(self, tmp_path):
-        """11,051-token rows plus headroom snap up to the 16,384 bucket — well under
-        Qwen3-8B's catalog max of 40,960."""
-        job = self._make_job(max_token_length=11051)
-        assert "context_length" not in (job.hyperparameters or {})
-
-        result = self._submit(job, tmp_path)
-        assert result.remote_id == "bt-proj-1:bt-job-1"
-
-        job.refresh_from_db()
-        assert job.hyperparameters["context_length"] == 16384
-
-    def test_submit_preserves_existing_hyperparameters(self, tmp_path):
-        job = self._make_job(max_token_length=500)
-        self._submit(job, tmp_path)
-
-        job.refresh_from_db()
-        assert job.hyperparameters["n_epochs"] == 2
-        assert job.hyperparameters["context_length"] == 4096
 
     def test_context_snap_helper_capped_by_model_max(self):
         from overbae.services.finetuning_policy import TrainingPlanError
-        from overbae.services.finetuning_runner import baseten_context_length
+        from overbae.services.finetuning_runner import snap_context_length
 
-        assert baseten_context_length(11051, model_max=32768) == 16384
+        assert snap_context_length(11051, model_max=32768) == 16384
         with pytest.raises(TrainingPlanError, match="refusing to clamp"):
-            baseten_context_length(999_999, model_max=32768)
-
-    def test_training_gpu_scales_with_model_size(self):
-        runner = BasetenRunner()
-        small = SimpleNamespace(base_model="Qwen/Qwen3-8B")
-        big = SimpleNamespace(base_model="Qwen/Qwen2.5-72B-Instruct")
-        assert runner._select_training_gpu(small) == ("H100", 1)
-        assert runner._select_training_gpu(big) == ("H100", 1)
+            snap_context_length(999_999, model_max=32768)
 
     def test_gemma4_full_never_gets_multi_gpu(self):
         from overbae.services.finetuning_runner import clamp_gemma4_training_gpu
@@ -1569,8 +1321,7 @@ class TestDeploymentGPUDerivation:
         # At 16k context, 8B FP8 fits on L4
         assert gpu == "L4"
 
-    def test_baseten_only_model_selects_correctly(self):
-        """Qwen2.5-32B is baseten-only — get_model_config_any_backend must find it."""
+    def test_qwen25_32b_selects_a_mid_range_gpu(self):
         gpu, conc = self._select("Qwen/Qwen2.5-32B-Instruct", 32768)
         # 32B dense model at 32k — mid-range GPU, not L4 or H200+.
         assert gpu in ("L40S", "A100-80GB")

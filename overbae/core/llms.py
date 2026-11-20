@@ -43,8 +43,6 @@ from overbae.models import DeployedModel
 
 logger = logging.getLogger(__name__)
 
-_TOGETHER_BASE_URL = "https://api.together.xyz/v1"
-
 # Seconds per completion. The SDK default of 600s lets one hung socket read pin
 # a `--pool=threads` worker thread long enough to starve the queue, so this stays
 # well above a healthy completion but far below the default. Total retry time is
@@ -75,7 +73,7 @@ class ModelSpec:
     fine-tunes and custom OpenAI-compatible endpoints — built from a ``ModelRef``.
     """
 
-    provider: str  # openai | anthropic | gemini | together | custom
+    provider: str  # openai | anthropic | gemini | custom
     model_id: str
     base_url: str = ""
     # Env var name; secrets are never persisted.
@@ -177,13 +175,6 @@ def _split_base_url(url: str) -> tuple[str, tuple[tuple[str, str], ...]]:
 
 def _model_spec_client_and_name(spec: ModelSpec) -> tuple[AsyncOpenAI, str, str]:
     provider = (spec.provider or "").lower()
-    if provider == "together":
-        key_env = spec.api_key_env or "TOGETHER_API_KEY"
-        api_key = os.environ.get(key_env)
-        if not api_key:
-            raise RuntimeError(f"{key_env} is required for Together model '{spec.model_id}'")
-        return _openai_compatible_client(_TOGETHER_BASE_URL, api_key), spec.model_id, provider
-
     if provider == "custom":
         if not spec.base_url:
             raise RuntimeError(f"Custom model '{spec.model_id}' requires base_url")

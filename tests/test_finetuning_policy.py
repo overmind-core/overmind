@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from overbae.services.finetuning_policy import (
-    baseten_context_length,
     default_epochs,
     estimated_training_context_length,
+    snap_context_length,
 )
 
 pytestmark = pytest.mark.covers("plans")
@@ -32,4 +32,4 @@ def test_estimated_context_sizes_without_rejecting_unmeasured_data(estimate, req
 
 
 def test_context_above_largest_bucket_does_not_round_down():
-    assert baseten_context_length(model_max=1_000_000, requested=300_000) == 300_000
+    assert snap_context_length(model_max=1_000_000, requested=300_000) == 300_000

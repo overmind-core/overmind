@@ -67,19 +67,6 @@ def collect_training_evidence(self, job_id):
             raise self.retry(exc=exc, countdown=min(30 * 2**self.request.retries, 300)) from exc
 
 
-def _enqueue_baseten_cost_sync(job) -> None:
-    from overbae.models import FinetuningJob
-
-    if job.provider != FinetuningJob.Provider.BASETEN or not job.remote_job_id:
-        return
-    try:
-        from overbae.tasks.baseten_billing_sync import sync_baseten_job_cost
-
-        sync_baseten_job_cost.delay(job_id=str(job.id))
-    except Exception:  # noqa: BLE001 — cost sync must never fail the training job
-        logger.warning("Failed to enqueue Baseten cost sync for job %s", job.id, exc_info=True)
-
-
 def _training_line(row) -> str:
     from overbae.services.finetuning_validator import row_to_finetuning_line
 
@@ -455,7 +442,6 @@ def _finalize_success(job, runner, snap, remote: str) -> dict[str, Any]:
         logger.info("Queued inference deployment for job %s", job.id)
     except Exception:  # noqa: BLE001
         logger.exception("Failed to queue inference deployment for job %s — continuing", job.id)
-    _enqueue_baseten_cost_sync(job)
     return {"status": "deploying", "job_id": remote}
 
 
@@ -500,11 +486,10 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
     backend = (
         "modal"
         if (job.requested_configuration or {}).get("runtime")
-        else getattr(settings, "FINETUNING_BACKEND", "baseten")
+        else getattr(settings, "FINETUNING_BACKEND", "modal")
     )
-    # Baseten and Modal are self-hosted-script backends whose train.py reads an
-    # optional val.jsonl; Together needs its own separate eval dataset API.
-    supports_validation = backend in {"baseten", "modal"}
+    # Modal's train.py reads an optional val.jsonl.
+    supports_validation = backend == "modal"
 
     # An existing remote id means this is a re-drive — skip submission, go to polling.
     existing_remote_id = _remote_id(job)
@@ -513,11 +498,7 @@ def run_finetuning(*, job_id: str) -> dict[str, Any]:
         try:
             from overbae.services.finetuning_eval import start_before_evals
 
-            provider = {
-                "together": FinetuningJob.Provider.TOGETHER_AI,
-                "baseten": FinetuningJob.Provider.BASETEN,
-                "modal": FinetuningJob.Provider.MODAL,
-            }.get(backend, FinetuningJob.Provider.BASETEN)
+            provider = {"modal": FinetuningJob.Provider.MODAL}[backend]
             FinetuningJob.objects.filter(pk=job.pk).update(provider=provider)
             job.provider = provider
             if backend == "modal":
@@ -776,13 +757,11 @@ def observe_finetuning_job(job) -> dict[str, Any]:
     if runner.is_terminal_cancelled(snap.state):
         if job.status != FinetuningJob.Status.CANCELLED:
             _transition(job, FinetuningJob.Status.CANCELLED, message="Fine-tuning cancelled")
-            _enqueue_baseten_cost_sync(job)
         return {"status": "cancelled", "job_id": remote}
 
     job.refresh_from_db(fields=["status", "progress"])
     if job.status == FinetuningJob.Status.CANCELLED:
         _cancel_remote(runner, remote)
-        _enqueue_baseten_cost_sync(job)
         return {"status": "cancelled"}
 
     if _stalled(job.progress if isinstance(job.progress, dict) else {}):
@@ -813,4 +792,3 @@ def _handle_failure(job, error: str) -> None:
         return
 
     _transition(job, FinetuningJob.Status.FAILED, error=error)
-    _enqueue_baseten_cost_sync(job)

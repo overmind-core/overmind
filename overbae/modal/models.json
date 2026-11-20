@@ -1,5 +1,5 @@
 {
-  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field (baseten | together | decision). Models available on multiple backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). inference.lora_supported declares verified shared-base LoRA support for MoE models; dense models support it by default. inference.min_vram_gb is a measured minimum GPU capacity enforced for automatic inference selection, including short contexts. num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a model at its serving max_model_len, including input and reserved output. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. Baseten models train LoRA or Full on H100s/H200s via our TRL train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM3-1.7B 262144, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). Baseten itself imposes no per-model training context limit (max_seq_len up to 1048576, docs.baseten.co/engines/engine-builder-llm/engine-builder-config; training is arbitrary code, docs.baseten.co/training/getting-started). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is a marketing 'from' floor for a typical small LoRA run (Baseten H100 $0.10833/GPU-min = $6.50/h, baseten.co/pricing): \u226414B anchored on Jul 2026 Baseten-invoiced job averages; larger sizes estimated from typical GPU-minutes \u00d7 rate on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
+  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field naming the provider that trains and serves it (modal | decision). Models available on several backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). inference.lora_supported declares verified shared-base LoRA support for MoE models; dense models support it by default. inference.min_vram_gb is a measured minimum GPU capacity enforced for automatic inference selection, including short contexts. num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a model at its serving max_model_len, including input and reserved output. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. modal models train LoRA or Full on H100s/H200s via our train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM3-1.7B 262144, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is the 'from' price of a typical small LoRA run at cost: its typical GPU-minutes \u00d7 Modal's H100 rate ($3.95/h, modal.com/pricing, retrieved 2026-11-20) on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
   "providers": {
     "comment": "Friendly display name per model-id prefix (the part before the first '/'), keyed lowercase, under display_names. Used by overbae.services.model_library to label each model's family/provider on the public /library pages. Unknown prefixes fall back to a title-cased version of the raw prefix \u2014 add an entry here instead of hardcoding it in Python.",
     "display_names": {
@@ -18,721 +18,6 @@
     }
   },
   "models": [
-{
-      "id": "Qwen/Qwen3.5-2B",
-      "openrouter_id": null,
-      "backend": "together",
-      "display": "Qwen 3.5 2B",
-      "hf_model_id": "Qwen/Qwen3.5-2B",
-      "tier": "compact",
-      "params": "2B",
-      "total_params_b": 2.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 2048,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 131072,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 6,
-      "num_kv_heads": 2,
-      "head_dim": 256,
-      "group": "Qwen 3.5",
-      "pricing": {
-        "train_from_usd": 0.55,
-        "run_from_usd_per_1m_output": 4.0
-      },
-      "marketing": {
-        "pitch": "Compact Qwen 3.5 with 128K training context and tool calling.",
-        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
-        "good_for": [
-          "General-purpose agents that call tools",
-          "Long-trace training on compact bases",
-          "Size ladders from 0.8B through a 35B MoE"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3.5-0.8B",
-      "openrouter_id": null,
-      "backend": "together",
-      "display": "Qwen 3.5 0.8B",
-      "hf_model_id": "Qwen/Qwen3.5-0.8B",
-      "tier": "compact",
-      "params": "0.8B",
-      "total_params_b": 0.8,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 1536,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 131072,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 6,
-      "num_kv_heads": 2,
-      "head_dim": 256,
-      "group": "Qwen 3.5",
-      "pricing": {
-        "train_from_usd": 0.5,
-        "run_from_usd_per_1m_output": 2.5
-      },
-      "marketing": {
-        "pitch": "Smallest Qwen 3.5 with tool calling, trainable at 128K context.",
-        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
-        "good_for": [
-          "High-volume tool-calling loops at minimal serve cost",
-          "Long-trace training on a compact base",
-          "First experiment in a Qwen 3.5 size ladder"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3-4B",
-      "openrouter_id": null,
-      "backend": "together",
-      "display": "Qwen 3 4B",
-      "hf_model_id": "Qwen/Qwen3-4B",
-      "tier": "compact",
-      "params": "4B",
-      "total_params_b": 4.0,
-      "context_length": 40960,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 2560,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 40960,
-        "max_batch_size": 16,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 36,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 3",
-      "pricing": {
-        "train_from_usd": 0.7,
-        "run_from_usd_per_1m_output": 4.0
-      },
-      "marketing": {
-        "pitch": "Compact Qwen 3 step up when 1.7B underfits after training.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
-        "good_for": [
-          "Side-by-side size sweeps in one family",
-          "Code agents (via Qwen 3 Coder 30B)",
-          "Compact bases when tool calling is optional"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3-1.7B",
-      "openrouter_id": null,
-      "backend": "together",
-      "display": "Qwen 3 1.7B",
-      "hf_model_id": "Qwen/Qwen3-1.7B",
-      "tier": "compact",
-      "params": "1.7B",
-      "total_params_b": 1.7,
-      "context_length": 40960,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 2048,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 40960,
-        "max_batch_size": 32,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 28,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 3",
-      "pricing": {
-        "train_from_usd": 0.55,
-        "run_from_usd_per_1m_output": 4.0
-      },
-      "marketing": {
-        "pitch": "Compact Qwen 3 with tool calling for cheap, narrow agent jobs.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
-        "good_for": [
-          "Side-by-side size sweeps in one family",
-          "Code agents (via Qwen 3 Coder 30B)",
-          "Compact bases when tool calling is optional"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "meta-llama/Llama-3.2-3B-Instruct",
-      "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
-      "backend": "together",
-      "display": "Llama 3.2 3B Instruct",
-      "hf_model_id": "meta-llama/Llama-3.2-3B-Instruct",
-      "tier": "compact",
-      "params": "3B",
-      "total_params_b": 3.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 3072,
-      "fp8_supported": false,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 131072,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 28,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Llama 3",
-      "pricing": {
-        "train_from_usd": 0.55,
-        "run_from_usd_per_1m_output": 4.0
-      },
-      "marketing": {
-        "pitch": "Compact Llama 3.2 step up, still trainable at the full 128K context.",
-        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
-        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
-        "good_for": [
-          "Long-row training on compact bases",
-          "Meta-stack compatibility",
-          "Tool-calling agents at 1B through 8B"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "meta-llama/Llama-3.2-1B-Instruct",
-      "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
-      "backend": "together",
-      "display": "Llama 3.2 1B Instruct",
-      "hf_model_id": "meta-llama/Llama-3.2-1B-Instruct",
-      "tier": "compact",
-      "params": "1B",
-      "total_params_b": 1.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 2048,
-      "fp8_supported": false,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 131072,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 16,
-      "num_kv_heads": 8,
-      "head_dim": 64,
-      "group": "Llama 3",
-      "pricing": {
-        "train_from_usd": 0.5,
-        "run_from_usd_per_1m_output": 2.5
-      },
-      "marketing": {
-        "pitch": "Compact Llama trainable at full 128K context for long-row jobs.",
-        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
-        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
-        "good_for": [
-          "Long-row training on compact bases",
-          "Meta-stack compatibility",
-          "Tool-calling agents at 1B through 8B"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3.5-9B",
-      "openrouter_id": "qwen/qwen3.5-9b",
-      "backend": "together",
-      "display": "Qwen 3.5 9B",
-      "hf_model_id": "unsloth/Qwen3.5-9B",
-      "tier": "small",
-      "params": "9B",
-      "total_params_b": 9.0,
-      "context_length": 262144,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 4096,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 65536,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 8,
-      "num_kv_heads": 4,
-      "head_dim": 256,
-      "group": "Qwen 3.5",
-      "pricing": {
-        "train_from_usd": 1.0,
-        "run_from_usd_per_1m_output": 6.0
-      },
-      "marketing": {
-        "pitch": "Small-tier Qwen 3.5 default when compact quality is not enough.",
-        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
-        "good_for": [
-          "General-purpose agents that call tools",
-          "Long-trace training on compact bases",
-          "Size ladders from 0.8B through a 35B MoE"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3-8B",
-      "openrouter_id": "qwen/qwen3-8b",
-      "backend": "together",
-      "display": "Qwen 3 8B",
-      "hf_model_id": "Qwen/Qwen3-8B",
-      "tier": "small",
-      "params": "8B",
-      "total_params_b": 8.0,
-      "context_length": 40960,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 4096,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 40960,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 36,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 3",
-      "pricing": {
-        "train_from_usd": 1.0,
-        "run_from_usd_per_1m_output": 6.0
-      },
-      "marketing": {
-        "pitch": "Small-tier Qwen 3 for size sweeps that need more than compact.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
-        "good_for": [
-          "Side-by-side size sweeps in one family",
-          "Code agents (via Qwen 3 Coder 30B)",
-          "Compact bases when tool calling is optional"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen2.5-7B-Instruct",
-      "openrouter_id": "qwen/qwen-2.5-7b-instruct",
-      "backend": "together",
-      "display": "Qwen 2.5 7B Instruct",
-      "hf_model_id": "Qwen/Qwen2.5-7B-Instruct",
-      "tier": "small",
-      "params": "7B",
-      "total_params_b": 7.0,
-      "context_length": 32768,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 3584,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 32768,
-        "max_batch_size": 16,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 28,
-      "num_kv_heads": 4,
-      "head_dim": 128,
-      "group": "Qwen 2.5",
-      "pricing": {
-        "train_from_usd": 1.0,
-        "run_from_usd_per_1m_output": 6.0
-      },
-      "marketing": {
-        "pitch": "Small-tier Qwen 2.5 instruct for pipelines already tuned on this line.",
-        "description": "The mature, heavily-benchmarked generation, including a dedicated coder model at 32B. Worth keeping when an existing pipeline is already tuned around it.",
-        "overview": "Qwen 2.5 is the mature, heavily-benchmarked generation on the platform, including a dedicated 32B coder. Keep it when an existing pipeline is already tuned around this line and you want controlled training rather than a family jump.",
-        "good_for": [
-          "Pipelines already tuned on Qwen 2.5",
-          "Code specialists at 32B",
-          "Stable baselines for eval-driven iteration"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "meta-llama/Meta-Llama-3.1-8B-Instruct-Reference",
-      "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
-      "backend": "together",
-      "display": "Llama 3.1 8B Instruct",
-      "hf_model_id": "meta-llama/Llama-3.1-8B-Instruct",
-      "tier": "small",
-      "params": "8B",
-      "total_params_b": 8.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 4096,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L4",
-        "max_model_len": 8192
-      },
-      "finetuning": {
-        "context_length": 131072,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 32,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Llama 3",
-      "pricing": {
-        "train_from_usd": 1.0,
-        "run_from_usd_per_1m_output": 6.0
-      },
-      "marketing": {
-        "pitch": "Small-tier Llama 3.1 with full 128K training context and tool calling.",
-        "description": "Meta's instruct models, all three trainable at their full 128K context. The natural choice when your rows are long and you want a compact model.",
-        "overview": "Llama 3 on Overmind covers Meta's instruct models at 1B, 3B, and 8B, each trainable at their full 128K context. Pick this family when your rows are long and you still want a compact model you can serve cheaply after training.",
-        "good_for": [
-          "Long-row training on compact bases",
-          "Meta-stack compatibility",
-          "Tool-calling agents at 1B through 8B"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3.5-27B",
-      "openrouter_id": "qwen/qwen3.5-27b",
-      "backend": "together",
-      "display": "Qwen 3.5 27B",
-      "hf_model_id": "Qwen/Qwen3.5-27B",
-      "tier": "mid",
-      "params": "27B",
-      "total_params_b": 27.0,
-      "context_length": 131072,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 7168,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "A100-80GB",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 32768,
-        "max_batch_size": 16,
-        "min_batch_size": 16,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": true,
-      "disabled_reason": null,
-      "num_attn_layers": 16,
-      "num_kv_heads": 4,
-      "head_dim": 256,
-      "group": "Qwen 3.5",
-      "pricing": {
-        "train_from_usd": 2.0,
-        "run_from_usd_per_1m_output": 15.0
-      },
-      "marketing": {
-        "pitch": "Mid-tier Qwen 3.5 for agents that need more headroom before an MoE jump.",
-        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
-        "good_for": [
-          "General-purpose agents that call tools",
-          "Long-trace training on compact bases",
-          "Size ladders from 0.8B through a 35B MoE"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3-14B",
-      "openrouter_id": "qwen/qwen3-14b",
-      "backend": "together",
-      "display": "Qwen 3 14B",
-      "hf_model_id": "Qwen/Qwen3-14B",
-      "tier": "mid",
-      "params": "14B",
-      "total_params_b": 14.0,
-      "context_length": 40960,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 5120,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "L40S",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 40960,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": true
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": false,
-      "disabled_reason": null,
-      "num_attn_layers": 40,
-      "num_kv_heads": 8,
-      "head_dim": 128,
-      "group": "Qwen 3",
-      "pricing": {
-        "train_from_usd": 1.25,
-        "run_from_usd_per_1m_output": 10.0
-      },
-      "marketing": {
-        "pitch": "Mid-tier dense Qwen 3 for parallel experiments against compact and large.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
-        "good_for": [
-          "Side-by-side size sweeps in one family",
-          "Code agents (via Qwen 3 Coder 30B)",
-          "Compact bases when tool calling is optional"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
-{
-      "id": "Qwen/Qwen3.5-35B-A3B",
-      "openrouter_id": "qwen/qwen3.5-35b-a3b",
-      "backend": "together",
-      "display": "Qwen 3.5 35B MoE",
-      "hf_model_id": "Qwen/Qwen3.5-35B-A3B",
-      "tier": "large",
-      "params": "35B MoE (3B active)",
-      "total_params_b": 35.0,
-      "context_length": 262144,
-      "supports_tool_calling": true,
-      "type": null,
-      "hidden_size": 7168,
-      "fp8_supported": true,
-      "inference": {
-        "gpu_type": "A100-80GB",
-        "max_model_len": 16384
-      },
-      "finetuning": {
-        "context_length": 65536,
-        "max_batch_size": 8,
-        "min_batch_size": 8,
-        "training_type": {
-          "full": {
-            "enabled": false
-          },
-          "lora": {
-            "enabled": true
-          }
-        }
-      },
-      "disabled": true,
-      "disabled_reason": null,
-      "num_attn_layers": 10,
-      "num_kv_heads": 2,
-      "head_dim": 256,
-      "group": "Qwen 3.5",
-      "pricing": {
-        "train_from_usd": 2.5,
-        "run_from_usd_per_1m_output": 8.0
-      },
-      "marketing": {
-        "pitch": "Large MoE Qwen 3.5: 35B total weights, 3B active per token at serve time.",
-        "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
-        "good_for": [
-          "Higher-quality Qwen 3.5 runs with MoE serve economics",
-          "Tool-calling agents that outgrow dense mid-tier bases",
-          "Side-by-side experiments against Qwen 3.5 27B"
-        ]
-      },
-      "use_cases": [
-        "tool-calling"
-      ]
-    },
 {
       "id": "Qwen/Qwen3.5-4B",
       "openrouter_id": null,
@@ -771,12 +56,12 @@
       "num_attn_layers": 8,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 0.7,
+        "train_from_usd": 0.43,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -834,12 +119,12 @@
       "num_attn_layers": 6,
       "num_kv_heads": 2,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -897,12 +182,12 @@
       "num_attn_layers": 6,
       "num_kv_heads": 2,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -925,7 +210,7 @@
 {
       "id": "Qwen/Qwen3-4B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 4B",
       "hf_model_id": "unsloth/Qwen3-4B",
       "tier": "compact",
@@ -965,7 +250,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 0.7,
+        "train_from_usd": 0.43,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -988,7 +273,7 @@
 {
       "id": "Qwen/Qwen3-1.7B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 1.7B",
       "hf_model_id": "unsloth/Qwen3-1.7B",
       "tier": "compact",
@@ -1028,7 +313,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -1049,7 +334,7 @@
 {
       "id": "Qwen/Qwen3-0.6B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 0.6B",
       "hf_model_id": "unsloth/Qwen3-0.6B",
       "tier": "compact",
@@ -1089,7 +374,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1110,7 +395,7 @@
 {
       "id": "Qwen/Qwen2.5-0.5B-Instruct",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 0.5B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-0.5B-Instruct",
       "tier": "compact",
@@ -1150,7 +435,7 @@
       "head_dim": 64,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1171,7 +456,7 @@
 {
       "id": "meta-llama/Llama-3.2-3B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-3b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Llama 3.2 3B Instruct",
       "hf_model_id": "unsloth/Llama-3.2-3B-Instruct",
       "tier": "compact",
@@ -1211,7 +496,7 @@
       "head_dim": 128,
       "group": "Llama 3",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -1232,7 +517,7 @@
 {
       "id": "meta-llama/Llama-3.2-1B-Instruct",
       "openrouter_id": "meta-llama/llama-3.2-1b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Llama 3.2 1B Instruct",
       "hf_model_id": "unsloth/Llama-3.2-1B-Instruct",
       "tier": "compact",
@@ -1272,7 +557,7 @@
       "head_dim": 64,
       "group": "Llama 3",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1293,7 +578,7 @@
 {
       "id": "LiquidAI/LFM3-1.7B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM3 1.7B",
       "hf_model_id": "LiquidAI/LFM3-1.7B",
       "tier": "compact",
@@ -1333,7 +618,7 @@
       "head_dim": 128,
       "group": "LFM3",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1356,7 +641,7 @@
 {
       "id": "LiquidAI/LFM2.5-2.6B",
       "openrouter_id": "liquid/lfm-2.5-2.6b:free",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM2.5 2.6B",
       "hf_model_id": "LiquidAI/LFM2.5-2.6B",
       "tier": "compact",
@@ -1396,7 +681,7 @@
       "head_dim": 64,
       "group": "LFM2.5",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -1416,7 +701,7 @@
 {
       "id": "LiquidAI/LFM2.5-1.2B-Instruct",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM2.5 1.2B Instruct",
       "hf_model_id": "unsloth/LFM2.5-1.2B-Instruct",
       "tier": "compact",
@@ -1456,7 +741,7 @@
       "head_dim": 64,
       "group": "LFM2.5",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1479,7 +764,7 @@
 {
       "id": "LiquidAI/LFM2.5-350M",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM2.5 350M",
       "hf_model_id": "LiquidAI/LFM2.5-350M",
       "tier": "compact",
@@ -1519,7 +804,7 @@
       "head_dim": 64,
       "group": "LFM2.5",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1539,7 +824,7 @@
 {
       "id": "LiquidAI/LFM2.5-230M",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM2.5 230M",
       "hf_model_id": "unsloth/LFM2.5-230M",
       "tier": "compact",
@@ -1579,7 +864,7 @@
       "head_dim": 64,
       "group": "LFM2.5",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1602,7 +887,7 @@
 {
       "id": "fdtn-ai/antares-1b",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Antares 1B (Security)",
       "hf_model_id": "fdtn-ai/antares-1b",
       "tier": "compact",
@@ -1642,7 +927,7 @@
       "head_dim": 128,
       "group": "Antares",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -1663,7 +948,7 @@
 {
       "id": "fdtn-ai/antares-350m",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Antares 350M (Security)",
       "hf_model_id": "fdtn-ai/antares-350m",
       "tier": "compact",
@@ -1703,7 +988,7 @@
       "head_dim": 64,
       "group": "Antares",
       "pricing": {
-        "train_from_usd": 0.5,
+        "train_from_usd": 0.3,
         "run_from_usd_per_1m_output": 2.5
       },
       "marketing": {
@@ -1759,12 +1044,12 @@
       "num_attn_layers": 8,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -1787,7 +1072,7 @@
 {
       "id": "Qwen/Qwen3-8B",
       "openrouter_id": "qwen/qwen3-8b",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 8B",
       "hf_model_id": "unsloth/Qwen3-8B",
       "tier": "small",
@@ -1827,7 +1112,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -1850,7 +1135,7 @@
 {
       "id": "Qwen/Qwen2.5-7B-Instruct",
       "openrouter_id": "qwen/qwen-2.5-7b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 7B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-7B-Instruct",
       "tier": "small",
@@ -1890,7 +1175,7 @@
       "head_dim": 128,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -1948,12 +1233,12 @@
       "num_attn_layers": 8,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Ornith",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -1976,7 +1261,7 @@
 {
       "id": "google/gemma-4-E4B-it",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Gemma 4 E4B",
       "hf_model_id": "unsloth/gemma-4-E4B-it",
       "tier": "small",
@@ -2018,7 +1303,7 @@
       "head_dim": 256,
       "group": "Gemma 4",
       "pricing": {
-        "train_from_usd": 0.75,
+        "train_from_usd": 0.46,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -2039,7 +1324,7 @@
 {
       "id": "google/gemma-4-E2B-it",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Gemma 4 E2B",
       "hf_model_id": "unsloth/gemma-4-E2B-it",
       "tier": "small",
@@ -2081,7 +1366,7 @@
       "head_dim": 256,
       "group": "Gemma 4",
       "pricing": {
-        "train_from_usd": 0.55,
+        "train_from_usd": 0.33,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -2102,7 +1387,7 @@
 {
       "id": "meta-llama/Llama-3.1-8B-Instruct",
       "openrouter_id": "meta-llama/llama-3.1-8b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Llama 3.1 8B Instruct",
       "hf_model_id": "unsloth/Llama-3.1-8B-Instruct",
       "tier": "small",
@@ -2142,7 +1427,7 @@
       "head_dim": 128,
       "group": "Llama 3",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -2165,7 +1450,7 @@
 {
       "id": "LiquidAI/LFM2.5-8B-A1B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "LFM2.5 8B-A1B",
       "hf_model_id": "LiquidAI/LFM2.5-8B-A1B",
       "tier": "small",
@@ -2205,7 +1490,7 @@
       "head_dim": 64,
       "group": "LFM2.5",
       "pricing": {
-        "train_from_usd": 0.75,
+        "train_from_usd": 0.46,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -2260,12 +1545,12 @@
       "num_attn_layers": 16,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.8",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 15.0
       },
       "marketing": {
@@ -2323,12 +1608,12 @@
       "num_attn_layers": 16,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.6",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 15.0
       },
       "marketing": {
@@ -2386,12 +1671,12 @@
       "num_attn_layers": 16,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 15.0
       },
       "marketing": {
@@ -2451,12 +1736,12 @@
       "num_attn_layers": 48,
       "num_kv_heads": 4,
       "head_dim": 128,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 8.0
       },
       "marketing": {
@@ -2477,7 +1762,7 @@
 {
       "id": "Qwen/Qwen3-14B",
       "openrouter_id": "qwen/qwen3-14b",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 14B",
       "hf_model_id": "unsloth/Qwen3-14B",
       "tier": "mid",
@@ -2517,7 +1802,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 1.25,
+        "train_from_usd": 0.76,
         "run_from_usd_per_1m_output": 10.0
       },
       "marketing": {
@@ -2540,7 +1825,7 @@
 {
       "id": "Qwen/Qwen2.5-14B-Instruct",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 14B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-14B-Instruct",
       "tier": "mid",
@@ -2580,7 +1865,7 @@
       "head_dim": 128,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 1.25,
+        "train_from_usd": 0.76,
         "run_from_usd_per_1m_output": 10.0
       },
       "marketing": {
@@ -2638,12 +1923,12 @@
       "num_attn_layers": 16,
       "num_kv_heads": 4,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Fara",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 15.0
       },
       "marketing": {
@@ -2666,7 +1951,7 @@
 {
       "id": "google/gemma-4-12B-it",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Gemma 4 12B",
       "hf_model_id": "unsloth/gemma-4-12b-it",
       "tier": "mid",
@@ -2707,7 +1992,7 @@
       "head_dim": 256,
       "group": "Gemma 4",
       "pricing": {
-        "train_from_usd": 1.0,
+        "train_from_usd": 0.61,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -2765,12 +2050,12 @@
       "num_attn_layers": 12,
       "num_kv_heads": 8,
       "head_dim": 64,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "GPT-OSS",
       "pricing": {
-        "train_from_usd": 1.75,
+        "train_from_usd": 1.06,
         "run_from_usd_per_1m_output": 12.0
       },
       "marketing": {
@@ -2828,12 +2113,12 @@
       "num_attn_layers": 10,
       "num_kv_heads": 2,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Qwen 3.5",
       "pricing": {
-        "train_from_usd": 2.5,
+        "train_from_usd": 1.52,
         "run_from_usd_per_1m_output": 8.0
       },
       "marketing": {
@@ -2856,7 +2141,7 @@
 {
       "id": "Qwen/Qwen3-32B",
       "openrouter_id": "qwen/qwen3-32b",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 3 32B",
       "hf_model_id": "unsloth/Qwen3-32B",
       "tier": "large",
@@ -2896,7 +2181,7 @@
       "head_dim": 128,
       "group": "Qwen 3",
       "pricing": {
-        "train_from_usd": 2.25,
+        "train_from_usd": 1.37,
         "run_from_usd_per_1m_output": 20.0
       },
       "marketing": {
@@ -2919,7 +2204,7 @@
 {
       "id": "Qwen/Qwen2.5-72B-Instruct",
       "openrouter_id": "qwen/qwen-2.5-72b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 72B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-72B-Instruct",
       "tier": "large",
@@ -2959,7 +2244,7 @@
       "head_dim": 128,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 5.0,
+        "train_from_usd": 3.04,
         "run_from_usd_per_1m_output": 40.0
       },
       "marketing": {
@@ -2980,7 +2265,7 @@
 {
       "id": "Qwen/Qwen2.5-32B-Instruct",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 32B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-32B-Instruct",
       "tier": "large",
@@ -3020,7 +2305,7 @@
       "head_dim": 128,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 2.25,
+        "train_from_usd": 1.37,
         "run_from_usd_per_1m_output": 20.0
       },
       "marketing": {
@@ -3043,7 +2328,7 @@
 {
       "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
       "openrouter_id": "qwen/qwen-2.5-coder-32b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Qwen 2.5 Coder 32B Instruct",
       "hf_model_id": "unsloth/Qwen2.5-Coder-32B-Instruct",
       "tier": "large",
@@ -3083,7 +2368,7 @@
       "head_dim": 128,
       "group": "Qwen 2.5",
       "pricing": {
-        "train_from_usd": 2.25,
+        "train_from_usd": 1.37,
         "run_from_usd_per_1m_output": 20.0
       },
       "marketing": {
@@ -3144,12 +2429,12 @@
       "num_attn_layers": 10,
       "num_kv_heads": 2,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Ornith",
       "pricing": {
-        "train_from_usd": 2.5,
+        "train_from_usd": 1.52,
         "run_from_usd_per_1m_output": 8.0
       },
       "marketing": {
@@ -3172,7 +2457,7 @@
 {
       "id": "google/gemma-4-31B-it",
       "openrouter_id": "google/gemma-4-31b-it",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Gemma 4 31B",
       "hf_model_id": "unsloth/gemma-4-31B-it",
       "tier": "large",
@@ -3213,7 +2498,7 @@
       "head_dim": 256,
       "group": "Gemma 4",
       "pricing": {
-        "train_from_usd": 2.5,
+        "train_from_usd": 1.52,
         "run_from_usd_per_1m_output": 10.0
       },
       "marketing": {
@@ -3234,7 +2519,7 @@
 {
       "id": "google/gemma-4-26B-A4B-it",
       "openrouter_id": "google/gemma-4-26b-a4b-it",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Gemma 4 26B-A4B",
       "hf_model_id": "unsloth/gemma-4-26B-A4B-it",
       "tier": "large",
@@ -3275,7 +2560,7 @@
       "head_dim": 256,
       "group": "Gemma 4",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 8.0
       },
       "marketing": {
@@ -3296,7 +2581,7 @@
 {
       "id": "meta-llama/Llama-3.3-70B-Instruct",
       "openrouter_id": "meta-llama/llama-3.3-70b-instruct",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Llama 3.3 70B Instruct",
       "hf_model_id": "unsloth/Llama-3.3-70B-Instruct",
       "tier": "large",
@@ -3336,7 +2621,7 @@
       "head_dim": 128,
       "group": "Llama 3",
       "pricing": {
-        "train_from_usd": 4.5,
+        "train_from_usd": 2.73,
         "run_from_usd_per_1m_output": 35.0
       },
       "marketing": {
@@ -3359,7 +2644,7 @@
 {
       "id": "unsloth/Muse-Glimmer-30B",
       "openrouter_id": null,
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Muse Glimmer 30B",
       "hf_model_id": "unsloth/Muse-Glimmer-30B",
       "tier": "large",
@@ -3400,7 +2685,7 @@
       "head_dim": 128,
       "group": "Muse Glimmer",
       "pricing": {
-        "train_from_usd": 2.5,
+        "train_from_usd": 1.52,
         "run_from_usd_per_1m_output": 10.0
       },
       "marketing": {
@@ -3458,12 +2743,12 @@
       "num_attn_layers": 42,
       "num_kv_heads": 2,
       "head_dim": 256,
-      "backend": "baseten",
+      "backend": "modal",
       "disabled": false,
       "disabled_reason": null,
       "group": "Nemotron",
       "pricing": {
-        "train_from_usd": 0.75,
+        "train_from_usd": 0.46,
         "run_from_usd_per_1m_output": 4.0
       },
       "marketing": {
@@ -3486,7 +2771,7 @@
 {
       "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
       "openrouter_id": "nvidia/nemotron-3.5-lightning",
-      "backend": "baseten",
+      "backend": "modal",
       "display": "Nemotron 3.5 Lightning 30B-A3B",
       "hf_model_id": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
       "benchmark_hf_model_ids": [
@@ -3531,7 +2816,7 @@
       "head_dim": 128,
       "group": "Nemotron 3.5",
       "pricing": {
-        "train_from_usd": 2.0,
+        "train_from_usd": 1.22,
         "run_from_usd_per_1m_output": 6.0
       },
       "marketing": {
@@ -4068,8 +3353,8 @@
     }
   ],
   "finetuning_providers": {
-    "baseten": {
-      "comment": "MAX_LENGTH snapping policy for train.py \u2014 our choice, not a Baseten platform limit: power-of-two buckets keep padding/packing predictable; headroom covers chat-template/special tokens beyond the raw JSON token estimate.",
+    "modal": {
+      "comment": "MAX_LENGTH snapping policy for train.py \u2014 our choice, not a provider limit: power-of-two buckets keep padding/packing predictable; headroom covers chat-template/special tokens beyond the raw JSON token estimate.",
       "context_buckets": [
         4096,
         8192,

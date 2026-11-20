@@ -241,8 +241,7 @@ LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "0") == "1" and USE_LORA
 # flattens the micro-batch into one sequence and Unsloth truncates it.
 # Default off: Modal omitted this env and the old default ("1") packed every job
 # to MAX_LENGTH, OOMing Gemma4 12B/26B on flex_attention (no FA2, GC forced off).
-# Honor PACKING too — BasetenRunner sets that name for the stock engine.
-PACK_ROWS = os.getenv("PACK_ROWS", os.getenv("PACKING", "0")) == "1"
+PACK_ROWS = os.getenv("PACK_ROWS", "0") == "1"
 
 
 def _pack_rows(rows: list[dict], max_length: int) -> list[dict]:
@@ -292,7 +291,7 @@ def _build_dataset(
     emit_stage(stage, completed=0, total=len(rows), unit="rows")
     out: list[dict] = []
     for i, row in enumerate(rows):
-        # Baseten receives conversations; Modal receives the CPU-validated artifact.
+        # Conversation rows are tokenized here; the CPU-validated artifact arrives pretokenized.
         if "messages" in row and "input_ids" not in row:
             row["key"] = row_key(row)
             row.update(pretok_row(tok, MODEL_ID, row["messages"], row.get("tools")))

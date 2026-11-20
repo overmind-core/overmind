@@ -1,6 +1,6 @@
 """Local validation for tool-calling conversational fine-tuning rows.
 
-Together AI rejects datasets whose tool ``tool_call_id`` values do not match the
+Training rejects datasets whose tool ``tool_call_id`` values do not match the
 preceding assistant ``tool_calls``, that carry orphan tool messages, or whose
 tool-call counts do not line up. These checks run before upload so the user sees
 the problem at dataset selection time.
@@ -174,7 +174,7 @@ def _check_tool_names(
     messages: list[dict[str, Any]],
     row: dict[str, Any],
 ) -> list[str]:
-    """Together requires tool_calls / tool message names to match ``tools`` exactly."""
+    """tool_calls / tool message names must match ``tools`` exactly."""
     tool_names = tool_names_from_row(row)
     if not tool_names:
         return []

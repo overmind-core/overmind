@@ -36,8 +36,7 @@ _GENERATION_PATTERNS = (
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("backend", ["baseten", "modal", "together"])
-def test_api_models_endpoint_matches_shared_catalog_service(backend):
+def test_api_models_endpoint_matches_shared_catalog_service():
     user = User.objects.create_user(
         email=f"catalog-{uuid.uuid4().hex[:8]}@example.com",
         password="pass",
@@ -48,7 +47,7 @@ def test_api_models_endpoint_matches_shared_catalog_service(backend):
     client = APIClient()
     client.force_authenticate(user=user)
 
-    with override_settings(FINETUNING_BACKEND=backend):
+    with override_settings(FINETUNING_BACKEND="modal"):
         response = client.get(reverse("finetuningjob-models"), {"has_tool_calling": "true"})
         expected = fetch_finetuning_model_catalog(has_tool_calling=True)
 
@@ -63,7 +62,6 @@ def test_api_catalog_response_schema_accepts_modal_backend():
             "tiers": [],
             "models": {},
             "has_tool_calling": False,
-            "max_context": None,
             "monitoring": {"schedule_modes": ["adaptive", "steps", "epoch", "off"]},
         }
     )
@@ -74,7 +72,7 @@ def test_api_catalog_response_schema_accepts_modal_backend():
 def test_catalog_carries_no_capability_scores():
     assert [m["id"] for m in _CATALOG if "capabilities" in m] == []
 
-    with override_settings(FINETUNING_BACKEND="baseten"):
+    with override_settings(FINETUNING_BACKEND="modal"):
         exported = [m for models in tier_models().values() for m in models]
     assert [m["id"] for m in exported if "capabilities" in m] == []
 

@@ -99,10 +99,6 @@ def resolve(hyperparameters, *, has_development, provider, monitoring=None):
     generation = policy["generation"]
     if generation and native:
         raise ValueError("Native decisions use probability metrics, not generation probes")
-    if generation and provider == "baseten":
-        raise ValueError(
-            "Baseten generation evidence collection is not qualified; use loss monitoring or Modal"
-        )
     if generation and generation["kind"] == "json_schema":
         schema = generation["schema"]
         try:

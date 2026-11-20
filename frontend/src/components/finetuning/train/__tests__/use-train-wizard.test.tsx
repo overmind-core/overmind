@@ -7,7 +7,7 @@ import { useTrainWizard } from "../use-train-wizard";
 
 const mocks = vi.hoisted(() => ({
   benchmarks: [{ baseModelId: "Qwen", finetuningJobName: "Support", modelId: "ft-trained" }],
-  catalog: { backend: "baseten", models: {}, tiers: [] },
+  catalog: { backend: "modal", models: {}, tiers: [] },
   context: {
     data: { checks: [{ message: "Context may be too small.", status: "warning" }] },
     isError: false,
@@ -93,7 +93,7 @@ beforeEach(() => {
   mocks.recommendation.candidates = [mocks.recommendation.candidates[0]];
   mocks.recommendation.shown = ["model"];
   mocks.estimateResults = [];
-  mocks.catalog.backend = "baseten";
+  mocks.catalog.backend = "modal";
   mocks.overlapCount = 0;
   mocks.train.results[0].capability = "cap";
   mocks.validate.mockResolvedValue({ valid: true });
@@ -111,12 +111,7 @@ const args = {
   projectId: "project",
 };
 
-it.each([
-  "baseten",
-  "modal",
-  "together",
-])("uses the same default %s monitoring policy for forecasting and launch", async (backend) => {
-  mocks.catalog.backend = backend;
+it("uses the same default monitoring policy for forecasting and launch", async () => {
   const { result } = renderHook(() => useTrainWizard({ ...args, initialEvalDatasetId: undefined }));
   await waitFor(() => expect(result.current.canLaunch).toBe(true));
   const latest = mocks.queries.mock.calls.at(-1)![0];
@@ -130,7 +125,7 @@ it.each([
     interval_steps: null,
     loss_sample: 2048,
     max_checks: 12,
-    mode: backend === "together" ? "off" : "adaptive",
+    mode: "adaptive",
     overhead_fraction: 0.1,
     selection: "last",
     target_seconds: 300,

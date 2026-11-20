@@ -17,7 +17,7 @@ from overbae.services.training_contract import dataset_objective, validate_effec
 
 from .analysis import build_analysis, dataset_summary
 from .candidates import build_candidate, dataset_total_tokens
-from .catalog import MODEL_MIN_BATCH, active_backend, find_catalog_model, tier_models
+from .catalog import active_backend, find_catalog_model, tier_models
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def estimate_for_hyperparams(
     from overbae.services.finetuning_pricing import estimate_training_run  # noqa: PLC0415
 
     dataset = Dataset.objects.get(pk=dataset_id)
-    if active_backend() in {"modal", "baseten"}:
+    if active_backend() == "modal":
         validate_effective_batch(hyperparameters or {})
     stats = dataset_stats(dataset, cell)
     selected = cell or dataset.active_cell
@@ -135,7 +135,7 @@ def estimate_for_hyperparams(
     if not training_enabled(entry, kind):
         raise ValueError(f"Model {base_model} does not support {kind_label} fine-tuning")
     requested_context = (hyperparameters or {}).get("context_length")
-    if active_backend() in {"modal", "baseten"} and requested_context is not None:
+    if active_backend() == "modal" and requested_context is not None:
         from overbae.services.finetuning_policy import validate_requested_context_length
 
         validate_requested_context_length(
@@ -144,7 +144,7 @@ def estimate_for_hyperparams(
     max_tokens = int(stats.get("max_token_length") or 0)
     if max_tokens:
         model_max = training_context_length(entry, kind)
-        headroom = context_headroom("baseten")
+        headroom = context_headroom(active_backend())
         if model_max is not None and model_max < max_tokens + headroom:
             raise ValueError(
                 f"Longest dataset row is ≈{max_tokens:,} tokens but {base_model}'s "
@@ -182,9 +182,7 @@ def estimate_for_hyperparams(
             "forecast": measured,
             "cost_estimate": {
                 "usd": cost[1],
-                "price_per_million_usd": None,
                 "trained_tokens": tokens,
-                "minimum_applied": False,
             }
             if cost
             else None,
@@ -226,7 +224,7 @@ def recommend_hyperparams_for_model(
         from overbae.modal.model_registry import context_headroom
         from overbae.modal.training_type import training_context_length, usable_training_kinds
 
-        headroom = context_headroom("baseten")
+        headroom = context_headroom(active_backend())
         if not usable_training_kinds(entry, max_tokens=max_tokens, headroom=headroom):
             model_max = max(training_context_length(entry, kind) or 0 for kind in ("lora", "full"))
             raise ValueError(
@@ -294,7 +292,6 @@ def _profile(dataset) -> dict[str, Any]:
 
 
 __all__ = [
-    "MODEL_MIN_BATCH",
     "estimate_for_hyperparams",
     "find_catalog_model",
     "get_recommendation",

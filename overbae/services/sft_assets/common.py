@@ -250,7 +250,7 @@ class ProgressCallback(TrainerCallback):
         sys.stdout.flush()
         if self.metrics_path is not None:
             # "event" carries the BT_* prefix so a poller reading metrics.jsonl
-            # dispatches exactly as BasetenRunner.poll does off the stdout prefix.
+            # dispatches exactly as it would off the stdout prefix.
             payload = {"event": prefix, **record}
             with self.metrics_path.open("a") as f:
                 f.write(json.dumps(payload) + "\n")

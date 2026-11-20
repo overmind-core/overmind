@@ -56,7 +56,7 @@ def catalog(project):
             "kind": "foundation",
             "qualification": "catalog_eligible",
         }
-        for model, config in get_all_models_by_backend("baseten", include_disabled=False).items()
+        for model, config in get_all_models_by_backend("modal", include_disabled=False).items()
         if get_unsloth_image(model) in NATIVE_FOUNDATION_STACKS
     ]
     options.extend(

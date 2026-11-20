@@ -1,6 +1,6 @@
 """Hyperparameter defaults for a (dataset, model) pair, and one line of why per knob.
 
-Every number is delegated to finetuning_policy, the module the Baseten runner gap-fills
+Every number is delegated to finetuning_policy, the module the training runner gap-fills
 from at submission time: the wizard's numbers ARE the training script's numbers.
 """
 
@@ -10,7 +10,6 @@ from typing import Any
 
 from overbae.modal.training_type import training_context_length
 from overbae.services.finetuning_policy import (
-    baseten_context_length,
     default_epochs,
     estimated_training_context_length,
     openai_batch_size,
@@ -18,7 +17,7 @@ from overbae.services.finetuning_policy import (
     qlora_lora_params,
 )
 
-from .catalog import active_backend, catalog_backend
+from .catalog import active_backend
 
 
 def compute_hyperparams(
@@ -30,8 +29,8 @@ def compute_hyperparams(
 ) -> dict[str, Any]:
     """Data-size-adaptive hyperparameters for a specific model.
 
-    On Baseten, ``context_length`` snaps up from the dataset's longest row: it is the
-    training MAX_LENGTH, and rows over it would be truncated by TRL.
+    On Modal, ``context_length`` snaps up from the dataset's longest row: it is the
+    training MAX_LENGTH, and rows over it would be truncated.
     """
     if num_examples <= 0:
         num_examples = 1
@@ -45,14 +44,9 @@ def compute_hyperparams(
     params_b: float = entry.get("total_params_b", 7.0)
 
     context_length: int | None = None
-    if catalog_backend() == "baseten":
+    if active_backend() == "modal":
         model_max = training_context_length(entry, "lora" if use_lora else "full")
-        choose_context = (
-            estimated_training_context_length
-            if active_backend() == "modal"
-            else baseten_context_length
-        )
-        context_length = choose_context(
+        context_length = estimated_training_context_length(
             max_row_tokens,
             model_max=int(model_max) if model_max else None,
         )

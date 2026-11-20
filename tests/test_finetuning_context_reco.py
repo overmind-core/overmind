@@ -22,7 +22,6 @@ from overbae.services.finetuning_pricing import (
     estimate_training_cost,
     estimate_training_time_s,
     humanize_duration,
-    training_price_per_million,
 )
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.capability_context import collect_capability_context
@@ -66,51 +65,16 @@ def _dataset(
     )
 
 
-def test_together_price_tiers_match_published_rates():
-    # together.ai/pricing SFT rates (retrieved 2026-07-13)
-    assert training_price_per_million(8, use_lora=True, backend="together") == 0.48
-    assert training_price_per_million(8, use_lora=False, backend="together") == 0.54
-    assert training_price_per_million(32, use_lora=True, backend="together") == 1.50
-    assert training_price_per_million(70, use_lora=True, backend="together") == 2.90
-    assert training_price_per_million(70, use_lora=False, backend="together") == 3.20
-    # >100B models are individually priced.
-    assert training_price_per_million(120, use_lora=True, backend="together") is None
-
-
-def test_baseten_bills_per_gpu_minute_not_per_token():
-    assert training_price_per_million(8, use_lora=True, backend="baseten") is None
-    est = estimate_training_cost(1_000_000, total_params_b=8, use_lora=True, backend="baseten")
-    assert est is not None
-    assert est["usd"] > 0
-
-
 def test_modal_estimate_uses_its_per_second_gpu_rate():
     tokens = 1_000_000
     seconds = estimate_training_time_s(tokens, total_params_b=4, use_lora=True)
     estimate = estimate_training_cost(tokens, total_params_b=4, use_lora=True, backend="modal")
     assert estimate["usd"] == pytest.approx(round(seconds * 0.001097, 4))
-    baseten = estimate_training_cost(tokens, total_params_b=4, use_lora=True, backend="baseten")
-    assert baseten["usd"] == pytest.approx(round(baseten["billed_minutes"] * 0.10833, 4))
-
-
-def test_cost_estimate_applies_together_minimum_charge():
-    tiny = estimate_training_cost(1000, total_params_b=8, use_lora=True, backend="together")
-    assert tiny is not None
-    assert tiny["minimum_applied"] is True
-    assert tiny["usd"] == 4.00
-
-    big = estimate_training_cost(100_000_000, total_params_b=8, use_lora=True, backend="together")
-    assert big is not None
-    assert big["minimum_applied"] is False
-    assert big["usd"] == pytest.approx(48.0)
 
 
 def test_cost_estimate_none_for_unpriced_backend_or_empty():
-    assert estimate_training_cost(0, total_params_b=8, use_lora=True, backend="together") is None
-    # >100B Together models are individually priced.
-    assert (
-        estimate_training_cost(1000, total_params_b=120, use_lora=True, backend="together") is None
-    )
+    assert estimate_training_cost(0, total_params_b=8, use_lora=True, backend="modal") is None
+    assert estimate_training_cost(1000, total_params_b=8, use_lora=True, backend="unknown") is None
 
 
 def test_time_estimate_scales_with_model_size_and_tokens():
@@ -139,21 +103,21 @@ def test_estimate_training_run_uses_epochs_and_lora():
         n_epochs=1,
         total_params_b=8,
         use_lora=True,
-        backend="together",
+        backend="modal",
     )
     three = estimate_training_run(
         dataset_tokens=10_000,
         n_epochs=3,
         total_params_b=8,
         use_lora=True,
-        backend="together",
+        backend="modal",
     )
     full = estimate_training_run(
         dataset_tokens=10_000,
         n_epochs=1,
         total_params_b=8,
         use_lora=False,
-        backend="together",
+        backend="modal",
     )
     assert three["trained_tokens"] == one["trained_tokens"] * 3
     assert three["time_estimate"]["seconds"] > one["time_estimate"]["seconds"]
@@ -210,7 +174,7 @@ def test_recommended_hyperparams_scale_with_dataset_size():
     )
 
     entry = {"min_batch_size": 1, "max_batch_size": 32, "total_params_b": 8.0}
-    with override_settings(FINETUNING_BACKEND="baseten"):
+    with override_settings(FINETUNING_BACKEND="modal"):
         thousands = compute_hyperparams(5_000, model_entry=entry)
         large = compute_hyperparams(19_704, model_entry=entry)
 
@@ -222,7 +186,7 @@ def test_recommended_hyperparams_scale_with_dataset_size():
         assert steps < 2_000
 
         reasons = hyperparam_provenance(
-            large, num_examples=19_704, params_b=8.0, use_lora=True, backend="baseten"
+            large, num_examples=19_704, params_b=8.0, use_lora=True, backend="modal"
         )
         assert "optimizer steps" in reasons["batch_size"]
         assert "at batch 1" in reasons["batch_size"]
@@ -411,7 +375,7 @@ def test_recommendation_warns_without_excluding_models_for_evaluation_context():
     train = _dataset(project, capability, intent="ft", trace_ids=["train"])
     evaluation = frozen_dataset(
         project,
-        [{"input": "x" * 120000, "expected_output": "answer"}],
+        [{"input": "x" * 1_200_000, "expected_output": "answer"}],
         capability=capability,
         contract="eval",
     )

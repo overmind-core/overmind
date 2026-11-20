@@ -10,7 +10,7 @@ install-hooks:
 # Data Workshop scripts need `make sandbox` running and SANDBOX_URL=http://127.0.0.1:8080
 # with the same SANDBOX_TOKEN in .env.
 worker:
-	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES TOGETHER_API_KEY=placeholder-local-dev \
+	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES \
 		uv run celery -A overbae worker -l info --pool=solo -n local@%h \
 		-Q control,io,assistant,io_traces,batch,landing,interactive
 

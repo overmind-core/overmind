@@ -15,7 +15,7 @@ from overbae.modal.training_type import (
     usable_training_kinds,
 )
 
-from .catalog import tier_models
+from .catalog import active_backend, tier_models
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +73,7 @@ def _rejection(
     if max_row_tokens:
         from overbae.modal.model_registry import context_headroom
 
-        headroom = context_headroom("baseten")
+        headroom = context_headroom(active_backend())
         if not usable_training_kinds(entry, max_tokens=max_row_tokens, headroom=headroom):
             sft_context = max(
                 training_context_length(entry, kind) or 0 for kind in ("lora", "full")

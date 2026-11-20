@@ -130,10 +130,10 @@ def test_preparation_steps_update_counts_without_duplicating_activity():
     ],
 )
 def test_explicit_recipe_cannot_be_silently_changed(requested, field):
-    from overbae.services.finetuning_policy import TrainingPlanError, derive_baseten_training_plan
+    from overbae.services.finetuning_policy import TrainingPlanError, derive_training_plan
 
     with pytest.raises(TrainingPlanError, match=field):
-        derive_baseten_training_plan(
+        derive_training_plan(
             hyperparameters=requested,
             num_train_examples=100,
             dataset_stats={},
@@ -144,9 +144,9 @@ def test_explicit_recipe_cannot_be_silently_changed(requested, field):
 
 
 def test_explicit_zero_warmup_and_disabled_packing_are_preserved():
-    from overbae.services.finetuning_policy import derive_baseten_training_plan
+    from overbae.services.finetuning_policy import derive_training_plan
 
-    plan = derive_baseten_training_plan(
+    plan = derive_training_plan(
         hyperparameters={"warmup_ratio": 0, "packing": False},
         num_train_examples=5000,
         dataset_stats={"avg_input_chars": 4},
