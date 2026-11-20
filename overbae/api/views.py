@@ -1228,7 +1228,11 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
 
         from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 
-        return Response(fetch_finetuning_model_catalog(has_tool_calling=has_tool_calling))
+        return Response(
+            FinetuningModelCatalogResponseSerializer(
+                fetch_finetuning_model_catalog(has_tool_calling=has_tool_calling)
+            ).data
+        )
 
     @extend_schema(
         summary="Validate a dataset for fine-tuning",
