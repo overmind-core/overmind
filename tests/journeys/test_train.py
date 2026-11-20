@@ -194,12 +194,8 @@ def test_train(
     base_url = re.search(r"Overmind inference base URL: (\S+)", prompt)[1]
     agent = sample_agent.repo / "support_desk" / "agent.py"
     source = agent.read_text()
-    agent.write_text(
-        source.replace(
-            "model=MODEL, messages=messages, tools=[LOOKUP_ORDER]",
-            f'model="{alias}", messages=messages, tools=[LOOKUP_ORDER]',
-        )
-    )
+    # One OpenAI base URL serves the process, so triage uses the deployed alias.
+    agent.write_text(source.replace("model=MODEL", f'model="{alias}"'))
 
     replies = sample_agent.run(
         "Refund order 42 please",
