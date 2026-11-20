@@ -1,4 +1,4 @@
-"""File layouts below are VERBATIM from two real Baseten jobs: qjx77gw (final
+"""File layouts below are VERBATIM from two real fine-tune archives: qjx77gw (final
 adapter at the root plus nested checkpoint-N/ dirs) and qzprr8w (ONLY nested
 checkpoint-N/ dirs — the root adapter save never synced to checkpoint storage).
 """

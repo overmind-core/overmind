@@ -375,7 +375,7 @@ def test_notification_is_retried_after_worker_failure(deployed):
 
 
 def test_merged_weights_and_baseline_preserve_actual_quantization(deployed, fake_modal):
-    FinetuningJob.objects.filter(pk=deployed.finetuning_job_id).update(provider="baseten")
+    FinetuningJob.objects.filter(pk=deployed.finetuning_job_id).update(provider="nebius")
     at_stage(
         deployed,
         fake_modal,

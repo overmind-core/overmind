@@ -27,11 +27,11 @@ logger = logging.getLogger(__name__)
 
 def _is_self_hosted(job) -> bool:
     """Modal ships weight-only artifacts with no provider chat endpoint, so its evals
-    route through OUR Modal deployment. Historic Baseten fine-tunes serve there too.
+    route through OUR Modal deployment.
     """
     from overbae.models import FinetuningJob
 
-    return job.provider in (FinetuningJob.Provider.MODAL, "baseten")
+    return job.provider == FinetuningJob.Provider.MODAL
 
 
 def job_wants_evals(job) -> bool:

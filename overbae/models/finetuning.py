@@ -75,8 +75,7 @@ class FinetuningJob(models.Model):
 
     class Provider(models.TextChoices):
         # Legacy providers — retired backends kept so existing job rows render;
-        # new submissions only go to MODAL. Historic rows also hold "baseten",
-        # which has no choice and renders as stored.
+        # new submissions only go to MODAL.
         NEBIUS = "nebius"
         TINKER = "tinker"
         MODAL = "modal"
@@ -231,7 +230,7 @@ class FinetuningJob(models.Model):
 
     celery_task_id = models.CharField(max_length=255, blank=True, default="")
 
-    # Recorded training charge in USD; historic Baseten rows hold that provider's invoice.
+    # Recorded training charge in USD.
     cost_usd = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     billed_minutes = models.PositiveIntegerField(null=True, blank=True)
     cost_synced_at = models.DateTimeField(null=True, blank=True)

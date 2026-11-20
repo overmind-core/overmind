@@ -61,7 +61,9 @@ def checkpoint_archive_exists(finetuning_job) -> bool:
 
 
 def get_checkpoint_download_url(finetuning_job) -> dict | None:
-    """Absent archives return None; storage failures remain errors."""
+    """Absent or unsupported archives return None; storage failures remain errors."""
+    if finetuning_job.provider != "modal":
+        return None
     bucket = getattr(settings, "AWS_BUCKET_NAME", "") or ""
     if not bucket:
         logger.error("Checkpoint downloads are not configured for job %s", finetuning_job.id)

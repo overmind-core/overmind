@@ -416,16 +416,13 @@ class RegisterAPIServer:
     ) -> dict:
         """Runs download + quantize (or copy) on a cache miss.
 
-        ``user_id``/``job_id`` address the S3 archive. Historic Baseten checkpoints live
-        only there. ``quantize`` carries models.json's ``fp8_supported``.
+        ``user_id``/``job_id`` address the S3 archive. ``quantize`` carries models.json's ``fp8_supported``.
         ``merge_base_model`` is the catalog HF id, used when adapter_config points at a quantized
         remapped repo. ``params_b`` only picks the merge/quantize GPU tier.
         """
-        if provider not in ("nebius", "baseten", "modal"):
-            raise ValueError(
-                f"Provider {provider!r} is not supported. Use 'nebius', 'baseten', or 'modal'."
-            )
-        if provider in ("baseten", "modal") and not job_id:
+        if provider not in ("nebius", "modal"):
+            raise ValueError(f"Provider {provider!r} is not supported. Use 'nebius' or 'modal'.")
+        if provider == "modal" and not job_id:
             raise ValueError(
                 f"job_id is required for provider={provider!r} (S3 archive addressing)"
             )
@@ -433,15 +430,9 @@ class RegisterAPIServer:
         weights_vol.reload()
 
         # Cache key: Modal remote_id is "run_id:function_call_id", stable part FIRST, because a
-        # FunctionCall id is not reusable across retries. Historic Baseten remote_ids are
-        # "project_id:job_id", stable part LAST. This is the FP8-cache key,
+        # FunctionCall id is not reusable across retries. This is the FP8-cache key,
         # independent of the S3 archive's {user_id}/{job_id} namespace.
-        if provider == "baseten":
-            cache_key = remote_job_id.split(":")[-1]
-        elif provider == "modal":
-            cache_key = remote_job_id.split(":")[0]
-        else:
-            cache_key = remote_job_id
+        cache_key = remote_job_id.split(":")[0] if provider == "modal" else remote_job_id
         expected_quant = "fp8" if quantize else "bf16"
         weights_dir = _weights_dir(cache_key)
         meta_file = weights_dir / ".meta.json"
@@ -454,15 +445,6 @@ class RegisterAPIServer:
         download_meta = _read_json(staging / ".download_meta.json")
 
         def _dispatch_download() -> dict:
-            if provider == "baseten":
-                print(f"[RegisterAPI] Pulling {job_id} checkpoint from S3")
-                return download_checkpoint_from_s3.remote(
-                    user_id=user_id,
-                    job_id=job_id,
-                    model_id=model_id,
-                    cache_key=cache_key,
-                    merge_base_model=merge_base_model,
-                )
             if provider == "modal":
                 # Training wrote the checkpoint to a Volume in this same Modal account, so stage
                 # it volume→volume rather than gating the deploy on zip→upload→download→unzip.
