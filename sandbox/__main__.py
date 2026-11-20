@@ -11,6 +11,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m sandbox")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--fd", type=int, help="Serve on this inherited listening socket instead.")
     args = parser.parse_args()
     if not os.environ.get("SANDBOX_TOKEN"):
         sys.exit("SANDBOX_TOKEN is required.")
@@ -21,7 +22,7 @@ def main() -> None:
         )
     if os.geteuid() == 0 and not execute.can_trace():
         sys.exit("The sandbox needs CAP_SYS_PTRACE to see the files a run holds open.")
-    uvicorn.run("sandbox.server:app", host=args.host, port=args.port, workers=1)
+    uvicorn.run("sandbox.server:app", host=args.host, port=args.port, fd=args.fd, workers=1)
 
 
 main()
