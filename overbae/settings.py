@@ -600,6 +600,9 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+# Chat-completions proxy only. Judges, evals and scoring ignore this and keep
+# using OPENROUTER_API_KEY. "1" lists frontier models and forwards them upstream.
+OPENROUTER_PROXY_ENABLED = os.environ.get("OPENROUTER_PROXY_ENABLED", "0") == "1"
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")

@@ -75,16 +75,17 @@ The API refuses to start until every required key is set, and the error names ea
 
 | Required                                                        | Used for                                                                                                    |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`                                            | Judges, evals, trace scoring, optimiser scoring, frontier inference                                         |
+| `OPENROUTER_API_KEY`                                            | Judges, evals, trace scoring, optimiser scoring. Frontier chat proxy only when `OPENROUTER_PROXY_ENABLED=1` |
 | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                          | Modal training and serving workers (set `MODAL_ENVIRONMENT` explicitly)                                     |
 | `INFERENCE_API_URL`, `INFERENCE_API_KEY`                        | Serving trained models — the endpoint printed by `modal deploy` and its shared secret                       |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` | The fine-tuning checkpoint archive                                                                          |
 | `HF_TOKEN`                                                      | Gated Hugging Face base models; also set it in the Modal secret                                             |
 | `SANDBOX_URL`, `SANDBOX_TOKEN`                                  | The isolated Workshop sandbox; `.env.example` and compose set local values — change the token in production |
 
-| Optional            | Effect                                                                  |
-| ------------------- | ----------------------------------------------------------------------- |
-| `STRIPE_SECRET_KEY` | Paid plans and the credit cap; without it, usage is metered with no cap |
+| Optional                   | Effect                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `STRIPE_SECRET_KEY`        | Paid plans and the credit cap; without it, usage is metered with no cap                        |
+| `OPENROUTER_PROXY_ENABLED` | `1` lists frontier models on `/api/v1/models` and proxies their chat completions to OpenRouter |
 
 Fine-tuning and serving also need the Modal workers deployed (`modal deploy overbae/modal/modal_vllm_worker.py`, `register_model.py` and `modal_sft_worker.py`; native decision models also use `modal_decision_evaluation.py` and `modal_decision_serving.py`) and a Modal secret named `overmind-inference` with the AWS keys, `INFERENCE_API_KEY` and `HF_TOKEN`.
 
