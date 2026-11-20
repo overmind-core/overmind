@@ -59,7 +59,6 @@ def test_serve(
     )
     client = Client(api_key=key, base_url=live_api.url)
     fake_llm.on(lambda r: "inference.test" in r.url, "Order 42 shipped today.")
-    fake_llm.on(lambda r: "openrouter.ai" in r.url, "Order 42 is in transit.")
 
     served = client.chat.completions.create(model="ft-sdk-journey", messages=MESSAGES)
     assert served.choices[0].message.content == "Order 42 shipped today."
@@ -68,8 +67,8 @@ def test_serve(
         model="ft-sdk-journey", messages=MESSAGES, stream=True
     )
     assert "".join(c.choices[0].delta.content or "" for c in streamed) == "Order 42 shipped today."
-    frontier = client.chat.completions.create(model="openai/gpt-5-mini", messages=MESSAGES)
-    assert frontier.choices[0].message.content == "Order 42 is in transit."
+    with pytest.raises(OvermindInferenceError, match="HTTP 404"):
+        client.chat.completions.create(model="openai/gpt-5-mini", messages=MESSAGES)
     assert "ft-sdk-journey" in {model.id for model in client.models.list().data}
     assert client.models.get("ft-sdk-journey").id == "ft-sdk-journey"
     with pytest.raises(OvermindInferenceError, match="HTTP 404"):

@@ -30,6 +30,7 @@ MESSAGES = [{"role": "user", "content": "Hello"}]
 @pytest.fixture
 def gateway(fake_llm, settings):
     settings.OPENROUTER_API_KEY = "or-test"
+    settings.OPENROUTER_PROXY_ENABLED = True
 
     def post(model_id: str, *, optimiser_header: bool = True) -> tuple[int, str]:
         user, project = make_user(), make_project()
@@ -82,6 +83,7 @@ class TestGatewayModelNamePermutations:
         from overbae.models import BillingService, BillingTelemetry
 
         settings.OPENROUTER_API_KEY = "or-test"
+        settings.OPENROUTER_PROXY_ENABLED = True
         fake_llm.on(
             lambda r: r.model == "openai/gpt-5-mini",
             {"content": "Hi!", "usage": {"prompt_tokens": 10, "completion_tokens": 5}},
