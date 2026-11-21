@@ -127,7 +127,9 @@ def _decision_worker(cls_name, *, engine="vllm"):
                     model_path = str(checkpoint)
                 self.served_name = model_path
                 self.identity = self.base_repo or self.artifact_identity
-                command = decision_sglang_command(model_path=model_path, port=VLLM_PORT)
+                command = decision_sglang_command(
+                    model_path=model_path, max_model_len=self.max_model_len, port=VLLM_PORT
+                )
             elif self.base_repo:
                 if self.base_repo == "LiquidAI/d1-omni-600M":
                     raise ValueError(

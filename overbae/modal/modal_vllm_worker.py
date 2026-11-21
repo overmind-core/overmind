@@ -502,6 +502,7 @@ class _BaseVLLMWorker:
 
             cmd = decision_sglang_command(
                 model_path=getattr(self, "_kev_checkpoint", "") or full_path,
+                max_model_len=self.max_model_len,
                 port=VLLM_PORT,
             )
         elif engine.startswith("sglang"):

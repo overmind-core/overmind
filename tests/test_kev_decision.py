@@ -22,16 +22,18 @@ def test_kev_family_uses_its_own_stacks() -> None:
     assert spec.key == "kev"
     assert spec.train_image == TRAIN_KEV
     assert spec.serve_image == SERVE_SGLANG_KEV
-    assert decision_sglang_command(model_path="/weights/kev", port=8000)[:4] == [
+    command = decision_sglang_command(model_path="/weights/kev", max_model_len=2048, port=8000)
+    assert command[:4] == [
         "sglang",
         "serve",
         "--model-path",
         "/weights/kev",
     ]
+    assert command[command.index("--context-length") + 1] == "2048"
 
 
 def test_kev_serving_stays_on_the_base() -> None:
-    command = decision_sglang_command(model_path="/weights/kev", port=8000)
+    command = decision_sglang_command(model_path="/weights/kev", max_model_len=2048, port=8000)
     assert "speculative" not in command
     for repo in ("jaredpalmer/kev-0.8b", "jaredpalmer/kev-4b", "jaredpalmer/kev-9b"):
         assert mtp_for(repo) is None
