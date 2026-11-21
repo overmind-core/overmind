@@ -11,13 +11,17 @@ from __future__ import annotations
 import os
 
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.stacks import TRAIN_KEV
 from modal_shared.training_telemetry import record_stage
 
 if __name__ == "__main__":
     record_stage(os.environ.get("BT_RUN_DIR"), "initializing_training_runtime")
     print('BT_STAGE {"stage": "initializing_training_runtime"}', flush=True)
     if os.environ.get("TRAINING_OBJECTIVE") in DECISION_OBJECTIVES:
-        from decision_engine import main
+        if os.environ.get("UNSLOTH_IMAGE") == TRAIN_KEV:
+            from kev_engine import main
+        else:
+            from decision_engine import main
     else:
         from engine_unsloth import main
 

@@ -57,7 +57,7 @@ class DecisionJobListSerializer(DecisionJobSerializer):
 class DecisionTrainingModelOptionSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()
-    family = serializers.ChoiceField(choices=["clef", "d3", "d1"])
+    family = serializers.ChoiceField(choices=["clef", "d3", "d1", "kev"])
     training_available = serializers.BooleanField()
     unavailable_reason = serializers.CharField(allow_null=True)
     max_context_length = serializers.IntegerField()

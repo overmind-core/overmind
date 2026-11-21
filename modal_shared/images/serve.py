@@ -5,7 +5,7 @@ from __future__ import annotations
 import modal
 
 from modal_shared.images import attach_modelfam, attach_serving_args
-from modal_shared.stacks import SERVE_SGLANG, SERVE_SGLANG_LFM3, SERVE_VLLM
+from modal_shared.stacks import SERVE_SGLANG, SERVE_SGLANG_KEV, SERVE_SGLANG_LFM3, SERVE_VLLM
 
 _SERVE_ENV = {
     # Container-local. Serving resolves every model by path — a merged checkpoint, or an adapter
@@ -68,6 +68,14 @@ dedicated_sglang_image = attach_serving_args(
     .entrypoint([])
     .pip_install("runai-model-streamer>=0.15.7")
 )
+dedicated_sglang_kev_image = attach_serving_args(
+    modal.Image.from_registry(
+        "lmsysorg/sglang:v0.5.23",
+        setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
+    )
+    .entrypoint([])
+    .pip_install("runai-model-streamer>=0.15.7")
+)
 # LFM3 conv layers are absent from v0.5.22 and from vLLM 0.33. Support is the
 # untagged image built from sgl-project/sglang#46858. Do not point other models here.
 dedicated_sglang_lfm3_image = attach_serving_args(
@@ -83,6 +91,7 @@ SERVE_IMAGES: dict[str, modal.Image] = {
     SERVE_VLLM: vllm_image,
     SERVE_SGLANG: dedicated_sglang_image,
     SERVE_SGLANG_LFM3: dedicated_sglang_lfm3_image,
+    SERVE_SGLANG_KEV: dedicated_sglang_kev_image,
 }
 
 # The snapshot reader uses a version-specific pinned-buffer allocation site.

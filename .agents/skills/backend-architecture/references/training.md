@@ -46,7 +46,7 @@ The no-progress observer compares native stage, completed work, attempt and chec
 
 - A train cell may carry a `decision` object instead of messages. `modal_shared/decisions.py` validates state, question, kind, options, full target distributions and positive weights. Targets never enter the encoder (`modal_shared/decision_encoding.py`); oversized inputs fail without truncation.
 - The separately pinned decision image supplies Unsloth `FastDecisionModel`, `DecisionTrainer` and the Clef joint head. The measured contract selects distribution cross entropy or mixed distribution and ordinal-mean supervision. It never invents a distribution from a mean or turns soft labels into argmax text.
-- The catalogue lists Clef, D3 and D1. Only Clef launches; D3 and D1 stay disabled until their preparation, checkpoint and serving runtimes pass the same checks. The supported method is one-GPU Modal LoRA.
+- The catalogue lists Clef, Kev, D3 and D1. Clef and Kev launch; D3 and D1 stay disabled until their preparation, checkpoint and serving runtimes pass the same checks. Clef trains on the Unsloth decision image and serves through vLLM. Kev trains with `kev.train` on its own image and serves through SGLang 0.5.23. The supported method is one-GPU Modal LoRA.
 - Artifacts hold the adapter, full-precision head, upstream head and config files, tokenizer and `decision.json`. Checkpoints publish only after exact tensor reload and a nonempty probability check.
 - `hyperparameters.pre_training_baseline` defaults to true; false skips only the starting-model development evaluation, and telemetry records `not_requested`.
 - Decision checkpoints use typed probabilities and never enter chat evaluation or deployment.

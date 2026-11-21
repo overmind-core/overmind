@@ -5,7 +5,7 @@ description: Rules for adding a new model or model family to the finetuning pipe
 
 # Finetuning model onboarding
 
-All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_unsloth.py`). Every chat model and family goes through the same engine — the rules below exist to keep it that way. Decision families (Clef, D3, D1) run `sft_assets/decision_engine.py` instead.
+All finetuning runs on Modal with Unsloth (`overbae/services/sft_assets/engine_unsloth.py`). Every chat model and family goes through the same engine — the rules below exist to keep it that way. Clef, D3 and D1 run `sft_assets/decision_engine.py`. Kev runs `sft_assets/kev_engine.py`.
 
 ## 1. Never branch on model/family in the shared script
 

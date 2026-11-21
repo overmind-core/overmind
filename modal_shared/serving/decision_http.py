@@ -53,6 +53,20 @@ def decision_vllm_command(
     ]
 
 
+def decision_sglang_command(*, model_path: str, port: int = 8000) -> list[str]:
+    """SGLang 0.5.23 loads a Kev pointer head from head.pt plus the adapter."""
+    return [
+        "sglang",
+        "serve",
+        "--model-path",
+        model_path,
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(port),
+    ]
+
+
 def decision_base_vllm_command(
     *, model_path: str, served_name: str, max_model_len: int, port: int = 8000
 ) -> list[str]:

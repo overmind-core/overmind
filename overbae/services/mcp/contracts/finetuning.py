@@ -287,7 +287,7 @@ class DecisionModelsInput(MCPModel):
 class DecisionTrainingModel(MCPModel):
     id: str
     name: str
-    family: Literal["clef", "d3", "d1"]
+    family: Literal["clef", "d3", "d1", "kev"]
     training_available: bool
     unavailable_reason: str | None
     max_context_length: int

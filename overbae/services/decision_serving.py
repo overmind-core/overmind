@@ -30,9 +30,14 @@ def validate_requests(requests):
 
 
 def worker(deployed):
+    from modal_shared.modelfam import resolve
+
     runtime = deployed.serving_runtime
+    cls_name = (
+        "KevEndpoint" if resolve(deployed.base_model_id or "").key == "kev" else "DecisionEndpoint"
+    )
     return modal.Cls.from_name(
-        runtime["app"], "DecisionEndpoint", environment_name=runtime["environment"]
+        runtime["app"], cls_name, environment_name=runtime["environment"]
     ).with_options(gpu=deployed.gpu_type)(
         weights_path=deployed.weights_path,
         artifact_identity=deployed.checkpoint_hash,

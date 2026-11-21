@@ -15,6 +15,7 @@ export type ProviderId =
   | "google"
   | "inception"
   | "inflection"
+  | "jaredpalmer"
   | "kimi"
   | "liquid"
   | "meta"
@@ -99,6 +100,7 @@ const PROVIDER_BY_SLUG: Record<Exclude<ProviderId, "unknown">, ProviderBundle> =
   google: { id: "google", providerLabel: "Gemini", providerSlug: "google" },
   inception: { id: "inception", providerLabel: "Inception", providerSlug: "inception" },
   inflection: { id: "inflection", providerLabel: "Inflection", providerSlug: "inflection" },
+  jaredpalmer: { id: "jaredpalmer", providerLabel: "Jared Palmer", providerSlug: "jaredpalmer" },
   kimi: { id: "kimi", providerLabel: "Kimi", providerSlug: "moonshotai" },
   liquid: { id: "liquid", providerLabel: "Liquid", providerSlug: "liquid" },
   meta: { id: "meta", providerLabel: "Meta", providerSlug: "meta" },
@@ -211,6 +213,10 @@ function inferProviderFromModelId(modelId: string): ProviderBundle | null {
 
   if (normalized === "jev" || normalized.startsWith("jev-")) {
     return PROVIDER_BY_SLUG.typesafe;
+  }
+
+  if (normalized === "kev" || normalized.startsWith("kev-")) {
+    return PROVIDER_BY_SLUG.jaredpalmer;
   }
 
   if (normalized.startsWith("grok-")) {

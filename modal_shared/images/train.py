@@ -9,7 +9,9 @@ import modal
 
 from modal_shared.images import attach_modelfam, attach_sft_assets
 from modal_shared.stacks import (
+    KEV_REV,
     TRAIN_DECISION,
+    TRAIN_KEV,
     TRAIN_U2026_7,
     TRAIN_U2026_8_18,
     TRAIN_U2026_8_GPOS,
@@ -281,8 +283,38 @@ _decision = _finish(
     },
 )
 
+_kev = _finish(
+    _base_cuda.pip_install(
+        "torch==2.8.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    )
+    .pip_install(
+        "transformers==5.17.0",
+        "peft>=0.21",
+        "accelerate>=1.12",
+        "datasets>=3",
+        "pydantic>=2.9",
+        "safetensors",
+        "sentencepiece",
+        "protobuf",
+        "huggingface_hub",
+        "einops",
+        "numpy",
+    )
+    .run_commands(
+        "git clone https://github.com/jaredpalmer/kev.git /opt/kev"
+        f" && git -C /opt/kev checkout {KEV_REV}"
+    ),
+    {
+        **_SFT_ENV,
+        "UNSLOTH_IMAGE": TRAIN_KEV,
+        "PYTHONPATH": "/opt/kev",
+    },
+)
+
 TRAIN_IMAGES: dict[str, modal.Image] = {
     TRAIN_DECISION: _decision,
+    TRAIN_KEV: _kev,
     TRAIN_U2026_7: _u2026_7,
     TRAIN_U2026_8_TF510: _u2026_8_tf510,
     TRAIN_U2026_8_TF515: _u2026_8_tf515,

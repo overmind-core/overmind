@@ -112,6 +112,7 @@ from modal_shared.images.serve import (  # noqa: E402
     SERVE_IMAGES,
     api_server_image,
     dedicated_sglang_image,
+    dedicated_sglang_kev_image,
     dedicated_sglang_lfm3_image,
     dedicated_vllm_image,
 )
@@ -407,7 +408,10 @@ class _BaseVLLMWorker:
         engine = getattr(self, "engine", "vllm")
         if adapter_rel:
             adapter_dir = Path(WEIGHTS_MOUNT) / adapter_rel
-            if engine.startswith("sglang"):
+            if (adapter_dir / "head.pt").is_file():
+                full_path = str(adapter_dir)
+                self._kev_checkpoint = full_path
+            elif engine.startswith("sglang"):
                 from modal_shared.serving.merge import write_folded_checkpoint
 
                 folded = Path("/tmp/overmind-folded")
@@ -441,7 +445,11 @@ class _BaseVLLMWorker:
 
         # Runtime adapter load is what lets a new deployment join an already-warm base pool
         # instead of booting its own container.
-        if self.enable_lora and not getattr(self, "_decision_lora", ""):
+        if (
+            self.enable_lora
+            and not getattr(self, "_decision_lora", "")
+            and not getattr(self, "_kev_checkpoint", "")
+        ):
             _os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "1"
             base_model = read_base_manifest(Path(full_path))["repo"]
 
@@ -474,8 +482,12 @@ class _BaseVLLMWorker:
                 raise RuntimeError(
                     f"DFlash draft {repo} is not on the weights volume ({draft_model})"
                 )
-        cap = sequence_cap_for_checkpoint(
-            Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
+        cap = (
+            None
+            if getattr(self, "_kev_checkpoint", "") or engine == "sglang_kev"
+            else sequence_cap_for_checkpoint(
+                Path(full_path), vram_gb=vram_gb, max_model_len=self.max_model_len
+            )
         )
         # 0 means one full sequence does not fit; still admit one so the boot error is vLLM's.
         max_num_seqs = MAX_CONCURRENT_INPUTS if cap is None else max(1, cap)
@@ -485,7 +497,14 @@ class _BaseVLLMWorker:
             f"tool_parser={spec.tool_call_parser} family={spec.key} "
             f"max_num_seqs={max_num_seqs} vram_gb={vram_gb})"
         )
-        if engine.startswith("sglang"):
+        if getattr(self, "_kev_checkpoint", "") or engine == "sglang_kev":
+            from modal_shared.serving.decision_http import decision_sglang_command
+
+            cmd = decision_sglang_command(
+                model_path=getattr(self, "_kev_checkpoint", "") or full_path,
+                port=VLLM_PORT,
+            )
+        elif engine.startswith("sglang"):
             from modal_shared.serving.sglang import build_sglang_args
 
             # gpt-oss has no thinking-off switch. The parser keeps analysis out of content.
@@ -560,7 +579,12 @@ class _BaseVLLMWorker:
             if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
                 cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
         print(f"Starting {engine}:", " ".join(cmd))
-        if getattr(self, "direct_vllm", False) and _os.environ.get("INFERENCE_API_KEY"):
+        if (
+            engine != "sglang_kev"
+            and not getattr(self, "_kev_checkpoint", "")
+            and getattr(self, "direct_vllm", False)
+            and _os.environ.get("INFERENCE_API_KEY")
+        ):
             # The public tunnel hits this port. The key is not part of the logged command.
             cmd += ["--api-key", _os.environ["INFERENCE_API_KEY"]]
         self._serve_command = cmd
@@ -830,9 +854,9 @@ class _BaseVLLMWorker:
         threading.Thread(target=_do_exit, daemon=True).start()
         print("[shutdown_self] container will exit in ~3 s")
 
-    @modal.asgi_app()
-    def api(self):
-        return _make_worker_health_app()
+
+def _api(self):
+    return _make_worker_health_app()
 
 
 class _SharedBaseVLLMWorker(_BaseVLLMWorker):
@@ -1121,9 +1145,20 @@ def _register_worker(
     snapshot=True,
     engine="vllm",
     runtime_lora: bool = False,
+    memory: int | None = None,
+    cpu: float | None = None,
+    ephemeral_disk: int | None = 524288,
+    concurrent: bool = True,
+    omit_memory_snapshot: bool = False,
+    web: bool = True,
+    bare: bool = False,
 ) -> None:
     bucket, default_len = GPU_TIER[gpu_type]
     image = image_override or (LORA_SERVE_IMAGES if lora else SERVE_IMAGES)[serve_image]
+    # Default is the snapshot-restore floor. A smaller request is for a class that
+    # does not snapshot: L4 will not place 128 GiB, and the input stays pending.
+    memory_mib = WORKER_MEMORY_MIB[gpu_type] if memory is None else memory
+    cpu_count = 8 if cpu is None else cpu
     parameters = {
         "__annotations__": {
             "model_path": str,
@@ -1151,9 +1186,9 @@ def _register_worker(
         # Dedicated containers snapshot the slept engine, so startup runs before the
         # snapshot and wake runs after every restore.
         parameters["engine"] = engine
-        parameters["startup"] = modal.enter(snap=bool(pin_resources and snapshot))(
-            _BaseVLLMWorker.startup
-        )
+        # snap=False is not the same as omitting snap: an explicit False does not place.
+        startup_enter = modal.enter(snap=True) if pin_resources and snapshot else modal.enter()
+        parameters["startup"] = startup_enter(_BaseVLLMWorker.startup)
         if pin_resources:
             parameters["direct_vllm"] = True
             # Empty serves the base. A path folds that one adapter while the shards are read.
@@ -1163,15 +1198,34 @@ def _register_worker(
                 parameters["__annotations__"]["snapshot_engine"] = bool
                 parameters["snapshot_engine"] = modal.parameter(default=True)
                 parameters["wake"] = modal.enter(snap=False)(_BaseVLLMWorker.wake)
+    # A parametrized ASGI app does not place on L4 once memory is reserved.
+    # Dedicated traffic uses the port forward, not this URL.
+    if web:
+        parameters["api"] = modal.asgi_app()(_api)
     cls = type(
         cls_name,
         (_SharedBaseVLLMWorker if lora else _BaseVLLMWorker,),
         parameters,
     )
-    cls = _worker_concurrency(cls)
-    worker_kwargs = {**_WORKER_KWARGS}
-    if max_containers is not None:
+    # A reserved memory plus the shared input target does not place on L4.
+    if concurrent:
+        cls = _worker_concurrency(cls)
+    worker_kwargs = (
+        {
+            "secrets": [inference_secret],
+            "volumes": _volume_mounts,
+            "timeout": 1800,
+            "retries": 0,
+        }
+        if bare
+        else {**_WORKER_KWARGS}
+    )
+    if max_containers is not None and not bare:
         worker_kwargs["max_containers"] = max_containers
+    # An explicit enable_memory_snapshot=False does not place on L4 once memory
+    # is reserved. Leaving the flag unset does.
+    if omit_memory_snapshot:
+        worker_kwargs.pop("enable_memory_snapshot", None)
     published = (target_app or app).cls(
         gpu=gpu_type,
         scaledown_window=_SCALEDOWN[bucket],
@@ -1180,10 +1234,10 @@ def _register_worker(
             **worker_kwargs,
             **(
                 {
-                    "cpu": 8,
+                    "cpu": cpu_count,
                     # Restore maps the saved process while rebuilding it. Below this the
                     # container is SIGKILL'd (137) and Modal retries with a cold boot.
-                    "memory": WORKER_MEMORY_MIB[gpu_type],
+                    "memory": memory_mib,
                     "volumes": {**_volume_mounts, ARTIFACTS_MOUNT: artifacts_vol},
                     "enable_memory_snapshot": True,
                     "experimental_options": {"enable_gpu_snapshot": True},
@@ -1191,8 +1245,8 @@ def _register_worker(
                 if lora
                 else (
                     {
-                        "cpu": 8,
-                        "memory": WORKER_MEMORY_MIB[gpu_type],
+                        "cpu": cpu_count,
+                        "memory": memory_mib,
                         # Modal rejects a GPU snapshot below this disk floor.
                         "ephemeral_disk": 524288,
                         "enable_memory_snapshot": True,
@@ -1201,10 +1255,11 @@ def _register_worker(
                     if pin_resources and snapshot
                     else (
                         {
-                            "cpu": 8,
-                            "memory": WORKER_MEMORY_MIB[gpu_type],
-                            # Modal's GPU disk floor. The folded checkpoint and compile cache fit.
-                            "ephemeral_disk": 524288,
+                            "cpu": cpu_count,
+                            "memory": memory_mib,
+                            # Reserving 512 GiB does not place on L4. Omit it when the
+                            # checkpoint is read from the weights volume.
+                            **({"ephemeral_disk": ephemeral_disk} if ephemeral_disk else {}),
                         }
                         if pin_resources
                         else {}
@@ -1214,6 +1269,112 @@ def _register_worker(
         },
     )(cls)
     (owner if owner is not None else globals())[cls_name] = published
+
+
+def _register_kev_dedicated(cls_name: str, gpu_type: str, target_app, owner) -> None:
+    """A small class. The shared vLLM worker does not place on L4."""
+
+    def startup(self) -> None:
+        self.snapshot_weights = False
+        self.engine = "sglang_kev"
+        self.direct_vllm = True
+        self.gpu_type = gpu_type
+        for name in (
+            "_startup_inner",
+            "_open_direct",
+            "_fail_startup",
+            "_ensure_ready",
+            "_start_journal",
+        ):
+            setattr(self, name, getattr(_BaseVLLMWorker, name).__get__(self, _BaseVLLMWorker))
+        _BaseVLLMWorker._start(self)
+
+    async def infer(
+        self,
+        *,
+        method: str,
+        path: str,
+        body: bytes,
+        headers: dict,
+        adapter: tuple[str, str] | None = None,
+        operation_stream: str = "",
+    ) -> dict:
+        import httpx
+
+        del adapter, operation_stream
+        self._ensure_ready()
+        if path not in {
+            "/health",
+            "/v1/models",
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/systemone",
+        }:
+            raise ValueError("Only inference endpoints may be proxied")
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await client.request(
+                method=method,
+                url=f"http://localhost:{VLLM_PORT}{path}",
+                headers={"content-type": "application/json"},
+                content=body,
+            )
+        return {"status": resp.status_code, "headers": dict(resp.headers), "body": resp.content}
+
+    def direct_url(self) -> str:
+        err = getattr(self, "_startup_error", None)
+        if err:
+            raise RuntimeError(err)
+        tunnel = getattr(self, "_tunnel", None)
+        if tunnel is None:
+            raise RuntimeError("Dedicated tunnel did not open.")
+        return tunnel.url
+
+    def shutdown(self) -> None:
+        proc = getattr(self, "_proc", None)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+        tunnel = getattr(self, "_tunnel_cm", None)
+        if tunnel is not None:
+            tunnel.__exit__(None, None, None)
+
+    cls = type(
+        cls_name,
+        (),
+        {
+            "__annotations__": {
+                "model_path": str,
+                "model_name": str,
+                "max_model_len": int,
+                "enable_lora": bool,
+                "max_lora_rank": int,
+                "adapter_path": str,
+                "snapshot_engine": bool,
+            },
+            "model_path": modal.parameter(),
+            "model_name": modal.parameter(),
+            "max_model_len": modal.parameter(default=2048),
+            "enable_lora": modal.parameter(default=True),
+            "max_lora_rank": modal.parameter(default=16),
+            "adapter_path": modal.parameter(default=""),
+            "snapshot_engine": modal.parameter(default=False),
+            "gpu_type": gpu_type,
+            "startup": modal.enter()(startup),
+            "infer": modal.method()(infer),
+            "direct_url": modal.method()(direct_url),
+            "shutdown": modal.exit()(shutdown),
+        },
+    )
+    owner[cls_name] = target_app.cls(
+        image=dedicated_sglang_kev_image,
+        gpu=gpu_type,
+        memory={"L4": 32768, "L40S": 65536}.get(gpu_type, 65536),
+        cpu=2,
+        timeout=1800,
+        retries=0,
+        volumes=_volume_mounts,
+        secrets=[inference_secret],
+        scaledown_window=120,
+    )(cls)
 
 
 def register_dedicated_classes(target_app, owner) -> None:
@@ -1264,6 +1425,8 @@ def register_dedicated_classes(target_app, owner) -> None:
             image_override=dedicated_sglang_lfm3_image,
         )
         owner[lfm3_name] = lfm3_slot[lfm3_name]
+        kev_name = f"{token}_sglang_kev_dedicated"
+        _register_kev_dedicated(kev_name, gpu_type, target_app, owner)
 
 
 for (_gpu, _serve_image), _cls_name in WORKER_CLS.items():

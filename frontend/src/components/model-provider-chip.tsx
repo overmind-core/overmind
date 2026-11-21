@@ -44,6 +44,24 @@ export { getModelProviderInfo } from "@/components/model-provider";
 
 type ProviderIcon = React.ComponentType<{ className?: string; size?: number | string }>;
 
+/** @lobehub/icons ships no Jared Palmer mark. */
+function JaredPalmer({ className, size = "1em" }: { className?: string; size?: number | string }) {
+  return (
+    <svg
+      aria-hidden
+      className={className}
+      data-testid="logo-jaredpalmer"
+      fill="currentColor"
+      height={size}
+      viewBox="0 0 24 24"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M5 4h2.2l4.8 7.4L16.8 4H19l-6.2 9.2V20h-2.2v-6.8L5 4Z" />
+    </svg>
+  );
+}
+
 /** @lobehub/icons ships no TypeSafe mark. */
 function TypeSafe({ className, size = "1em" }: { className?: string; size?: number | string }) {
   return (
@@ -81,6 +99,7 @@ const PROVIDER_ICONS: Record<Exclude<ProviderId, "unknown">, ProviderIcon> = {
   google: Gemini,
   inception: Inception,
   inflection: Inflection,
+  jaredpalmer: JaredPalmer,
   kimi: Kimi,
   liquid: Liquid,
   meta: Meta,

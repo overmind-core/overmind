@@ -1147,7 +1147,7 @@ def register_finetuning_tools(catalog) -> None:
         (
             "list_decision_training_models",
             "List decision training models",
-            "List explicit Clef, D3 and D1 families with training availability and reasons. Only available models can start a DecisionJob.",
+            "List explicit Clef, Kev, D3 and D1 families with training availability and reasons. Only available models can start a DecisionJob.",
             DecisionModelsInput,
             DecisionModelsOutput,
             list_decision_models_sync,
