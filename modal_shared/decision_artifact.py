@@ -30,12 +30,15 @@ def inventory(directory):
     ):
         raise ValueError("Decision artifact has no adapter weights")
     contract = json.loads((directory / "decision.json").read_text())
+    renderer = contract.get("renderer")
     if (
-        contract.get("renderer") == "unsloth_clef"
+        renderer == "unsloth_clef"
         and not {"joint_head.safetensors", "joint_head_config.json", "unsloth_decision_config.json"}
         <= files.keys()
     ):
         raise ValueError("Decision artifact is missing its trained head or configuration")
+    if renderer == "kev_pointer" and "head.pt" not in files:
+        raise ValueError("Kev artifact is missing head.pt")
     return files
 
 

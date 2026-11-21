@@ -791,7 +791,9 @@ def fetch_base_model(*, base_model: str) -> dict:
     serialize here; the second sees a complete snapshot. The deploy path calls the same
     Function, so a cold base is still correct.
     """
-    from huggingface_hub import snapshot_download  # noqa: PLC0415
+    from huggingface_hub import hf_hub_download, snapshot_download  # noqa: PLC0415
+
+    from modal_shared.kev_bases import BASES
 
     weights_vol.reload()
     base_dir = _base_model_dir(base_model)
@@ -802,13 +804,19 @@ def fetch_base_model(*, base_model: str) -> dict:
     else:
         print(f"[base] Downloading {base_model} → {base_dir}")
         base_dir.mkdir(parents=True, exist_ok=True)
+        kev = BASES.get(base_model)
         snapshot_download(
             repo_id=base_model,
             local_dir=str(base_dir),
-            ignore_patterns=["*.bin", "original/*", "*.pt"],
+            ignore_patterns=["*.bin", "original/*", *(() if kev else ("*.pt",))],
             token=os.environ.get("HF_TOKEN") or None,
             max_workers=16,
         )
+        if kev and not (base_dir / "head.pt").is_file():
+            raise RuntimeError(f"Kev snapshot {base_model} is missing head.pt")
+        if kev and not (base_dir / "config.json").is_file():
+            backbone, revision = kev
+            hf_hub_download(backbone, "config.json", revision=revision, local_dir=str(base_dir))
         if not _snapshot_is_complete(base_dir):
             raise RuntimeError(
                 f"Base snapshot for {base_model} is incomplete after download "

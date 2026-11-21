@@ -5,6 +5,103 @@
     "concurrency": 1
   },
   "models": {
+    "jaredpalmer/kev-0.8b": {
+      "decision": {
+        "L4": {
+          "latency_ms_p50": 72.6,
+          "measured_at": "2026-11-20T23:16:06Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "L40S": {
+          "latency_ms_p50": 117.8,
+          "measured_at": "2026-11-20T23:23:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "A100-80GB": {
+          "latency_ms_p50": 48.6,
+          "measured_at": "2026-11-20T23:29:20Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "H100": {
+          "latency_ms_p50": 78.0,
+          "measured_at": "2026-11-20T23:19:30Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "H200": {
+          "latency_ms_p50": 177.0,
+          "measured_at": "2026-11-20T23:40:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B200": {
+          "latency_ms_p50": 128.2,
+          "measured_at": "2026-11-20T23:50:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B300": {
+          "latency_ms_p50": 113.3,
+          "measured_at": "2026-11-20T23:54:00Z",
+          "runtime": "sglang-0.5.23"
+        }
+      }
+    },
+    "jaredpalmer/kev-4b": {
+      "decision": {
+        "L40S": {
+          "latency_ms_p50": 132.9,
+          "measured_at": "2026-11-20T23:16:06Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "A100-80GB": {
+          "latency_ms_p50": 137.4,
+          "measured_at": "2026-11-20T23:24:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "H100": {
+          "latency_ms_p50": 133.6,
+          "measured_at": "2026-11-20T23:19:30Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "H200": {
+          "latency_ms_p50": 78.3,
+          "measured_at": "2026-11-20T23:32:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B200": {
+          "latency_ms_p50": 65.5,
+          "measured_at": "2026-11-20T23:43:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B300": {
+          "latency_ms_p50": 128.1,
+          "measured_at": "2026-11-20T23:52:00Z",
+          "runtime": "sglang-0.5.23"
+        }
+      }
+    },
+    "jaredpalmer/kev-9b": {
+      "decision": {
+        "H100": {
+          "latency_ms_p50": 191.3,
+          "measured_at": "2026-11-20T23:16:06Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "H200": {
+          "latency_ms_p50": 70.1,
+          "measured_at": "2026-11-20T23:24:20Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B200": {
+          "latency_ms_p50": 150.2,
+          "measured_at": "2026-11-20T23:37:00Z",
+          "runtime": "sglang-0.5.23"
+        },
+        "B300": {
+          "latency_ms_p50": 323.3,
+          "measured_at": "2026-11-20T23:48:00Z",
+          "runtime": "sglang-0.5.23"
+        }
+      }
+    },
     "fdtn-ai/antares-350m": {
       "lora_bf16": {
         "H100": {

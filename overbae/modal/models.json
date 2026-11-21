@@ -9,6 +9,7 @@
       "fdtn-ai": "Cisco",
       "google": "Google",
       "nvidia": "NVIDIA",
+      "jaredpalmer": "Jared Palmer",
       "liquidai": "Liquid AI",
       "microsoft": "Microsoft",
       "ornith-ai": "Ornith",
@@ -2873,6 +2874,156 @@
         },
         "decision_index": 53.08,
         "decision_index_edition": "0.3.1"
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+{
+      "id": "jaredpalmer/kev-0.8b",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "kev-0.8b",
+      "hf_model_id": "jaredpalmer/kev-0.8b",
+      "tier": "compact",
+      "params": "0.8B",
+      "total_params_b": 0.8,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 1024,
+      "inference": {
+        "gpu_type": "L4",
+        "max_model_len": 2048
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 65536
+      },
+      "decision": {
+        "family": "kev",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": null,
+        "decision_index_edition": null
+      },
+      "pricing": {
+        "train_from_usd": 0.7,
+        "run_from_usd_per_1m_output": 2.5
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+{
+      "id": "jaredpalmer/kev-4b",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "kev-4b",
+      "hf_model_id": "jaredpalmer/kev-4b",
+      "tier": "small",
+      "params": "4B",
+      "total_params_b": 4.0,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 2560,
+      "inference": {
+        "gpu_type": "L40S",
+        "max_model_len": 2048
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 65536
+      },
+      "decision": {
+        "family": "kev",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": null,
+        "decision_index_edition": null
+      },
+      "pricing": {
+        "train_from_usd": 0.7,
+        "run_from_usd_per_1m_output": 4.0
+      },
+      "disabled": false,
+      "disabled_reason": null
+    },
+{
+      "id": "jaredpalmer/kev-9b",
+      "openrouter_id": null,
+      "backend": "decision",
+      "display": "kev-9b",
+      "hf_model_id": "jaredpalmer/kev-9b",
+      "tier": "mid",
+      "params": "9B",
+      "total_params_b": 9.0,
+      "context_length": 262144,
+      "supports_tool_calling": false,
+      "type": "decision",
+      "hidden_size": 4096,
+      "inference": {
+        "gpu_type": "H100",
+        "max_model_len": 2048
+      },
+      "finetuning": {
+        "context_length": 262144,
+        "max_batch_size": 1,
+        "min_batch_size": 1,
+        "training_type": {
+          "full": {
+            "enabled": false
+          },
+          "lora": {
+            "enabled": true,
+            "context_length": 65536,
+            "validated_context_length": true
+          }
+        },
+        "real_max_context_length": 65536
+      },
+      "decision": {
+        "family": "kev",
+        "limits": {
+          "options": 26,
+          "score_levels": 10,
+          "questions": 64
+        },
+        "decision_index": null,
+        "decision_index_edition": null
+      },
+      "pricing": {
+        "train_from_usd": 1.0,
+        "run_from_usd_per_1m_output": 6.0
       },
       "disabled": false,
       "disabled_reason": null

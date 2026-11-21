@@ -48,6 +48,16 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
         quantization="fp8",
     )
     assert worker_class_name(fp8, "H100") == "H100_vllm_dedicated"
+    kev = SimpleNamespace(
+        inference_contract="decision",
+        base_model_id="jaredpalmer/kev-0.8b",
+    )
+    clef = SimpleNamespace(
+        inference_contract="decision",
+        base_model_id="cloudflare/clef-flash",
+    )
+    assert worker_class_name(kev, "L4") == "L4_sglang_kev_dedicated"
+    assert worker_class_name(clef, "L4") == "L4_vllm_dedicated"
     assert parameters(deployment) == {
         "model_path": ".base_models/Qwen--Qwen2.5-0.5B-Instruct",
         "model_name": "dedicated/ft-9be76bc2",

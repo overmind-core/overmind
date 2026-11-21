@@ -7,7 +7,7 @@ def models() -> dict[str, dict]:
     return {
         model_id: {
             **entry,
-            "training_available": entry["decision"]["family"] == "clef"
+            "training_available": entry["decision"]["family"] in {"clef", "kev"}
             and not entry.get("disabled"),
         }
         for model_id, entry in get_all_models_by_backend("decision", include_disabled=True).items()

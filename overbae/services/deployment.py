@@ -492,6 +492,7 @@ def verification_operation(deployed: DeployedModel):
             "artifact_identity": deployed.checkpoint_hash,
             "max_model_len": deployed.max_model_len,
             "gpu_type": deployed.gpu_type,
+            "base_model_id": get_hf_base(deployed.base_model_id),
         }
     return modal.Function.from_name(
         "overmind-inference", "pre_warm", environment_name=modal_environment()

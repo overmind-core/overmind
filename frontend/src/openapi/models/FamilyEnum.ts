@@ -17,12 +17,14 @@
  * * `clef` - clef
  * * `d3` - d3
  * * `d1` - d1
+ * * `kev` - kev
  * @export
  */
 export const FamilyEnum = {
     clef: 'clef',
     d3: 'd3',
-    d1: 'd1'
+    d1: 'd1',
+    kev: 'kev'
 } as const;
 export type FamilyEnum = typeof FamilyEnum[keyof typeof FamilyEnum];
 
