@@ -3,19 +3,6 @@
 # Disable with RUN_DB_BOOTSTRAP=0 (e.g. production where migrate runs in CI).
 set -e
 
-# Write ~/.trussrc so truss_train.push() can authenticate with Baseten.
-if [ -n "${BASETEN_API_KEY}" ]; then
-  _HOME="${HOME:-/root}"
-  mkdir -p "$_HOME"
-  cat > "$_HOME/.trussrc" << TRUSSRC
-[baseten]
-remote_provider = baseten
-auth_type = api_key
-api_key = ${BASETEN_API_KEY}
-remote_url = https://app.baseten.co
-TRUSSRC
-fi
-
 if [ "${RUN_DB_BOOTSTRAP:-1}" = "1" ]; then
   echo "==> migrate"
   python manage.py migrate --noinput

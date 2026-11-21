@@ -347,7 +347,7 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",
     "ENUM_NAME_OVERRIDES": {
-        "BackendEnum": [("together", "together"), ("baseten", "baseten"), ("modal", "modal")],
+        "BackendEnum": [("modal", "modal")],
         "IntentEnum": "overbae.models.datasets.Dataset.Intent",
         "CellStateEnum": "overbae.models.datasets.Cell.State",
         # Lane provenance shares the field name with finetuning evidence; pinned so
@@ -362,6 +362,9 @@ SPECTACULAR_SETTINGS = {
         "SpanTypeEnum": "overbae.models.traces.Span.SpanType",
         "FinetuningJobStatusEnum": "overbae.models.finetuning.FinetuningJob.Status",
         "SignOnMethodEnum": "overbae.models.iam.SignOnMethod",
+        "FeedbackKindEnum": "overbae.models.feedback.Feedback.Kind",
+        "FeedbackAreaEnum": "overbae.models.feedback.Feedback.Area",
+        "PublicModelCategoryEnum": [("open-weight", "open-weight"), ("frontier", "frontier")],
         "ModelRefProviderEnum": "overbae.models.innermind.ModelRef.Provider",
         # EvalRun.Status is absent on purpose: its members match another status
         # enum and it reuses that component.
@@ -524,11 +527,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs",
         "schedule": 15.0,
     },
-    # Hourly because Baseten's billing lags the job.
-    "sync-baseten-finetuning-costs": {
-        "task": "overbae.tasks.baseten_billing_sync.sync_baseten_finetuning_costs",
-        "schedule": 3600.0,
-    },
     # Fails runs stuck in RUNNING with no row progress and no healthy generation wait.
     "reap-stalled-eval-runs": {
         "task": "overbae.tasks.innermind.reap_stalled_runs",
@@ -602,9 +600,14 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+# Chat-completions proxy only. Judges, evals and scoring ignore this and keep
+# using OPENROUTER_API_KEY. "1" lists frontier models and forwards them upstream.
+OPENROUTER_PROXY_ENABLED = os.environ.get("OPENROUTER_PROXY_ENABLED", "0") == "1"
 
 # Feedback-channel incoming webhook; blank disables the notification.
 SLACK_FEEDBACK_WEBHOOK_URL = os.environ.get("SLACK_FEEDBACK_WEBHOOK_URL", "")
+# Overwatch base URL for links in feedback messages; blank leaves the link out.
+OVERWATCH_URL = os.environ.get("OVERWATCH_URL", "")
 # Dedicated read-only analytics service credential, never shared with the dashboard.
 OVERWATCH_SERVICE_TOKEN = os.environ.get("OVERWATCH_SERVICE_TOKEN", "")
 
@@ -721,11 +724,6 @@ LOGGING = {
         },
     },
 }
-
-TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
-
-BASETEN_API_KEY = os.environ.get("BASETEN_API_KEY", "")
-BASETEN_PROJECT = os.environ.get("BASETEN_PROJECT", "")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 

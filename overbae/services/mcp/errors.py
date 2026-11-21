@@ -88,6 +88,7 @@ ErrorCode = Literal[
     "staged_change_conflict",
     "invalid_filter",
     "embedding_unavailable",
+    "rate_limited",
     "internal_error",
 ]
 

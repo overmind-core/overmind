@@ -59,7 +59,7 @@ export type Overview = Cached & {
   spend_by_service: Record<string, string>;
 };
 
-export type Activation = {
+export type Activation = Cached & {
   steps: { step: string; users: number }[];
   median_hours_to_first_span: number | null;
 };
@@ -150,11 +150,64 @@ export type UserActivity = Cached & {
   evaluations: Workflow;
 };
 
+export type FeedbackRow = {
+  id: string;
+  created_at: string;
+  source: "console" | "agent";
+  kind: string;
+  area: string;
+  severity: string;
+  outcome: string;
+  title: string;
+  user_id: number | null;
+  user_email: string | null;
+  project_id: string | null;
+  client: string;
+  seen: number;
+};
+
+export type TrailStep = {
+  action: string;
+  result: "ok" | "error" | "unexpected" | "no_progress";
+  error_code?: string | null;
+  attempts?: number;
+  note?: string | null;
+};
+
+export type FeedbackDetail = FeedbackRow & {
+  message: string;
+  detail: {
+    intent?: string;
+    expected?: string;
+    observed?: string;
+    suggestion?: string;
+    trail?: TrailStep[];
+    resources?: string[];
+    tool_calls?: number | null;
+  };
+  environment: {
+    reported?: Record<string, string>;
+    observed?: Record<string, string>;
+  };
+  server_trail:
+    | { available: true; window_minutes: number; calls: ServerCall[] }
+    | { available: false; reason: string };
+};
+
+export type ServerCall = { at: string; tool: string; is_error: boolean; error_code: string };
+
 export async function overwatchGet<T>(
-  path: "overview" | "activation" | "product-usage" | "users" | `users/${number}`,
+  path:
+    | "overview"
+    | "activation"
+    | "product-usage"
+    | "users"
+    | `users/${number}`
+    | "feedback"
+    | `feedback/${string}`,
   params: Record<string, string | number | undefined>,
   token = getToken()
-): Promise<T & Cached> {
+): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) query.set(key, String(value));

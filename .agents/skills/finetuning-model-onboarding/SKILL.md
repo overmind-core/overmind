@@ -66,7 +66,7 @@ For every new model, before it's usable for finetuning:
    - `validated_context_length: true` once probed — this flag means "this number came from an actual training run on H100/H200," not an assumption.
 1. Set `finetuning.real_max_context_length` to the max across validated training types, and keep every `training_type.*.context_length <= real_max_context_length`.
 
-`tests/test_modelfam.py::test_baseten_real_max_context_length` enforces this shape for every `backend: "baseten"` entry — run it before considering onboarding done.
+`tests/test_modelfam.py::test_modal_real_max_context_length` enforces this shape for every `backend: "modal"` entry — run it before considering onboarding done.
 
 ## 5. Everything model-specific goes in `models.json`
 
@@ -76,12 +76,11 @@ Model configuration — context lengths, batch sizes, training type enablement, 
 
 Actual training cost is **computed, not stored per model** — `overbae/services/finetuning_pricing.py` derives it from fields already in `models.json`:
 
-- Modal (the only backend settings allow): `estimate_training_cost()` picks GPU count from `_BASETEN_GPU_COUNT_TIERS` keyed on `total_params_b`, estimates duration from FLOPs (`6·N·D` full / `4·N·D` LoRA at 35% assumed MFU) plus a fixed 10-minute overhead, and bills GPU count × seconds × `_MODAL_H100_USD_PER_SECOND`.
-- The Baseten (per-minute) and Together (`training_price_per_million()`, `_TOGETHER_SFT_TIERS`) branches remain for catalog entries on those backends.
+- Modal (the only backend settings allow): `estimate_training_cost()` picks GPU count from `_GPU_COUNT_TIERS` keyed on `total_params_b`, estimates duration from FLOPs (`6·N·D` full / `4·N·D` LoRA at 35% assumed MFU) plus a fixed 10-minute overhead, and bills GPU count × seconds × `_MODAL_H100_USD_PER_SECOND`.
 
-So as long as the new model's `total_params_b` is set correctly in `models.json`, cost estimation works automatically — don't add a new pricing branch or per-model rate to `finetuning_pricing.py`. It returns `None` for an unpriced backend, for zero trained tokens, and for a >100B-param Together model, which needs an individually negotiated rate.
+So as long as the new model's `total_params_b` is set correctly in `models.json`, cost estimation works automatically — don't add a new pricing branch or per-model rate to `finetuning_pricing.py`. It returns `None` for an unpriced backend and for zero trained tokens.
 
-The one thing to add by hand is the **marketing "from" floor**: `models.json`'s `pricing.train_from_usd` (paired with `pricing.run_from_usd_per_1m_output` — `model_library.py`'s `_pricing()` drops the whole block from the API response unless both are set). This is a display-only number for the model library UI, not read by the cost estimator. Set it by calling `estimate_training_run()`/`estimate_training_cost()` for a small representative dataset on the new model and rounding to a customer-facing number consistent with similarly-sized peer models already in the catalog (e.g. dense ~1-4B models cluster around `0.5–0.7`, larger dense/MoE tiers step up to `1.0–2.5`, frontier-scale up to `4.5–5.0`).
+The one thing to add by hand is the **"from" price**: `models.json`'s `pricing.train_from_usd` (paired with `pricing.run_from_usd_per_1m_output` — `model_library.py`'s `_pricing()` drops the whole block from the API response unless both are set). This is a display-only number for the model library UI, not read by the cost estimator. It is at cost, with no markup: set it from `estimate_training_cost()` for a small representative LoRA run on the new model, to two decimals, consistent with similarly-sized peer models already in the catalog (e.g. dense ~1-4B models sit around `0.30–0.43`, larger dense/MoE tiers `0.61–1.52`, frontier-scale `2.73–3.04`).
 
 ## 7. New `ModelFamily` needs a frontend icon
 
@@ -110,7 +109,7 @@ A catalog row that only trains is unfinished. Serving is measured on Modal `--en
 - [ ] Context probed per training type, H100 before H200, with real Modal runs
 - [ ] `training_type.{full,lora}.context_length` + `validated_context_length` set from actual probe results
 - [ ] `real_max_context_length` set and consistent with validated training types
-- [ ] `tests/test_modelfam.py` passes, including `test_baseten_real_max_context_length`
+- [ ] `tests/test_modelfam.py` passes, including `test_modal_real_max_context_length`
 - [ ] `total_params_b` set correctly (drives auto-computed training cost — no manual rate needed)
 - [ ] `pricing.train_from_usd` + `pricing.run_from_usd_per_1m_output` set for the model library display
 - [ ] Frontend icon mapped if the family is new

@@ -503,8 +503,8 @@ PROMPTS = (
             "or expose any presigned URL. On the coding agent's filesystem, run `overmind model "
             "download-checkpoint DEPLOYMENT --json`. Replace DEPLOYMENT with the exact deployment id "
             "resolved through MCP as one shell argument. Parse the result and report its local `path` "
-            "and `bytes_written`. Only archived checkpoints for supported fine-tune providers "
-            "(baseten or modal) are downloadable. The CLI refuses to overwrite an existing file."
+            "and `bytes_written`. Only archived checkpoints of fine-tuned models are downloadable. "
+            "The CLI refuses to overwrite an existing file."
         ),
     ),
 )

@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timedelta
 
 import pytest
@@ -135,16 +136,19 @@ def test_a_message_waits_for_its_source_and_landing_starts_the_turn(
 
 def test_stop_ends_the_turn_at_its_next_step_and_drops_the_queue(fake_llm, user, thread, woken):
     def reply(_request):
-        # The user stops while the model writes a call.
+        # The user stops while the model writes a call, and the reply streams on past the
+        # next draft, where the turn sees the stop.
         AssistantThread.objects.filter(pk=thread.pk).update(stop_requested=True)
         threads.send(thread, user, request_key="later", text="And then?")
+        time.sleep(turn.DRAFT_INTERVAL_SECONDS * 2)
         query = {"summary": "Counting", "dataset": str(thread.dataset_id), "sql": "select 1"}
         return {"content": None, "tool_calls": [tool_call("query_dataset", query)], "usage": {}}
 
     fake_llm.on(lambda request: bool(request.body.get("stream")), reply)
     say(thread, user, "Count.")
 
-    assert kinds(thread) == ["user", "assistant", "status"]
+    # The unfinished reply is dropped and its call never runs.
+    assert kinds(thread) == ["user", "status"]
     assert thread.events.last().payload["state"] == "stopped"
     assert thread.state == AssistantThread.State.IDLE and not thread.stop_requested
     assert not thread.inputs.filter(state="queued").exists()

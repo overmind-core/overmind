@@ -35,6 +35,9 @@ class MCPContext:
     client_ip: str | None = None
     inference_base_url: str = ""
     client_name: str = ""
+    # Request headers the client sends on every call; reported back only in friction reports.
+    user_agent: str = ""
+    protocol_version: str = ""
 
     def has_permission(self, permission: str) -> bool:
         scope = self.token.scope if isinstance(self.token.scope, dict) else {}

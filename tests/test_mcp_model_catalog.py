@@ -7,7 +7,6 @@ from django.test import override_settings
 from mcp_fixtures import call_tool
 
 from overbae.models import APIToken, Project, User
-from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 from overbae.services.mcp.catalog import CATALOG
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.model_catalog import GetModelCatalogOutput
@@ -45,10 +44,8 @@ def test_catalog_metadata_and_input_schema_are_read_only_and_bounded():
     assert definition.async_mode == "sync"
 
     schema = definition.as_mcp_tool().inputSchema
-    assert set(schema["properties"]) == {"has_tool_calling", "max_context"}
+    assert set(schema["properties"]) == {"has_tool_calling"}
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["max_context"]["maximum"] == 10_000_000
-    assert schema["properties"]["max_context"]["exclusiveMinimum"] == 0
     assert {tool.name for tool in CATALOG.tools(frozenset({"write"}))}.isdisjoint(
         {"get_model_catalog"}
     )
@@ -66,7 +63,6 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
         "tiers",
         "models",
         "has_tool_calling",
-        "max_context",
         "monitoring",
     }
     assert output["backend"] == "modal"
@@ -79,7 +75,6 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
     ]
     assert output["monitoring"]["runtime_qualification"] != "gpu_qualified"
     assert output["has_tool_calling"] is False
-    assert output["max_context"] is None
     assert output["summary"] == (
         f"{sum(len(models) for models in output['models'].values())} "
         "fine-tuning catalog entries returned for modal."
@@ -120,8 +115,8 @@ def test_catalog_is_dataset_independent_and_returns_complete_model_metadata():
     assert training_schema["additionalProperties"] is False
 
 
-def test_catalog_filters_tool_calling_and_preserves_together_context_semantics():
-    with override_settings(FINETUNING_BACKEND="baseten"):
+def test_catalog_filters_tool_calling():
+    with override_settings(FINETUNING_BACKEND="modal"):
         tool_result = _call({"has_tool_calling": True})
     assert tool_result.isError is False
     tool_models = [
@@ -132,27 +127,12 @@ def test_catalog_filters_tool_calling_and_preserves_together_context_semantics()
         model["supports_tool_calling"] and not model.get("disabled") for model in tool_models
     )
 
-    with override_settings(FINETUNING_BACKEND="together"):
-        result = _call({"max_context": 50_000})
-        expected = fetch_finetuning_model_catalog(max_context=50_000)
-
-    assert result.isError is False
-    assert result.structuredContent["models"] == expected["models"]
-    assert result.structuredContent["max_context"] == 50_000
-    assert all(
-        "context_length" not in model
-        for tier in result.structuredContent["models"].values()
-        for model in tier
-    )
-
 
 @pytest.mark.parametrize(
     "arguments",
     [
         {"has_tool_calling": "true"},
         {"has_tool_calling": 1},
-        {"max_context": "50000"},
-        {"max_context": 50000.0},
     ],
 )
 def test_catalog_rejects_coercible_input_types(arguments):

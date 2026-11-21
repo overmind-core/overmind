@@ -174,16 +174,8 @@ def public_library_filters() -> dict[str, Any]:
 
 
 def public_model_catalog() -> list[dict[str, Any]]:
-    """Every model available on the platform: open-weight + frontier.
-
-    ``together`` entries are left out: training runs on Modal from the Baseten
-    catalog, so a Together-only id can be neither trained nor served.
-    """
-    by_id = {
-        cfg["id"]: cfg
-        for cfg in all_model_entries()
-        if not cfg.get("disabled") and cfg.get("backend") != "together"
-    }
+    """Every model available on the platform: open-weight + frontier."""
+    by_id = {cfg["id"]: cfg for cfg in all_model_entries() if not cfg.get("disabled")}
 
     open_weight = [_open_weight_entry(cfg) for cfg in by_id.values()]
     frontier = [_frontier_entry(m) for m in library_models()]

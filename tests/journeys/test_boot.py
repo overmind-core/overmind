@@ -2,7 +2,6 @@ import os
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -67,34 +66,28 @@ def _environment(**overrides: str) -> dict[str, str]:
     return {key: value for key, value in env.items() if value is not None}
 
 
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
 def _serve(env: dict[str, str]) -> tuple[subprocess.Popen, str]:
-    port = _free_port()
-    server = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "overbae.asgi:application", "--port", str(port)],
-        cwd=ROOT,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    url = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        if server.poll() is not None:
-            raise AssertionError(f"server exited {server.returncode}:\n{server.stdout.read()}")
-        try:
-            requests.get(f"{url}/health", timeout=2)
-            return server, url
-        except requests.ConnectionError:
-            time.sleep(0.2)
-    server.kill()
-    raise AssertionError(f"server never listened:\n{server.stdout.read()}")
+    # The server inherits a socket this process already listens on, so no parallel worker
+    # can take its port between choosing it and binding it.
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        url = f"http://127.0.0.1:{listener.getsockname()[1]}"
+        server = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "overbae.asgi:application"]
+            + ["--fd", str(listener.fileno())],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            pass_fds=[listener.fileno()],
+        )
+    # The socket accepts connections from the start; the request waits for the app to answer.
+    try:
+        requests.get(f"{url}/health", timeout=60)
+    except requests.RequestException as error:
+        server.kill()
+        raise AssertionError(f"server never answered: {error}\n{server.stdout.read()}") from error
+    return server, url
 
 
 def _health(env: dict[str, str]) -> requests.Response:
@@ -129,7 +122,10 @@ def test_the_hosted_environment_boots():
 
 
 def test_health_fails_when_the_database_is_unreachable():
-    response = _health(_environment(POSTGRES_PORT=str(_free_port())))
+    # Bound and never listening: the port refuses connections and stays this test's.
+    with socket.socket() as unreachable:
+        unreachable.bind(("127.0.0.1", 0))
+        response = _health(_environment(POSTGRES_PORT=str(unreachable.getsockname()[1])))
     assert response.status_code >= 500
 
 

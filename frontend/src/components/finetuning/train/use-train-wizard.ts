@@ -61,12 +61,23 @@ export type EvaluationPlan = Required<
 >;
 
 const EMPTY_CATALOG: ModelCatalog = {
-  backend: BackendEnum.baseten,
+  backend: BackendEnum.modal,
   hasToolCalling: false,
-  maxContext: null,
   models: {},
   monitoring: {},
   tiers: [...TIER_ORDER],
+};
+
+const MONITORING = {
+  early_stopping: null,
+  interval_steps: null,
+  loss_sample: 2048,
+  max_checks: 12,
+  mode: "adaptive",
+  overhead_fraction: 0.1,
+  selection: "last",
+  target_seconds: 300,
+  train_sample: 256,
 };
 
 const FAILED_VALIDATION: DatasetValidationResponse = {
@@ -277,20 +288,6 @@ export function useTrainWizard({
     (hasToolCalling ? toolCatalogQuery.data : baseCatalogQuery.data) ??
     baseCatalogQuery.data ??
     EMPTY_CATALOG;
-  const monitoring = useMemo(
-    () => ({
-      early_stopping: null,
-      interval_steps: null,
-      loss_sample: 2048,
-      max_checks: 12,
-      mode: catalog.backend === "together" ? "off" : "adaptive",
-      overhead_fraction: 0.1,
-      selection: "last",
-      target_seconds: 300,
-      train_sample: 256,
-    }),
-    [catalog.backend]
-  );
 
   // Every constraint-passing model, ranked by grade; `shown` names the opening line-up.
   const candidates = useMemo(() => rec?.candidates ?? [], [rec]);
@@ -449,7 +446,7 @@ export function useTrainWizard({
             hyperparameters: {
               ...buildHyperparameters(draft),
               monitoring: {
-                ...monitoring,
+                ...MONITORING,
                 ...(nativeDecision ? { initial: preTrainingBaseline } : {}),
               },
               ...(nativeDecision
@@ -467,7 +464,6 @@ export function useTrainWizard({
         draft.hyperparams,
         nativeDecision,
         preTrainingBaseline,
-        monitoring,
         dataset?.active,
         validationSelection,
       ] as const,
@@ -642,7 +638,7 @@ export function useTrainWizard({
           hyperparameters: {
             ...buildHyperparameters(fixed),
             monitoring: {
-              ...monitoring,
+              ...MONITORING,
               ...(nativeDecision ? { initial: preTrainingBaseline } : {}),
             },
             ...(nativeDecision
@@ -673,7 +669,6 @@ export function useTrainWizard({
     }
   }, [
     canLaunch,
-    monitoring,
     preTrainingBaseline,
     decisionObjective,
     evaluationEnabled,

@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { Failure } from "~/components/failure";
 import { Freshness } from "~/components/freshness";
-import { overwatchGet, type Page, type User } from "~/lib/api";
+import { type Cached, overwatchGet, type Page, type User } from "~/lib/api";
 import {
   formatAgo,
   formatDate,
@@ -64,7 +64,7 @@ function AccountsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const query = useQuery({
     placeholderData: keepPreviousData,
-    queryFn: () => overwatchGet<Page<User>>("users", { days, ordering, page, page_size }),
+    queryFn: () => overwatchGet<Page<User> & Cached>("users", { days, ordering, page, page_size }),
     queryKey: ["users", days, ordering, page, page_size],
   });
   const sort: SortState<SortKey> = {

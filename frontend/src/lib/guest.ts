@@ -1,3 +1,5 @@
+import { localStore } from "./storage";
+
 const GUEST_FLAG = "guest_session";
 const GUEST_PROJECT = "guest_project_id";
 
@@ -11,23 +13,21 @@ export function isGuestAllowedPath(pathname: string): boolean {
 }
 
 export function hasGuestSession(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(GUEST_FLAG) === "1";
+  return localStore.get(GUEST_FLAG) === "1";
 }
 
 export function getGuestProjectId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(GUEST_PROJECT);
+  return localStore.get(GUEST_PROJECT);
 }
 
 export function markGuestSession(projectId: string): void {
-  localStorage.setItem(GUEST_FLAG, "1");
-  localStorage.setItem(GUEST_PROJECT, projectId);
+  localStore.set(GUEST_FLAG, "1");
+  localStore.set(GUEST_PROJECT, projectId);
 }
 
 export function clearGuestSession(): void {
-  localStorage.removeItem(GUEST_FLAG);
-  localStorage.removeItem(GUEST_PROJECT);
+  localStore.remove(GUEST_FLAG);
+  localStore.remove(GUEST_PROJECT);
 }
 
 type Listener = () => void;

@@ -1,4 +1,4 @@
-"""Standalone package shared by Modal workers, Baseten training, and Django.
+"""Standalone package shared by the Modal workers and Django.
 
 Deliberately lives OUTSIDE the ``overbae`` package: ``overbae/__init__.py``
 imports Celery, which configures Django settings on import. Modal entrypoint

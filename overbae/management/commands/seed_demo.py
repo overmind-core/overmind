@@ -91,6 +91,7 @@ from overbae.services.datasets import paths as dataset_paths
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import store as dataset_store
 from overbae.services.datasets.pipeline_execution import Parents, carry
+from overbae.services.feedback import title_from
 
 User = get_user_model()
 NOW = timezone.now().replace(minute=0, second=0, microsecond=0)
@@ -4321,23 +4322,33 @@ class Command(BaseCommand):
         )
         backdate(BillingTelemetry, [(row.pk, days_ago(10))], column="timestamp")
 
-        for user_, category, text, days_, read in [
+        for user_, kind, area, text, days_, read in [
             (
                 amara,
-                "love",
+                "praise",
+                "observability",
                 "The live trace scores caught a mis-routing regression before our SLA dashboard did.",
                 17,
                 True,
             ),
             (
                 jonas,
-                "improvement",
+                "idea",
+                "training",
                 "Training page: surface the eval-vs-train loss gap directly, we watch for overfitting on every run.",
                 6,
                 False,
             ),
         ]:
-            f = Feedback.objects.create(user=user_, category=category, feedback=text, read=read)
+            f = Feedback.objects.create(
+                user=user_,
+                project=project,
+                kind=kind,
+                area=area,
+                title=title_from(text),
+                message=text,
+                read=read,
+            )
             Feedback.objects.filter(pk=f.pk).update(created_at=days_ago(days_))
 
         # ── Summary ──────────────────────────────────────────────────────────────────────

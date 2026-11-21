@@ -320,12 +320,12 @@ def test_full_finetune_takes_the_merge_path():
 
 
 def test_non_modal_provider_takes_the_merge_path():
-    """Baseten and Nebius checkpoints come back through S3, not the sft Volume that
+    """Nebius checkpoints come back through its own download, not the sft Volume that
     publish_adapter reads from."""
     from overbae.services.deployment import serves_as_adapter
 
     job = FinetuningJob(
-        provider="baseten",
+        provider="nebius",
         base_model="Qwen/Qwen3-1.7B",
         hyperparameters={"training_type": {"type": "Lora"}},
     )

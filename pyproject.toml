@@ -34,7 +34,6 @@ dependencies = [
     "scipy>=1.14.0",
     "python-json-logger>=3.3.0",
     "redis>=5.0.0",
-    "together>=1.3.0",
     "django-storages>=1.14.6",
     "watchdog>=4.0.0",
     "modal>=1.6.1",
@@ -129,7 +128,6 @@ extend-exclude = [
     "overbae/migrations/*",
     "__pycache__/*",
     "merps",
-    "baseten_testing/*",
     "experiments/*",
     # SDK has its own pyproject / ruff / CI job under overmind/
     "overmind",

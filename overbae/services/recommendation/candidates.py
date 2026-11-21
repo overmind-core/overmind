@@ -24,7 +24,7 @@ from overbae.services.finetuning_pricing import (
     humanize_duration,
 )
 
-from .catalog import active_backend, catalog_backend, gpu_config
+from .catalog import active_backend, gpu_config
 from .hyperparams import compute_hyperparams, hyperparam_provenance
 from .ranking import MIN_COHORT, Ranked
 
@@ -61,7 +61,7 @@ def build_candidate(
     max_tokens = int(stats.get("max_token_length") or 0)
 
     training_type = dataset_training_type(
-        model_entry, max_tokens=max_tokens or None, headroom=context_headroom("baseten")
+        model_entry, max_tokens=max_tokens or None, headroom=context_headroom(backend)
     )
     supports_lora = training_type["lora"]["enabled"]
     supports_full = training_type["full"]["enabled"]
@@ -117,9 +117,7 @@ def build_candidate(
         "hyperparams": hyperparams,
         "use_lora": use_lora,
         "training_type": training_type,
-        # gpu_config reads the Baseten inference rows because models.json has no "modal"
-        # ones; the cost estimate keeps the literal backend so Modal's branch wins.
-        "gpu_config": gpu_config(model_entry["id"], catalog_backend()),
+        "gpu_config": gpu_config(model_entry["id"], backend),
         "cost_estimate": estimate_training_cost(
             trained_tokens,
             total_params_b=params_b,

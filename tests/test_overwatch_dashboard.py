@@ -77,7 +77,7 @@ def accounts():
     return {"active": active, "paying": paying, "old": old}
 
 
-@pytest.mark.parametrize("path", ["overview", "activation", "users", "users/{id}"])
+@pytest.mark.parametrize("path", ["overview", "activation", "users", "users/{id}", "feedback"])
 def test_rejects_anything_but_the_configured_token(settings, path):
     user = make_user()
     url = f"/api/internal/overwatch/{path.format(id=user.id)}/"
@@ -96,7 +96,9 @@ def test_unicode_bearer_token_is_rejected_safely():
     assert overwatch_client("☃").get("/api/internal/overwatch/overview/").status_code == 403
 
 
-@pytest.mark.parametrize("path", ["overview", "activation", "users", "users/{id}", "product-usage"])
+@pytest.mark.parametrize(
+    "path", ["overview", "activation", "users", "users/{id}", "product-usage", "feedback"]
+)
 def test_product_analytics_endpoints_only_read_the_database(accounts, path):
     url = f"/api/internal/overwatch/{path.format(id=accounts['active'].pk)}/"
 

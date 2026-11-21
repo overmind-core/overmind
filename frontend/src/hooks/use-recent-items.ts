@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { localStore } from "@/lib/storage";
+
 export type RecentItem = {
   id: string;
   type: "capability" | "project" | "resource";
@@ -14,10 +16,9 @@ const STORAGE_KEY = "overmind:recents";
 const MAX_RECENTS = 5;
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Unguarded localStorage: CSR-only Vite app. SSR would need a window guard.
 function readFromStorage(): RecentItem[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStore.get(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -38,11 +39,7 @@ function readFromStorage(): RecentItem[] {
 }
 
 function writeToStorage(items: RecentItem[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    // ignore storage errors
-  }
+  localStore.set(STORAGE_KEY, JSON.stringify(items));
 }
 
 export function useRecentItems() {

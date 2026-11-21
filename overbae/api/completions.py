@@ -2,8 +2,8 @@
 
 Errors keep OpenAI's ``{"error": {...}}`` shape, never DRF's ``detail``, so
 third-party SDKs keep working — that is why this module gates credits itself
-instead of calling ``credit_gate``. Non-finetuned model ids route to OpenRouter;
-deployed fine-tunes route to Modal vLLM.
+instead of calling ``credit_gate``. When ``OPENROUTER_PROXY_ENABLED`` is set,
+non-finetuned model ids route to OpenRouter; deployed fine-tunes route to Modal vLLM.
 """
 
 from __future__ import annotations
@@ -450,19 +450,23 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
         isinstance(request.auth, APIToken)
         and request.headers.get(OPTIMISER_ROUTING_HEADER, "") == "1"
     )
-    if deployed is None and is_optimiser_run:
-        if "/" not in model_id:
+    routed = model_id
+    if deployed is None and is_optimiser_run and settings.OPENROUTER_PROXY_ENABLED:
+        if "/" not in routed:
             # A patched capability may send the bare slug it had hardcoded; the routing
             # branch below requires a ``provider/model`` form. Re-attach the provider
             # so the request routes instead of 404ing. Unresolvable names keep the
             # existing DeployedModel lookup / 404 path.
-            model_id = resolve_bare_openrouter_slug(model_id) or model_id
+            routed = resolve_bare_openrouter_slug(routed) or routed
         # The ``openrouter/`` namespace is a platform-side alias, not an id
         # OpenRouter serves — strip it so the slug routes upstream.
-        model_id = model_id.removeprefix("openrouter/")
-    if deployed is None and (
-        is_inference_model(model_id) or (is_optimiser_run and "/" in model_id)
+        routed = routed.removeprefix("openrouter/")
+    if (
+        deployed is None
+        and settings.OPENROUTER_PROXY_ENABLED
+        and (is_inference_model(routed) or (is_optimiser_run and "/" in routed))
     ):
+        model_id = routed
         if not getattr(settings, "OPENROUTER_API_KEY", None):
             return Response(
                 {
@@ -1062,7 +1066,7 @@ def models_list(request: Request) -> Response:
             }
             for m in inference_models()
         ]
-        if getattr(settings, "OPENROUTER_API_KEY", None)
+        if settings.OPENROUTER_PROXY_ENABLED and getattr(settings, "OPENROUTER_API_KEY", None)
         else []
     )
 

@@ -17,6 +17,7 @@ const NAV = [
   { label: "Overview", to: "/" },
   { label: "Activation", to: "/funnel" },
   { label: "Users", to: "/accounts" },
+  { label: "Feedback", to: "/feedback" },
 ] as const;
 
 export const Route = createFileRoute("/_app")({
@@ -87,7 +88,7 @@ function Shell() {
                 aria-pressed={value === days}
                 key={value}
                 onClick={() =>
-                  void navigate({ search: (prev) => ({ ...prev, days: value }), to: "." })
+                  void navigate({ search: (prev) => ({ ...prev, days: value, page: undefined }), to: "." })
                 }
                 size="sm"
                 variant={value === days ? "default" : "secondary"}

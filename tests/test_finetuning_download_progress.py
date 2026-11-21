@@ -9,7 +9,6 @@ import pytest
 from overbae.services.finetuning_runner import (
     PollSnapshot,
     filter_activity_logs,
-    parse_download_stage,
     progress_from_snapshot,
 )
 
@@ -18,25 +17,6 @@ pytestmark = pytest.mark.covers("measured-facts")
 
 def _logs(*messages: str) -> list[dict]:
     return [{"message": m, "timestamp": str(1_000_000 + i)} for i, m in enumerate(messages)]
-
-
-def test_parse_download_stage_reads_latest_stage_and_download():
-    logs = _logs(
-        'BT_STAGE {"stage": "downloading_base_model", "model": "Qwen/Qwen2.5-14B-Instruct"}',
-        'BT_DOWNLOAD {"pct": 12, "downloaded_gb": 3.4, "total_gb": 28.0}',
-        'BT_DOWNLOAD {"pct": 42, "downloaded_gb": 11.8, "total_gb": 28.0}',
-        'BT_STAGE {"stage": "loading_model"}',
-    )
-    stage, download = parse_download_stage(logs)
-    assert stage == "loading_model"
-    assert download == {"pct": 42, "downloaded_gb": 11.8, "total_gb": 28.0}
-
-
-def test_parse_download_stage_backward_compatible():
-    # Old jobs and Together emit neither line.
-    logs = _logs("+ python -u train.py", 'BT_PROGRESS {"step": 1, "total_steps": 30, "loss": 2.5}')
-    assert parse_download_stage(logs) == ("", None)
-    assert parse_download_stage([]) == ("", None)
 
 
 def test_filter_activity_logs_keeps_stage_lines_only():

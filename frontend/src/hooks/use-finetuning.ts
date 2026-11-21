@@ -470,14 +470,13 @@ export const useLossCurvesQuery = (jobId: string | undefined, refetchWhileLive =
 export type ModelEntry = FinetuningModelCatalogEntry;
 export type ModelCatalog = FinetuningModelCatalogResponse;
 
-export const useModelCatalogQuery = (hasToolCalling = false, maxContext?: number) =>
+export const useModelCatalogQuery = (hasToolCalling = false) =>
   useQuery({
     gcTime: 30 * 60 * 1000,
     queryFn: () =>
       apiClient.finetuningJobs.finetuningJobsModelsRetrieve({
         hasToolCalling: hasToolCalling || undefined,
-        maxContext: maxContext ?? undefined,
       }),
-    queryKey: ["finetuning-model-catalog", hasToolCalling, maxContext ?? null],
+    queryKey: ["finetuning-model-catalog", hasToolCalling],
     staleTime: Infinity,
   });

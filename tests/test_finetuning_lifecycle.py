@@ -61,14 +61,13 @@ def test_backward_compat_missing_progress():
 
 
 def test_scrub_backend_names_redacts_all_providers():
-    assert scrub_backend_names("Client error: Secret hf_access_token not found in Baseten") == (
+    assert scrub_backend_names("Client error: Secret hf_access_token not found in Modal") == (
         "Client error: Secret hf_access_token not found in the provider"
     )
     assert scrub_backend_names("NEBIUS_API_KEY is not set") == "the provider_API_KEY is not set"
     assert (
         scrub_backend_names("Deployed via Modal Functions") == "Deployed via the provider Functions"
     )
-    assert scrub_backend_names("Together AI job failed") == "the provider job failed"
     assert scrub_backend_names("") == ""
     assert scrub_backend_names("all good, no backend mentioned") == "all good, no backend mentioned"
     # A letter-only trailing boundary would rewrite identifiers like ``modal_shared``.

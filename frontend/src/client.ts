@@ -19,6 +19,7 @@ import {
 } from "./lib/guest";
 import { emitPlanLimitToast, PlanLimitError, planLimitFromBody } from "./lib/plan-limits";
 import { dismissSessionRecovery, requireSessionRecovery } from "./lib/session-recovery";
+import { localStore } from "./lib/storage";
 import type { ModelSwapPrompt } from "./openapi";
 import {
   ActivityApi,
@@ -96,14 +97,14 @@ export function setAsyncTokenGetter(
 
 export async function resolveToken(): Promise<string | null> {
   if (_asyncTokenGetter) return _asyncTokenGetter();
-  return localStorage.getItem(TOKEN_KEY);
+  return localStore.get(TOKEN_KEY);
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStore.get(TOKEN_KEY);
 }
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_KEY);
+  return localStore.get(REFRESH_KEY);
 }
 // Token claims only bind cached UI identity; the API still verifies every credential.
 export function getLocalAccountId(token = getAccessToken()): string | null {
@@ -119,12 +120,12 @@ export function getLocalAccountId(token = getAccessToken()): string | null {
 }
 
 export function rememberLocalIdentity(user: { id: string | number; email: string }) {
-  localStorage.setItem(IDENTITY_KEY, JSON.stringify({ email: user.email, id: String(user.id) }));
+  localStore.set(IDENTITY_KEY, JSON.stringify({ email: user.email, id: String(user.id) }));
 }
 
 export function getLocalIdentity(): { id: string; email: string } | null {
   try {
-    const user = JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? "null");
+    const user = JSON.parse(localStore.get(IDENTITY_KEY) ?? "null");
     return user &&
       typeof user.id === "string" &&
       typeof user.email === "string" &&
@@ -144,19 +145,19 @@ export function setTokens(
   changeSession();
   storeTokens(access, refresh);
   if (user) rememberLocalIdentity(user);
-  else localStorage.removeItem(IDENTITY_KEY);
+  else localStore.remove(IDENTITY_KEY);
 }
 
 function storeTokens(access: string, refresh: string) {
-  localStorage.setItem(TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_KEY, refresh);
+  localStore.set(TOKEN_KEY, access);
+  localStore.set(REFRESH_KEY, refresh);
 }
 export function clearTokens() {
   changeSession();
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  localStorage.removeItem(EMAIL_KEY);
-  localStorage.removeItem(IDENTITY_KEY);
+  localStore.remove(TOKEN_KEY);
+  localStore.remove(REFRESH_KEY);
+  localStore.remove(EMAIL_KEY);
+  localStore.remove(IDENTITY_KEY);
   clearGuestSession();
 }
 if (typeof window !== "undefined") {

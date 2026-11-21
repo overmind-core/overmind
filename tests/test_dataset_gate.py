@@ -13,7 +13,7 @@ from factories import make_matrix_row
 from rest_framework.test import APIClient
 
 from overbae.api.serializers import FinetuningJobSerializer
-from overbae.modal.model_registry import baseten_finetuning_catalog
+from overbae.modal.model_registry import finetuning_catalog
 from overbae.models import (
     Capability,
     Cell,
@@ -54,7 +54,7 @@ def _job(project, capability, user, train, evaluation, **fields):
             "eval_dataset": str(evaluation.id),
             "eval_set": str(eval_set.id),
             "base_model": next(
-                m["id"] for tier in baseten_finetuning_catalog().values() for m in tier
+                m["id"] for tier in finetuning_catalog("modal").values() for m in tier
             ),
             "hyperparameters": {"training_type": {"type": "Lora"}},
             **fields,

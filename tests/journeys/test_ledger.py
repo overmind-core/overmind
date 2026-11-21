@@ -17,6 +17,7 @@ MODEL = "openai/gpt-4.1-mini"
 
 @pytest.fixture
 def billed(settings, cli, sample_agent, fake_llm, worker, request):
+    settings.OPENROUTER_PROXY_ENABLED = True
     settings.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET
     if request.param == "self_host":
         settings.STRIPE_SECRET_KEY = ""

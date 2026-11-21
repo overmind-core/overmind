@@ -4,13 +4,13 @@ from overbae.api.otlp import process_span
 
 from . import (  # noqa: E402
     assistant,
-    baseten_billing_sync,
     capability_rebind,
     cleanup_modal,
     cleanup_tmp,
     connector_sync,
     dataset_context,
     datasets,
+    feedback,
     finetuning,
     finetuning_reconciler,
     guest_cleanup,
@@ -27,13 +27,13 @@ from .dataset_context import refresh_dataset_context
 
 __all__ = [
     "assistant",
-    "baseten_billing_sync",
     "capability_rebind",
     "cleanup_modal",
     "cleanup_tmp",
     "connector_sync",
     "dataset_context",
     "datasets",
+    "feedback",
     "finetuning",
     "finetuning_reconciler",
     "guest_cleanup",

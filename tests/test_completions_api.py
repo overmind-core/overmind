@@ -150,7 +150,7 @@ class TestModelsListEndpoint:
         r = APIClient().get(self.URL)
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_returns_finetuned_and_frontier(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -176,6 +176,7 @@ class TestModelsListEndpoint:
         assert "base_model" in ft
 
     def test_no_openrouter_key_omits_frontier(self, settings):
+        settings.OPENROUTER_PROXY_ENABLED = True
         settings.OPENROUTER_API_KEY = ""
         u, p = _user(), _project()
         _membership(u, p)
@@ -408,6 +409,19 @@ class TestChatCompletionsEndpoint:
         )
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=False)
+    def test_proxy_disabled_does_not_forward_frontier_models(self):
+        u, p = _user(), _project()
+        _membership(u, p)
+        chat = _jwt_client(u).post(
+            self.URL,
+            {"model": "anthropic/claude-sonnet-5", "messages": self.MESSAGES},
+            format="json",
+        )
+        listed = _jwt_client(u).get("/api/v1/models")
+        assert chat.status_code == status.HTTP_404_NOT_FOUND
+        assert all(row["finetuned"] for row in listed.json()["data"])
+
     def test_unlisted_slug_without_optimiser_header_returns_404(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -418,7 +432,7 @@ class TestChatCompletionsEndpoint:
         )
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_optimiser_header_bypasses_the_allowlist_for_api_keys_only(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -459,7 +473,7 @@ class TestChatCompletionsEndpoint:
             )
         assert jwt.status_code == status.HTTP_404_NOT_FOUND
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_optimiser_bare_model_name_resolves_to_full_slug(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -499,7 +513,7 @@ class TestChatCompletionsEndpoint:
         )
         assert r.status_code == status.HTTP_404_NOT_FOUND
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_response_format_is_forwarded_upstream(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -567,6 +581,7 @@ class TestChatCompletionsEndpoint:
         assert r.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
     def test_frontier_model_without_openrouter_key_returns_503(self, settings):
+        settings.OPENROUTER_PROXY_ENABLED = True
         settings.OPENROUTER_API_KEY = ""
         u, p = _user(), _project()
         _membership(u, p)
@@ -577,7 +592,7 @@ class TestChatCompletionsEndpoint:
         )
         assert r.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_frontier_model_non_stream_proxies_to_openrouter(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -606,7 +621,7 @@ class TestChatCompletionsEndpoint:
         assert r.status_code == status.HTTP_200_OK
         assert r.json()["id"] == "chatcmpl-123"
 
-    @override_settings(OPENROUTER_API_KEY="or-test")
+    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
     def test_frontier_model_openrouter_error_returns_502(self):
         u, p = _user(), _project()
         _membership(u, p)
@@ -1124,7 +1139,7 @@ class TestActiveModelValidation:
             capability=sibling,
             dataset=frozen_dataset(p, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
-            provider=FinetuningJob.Provider.BASETEN,
+            provider=FinetuningJob.Provider.MODAL,
         )
         m.save(update_fields=["finetuning_job"])
 
@@ -1145,7 +1160,7 @@ class TestBenchmarkSelection:
             capability=capability,
             dataset=frozen_dataset(project, TRAIN_ROWS, name="t", contract="train"),
             base_model="Qwen/Qwen3-8B",
-            provider=FinetuningJob.Provider.BASETEN,
+            provider=FinetuningJob.Provider.MODAL,
             baseline_model="",  # not snapshotted yet → resolve live
         )
 

@@ -13,8 +13,10 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
+import { Route as AppFeedbackRouteImport } from './routes/_app/feedback'
 import { Route as AppFunnelRouteImport } from './routes/_app/funnel'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
+import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/_app/feedback_.$feedbackId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -35,6 +37,11 @@ const AppAccountsRoute = AppAccountsRouteImport.update({
   path: '/accounts',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFeedbackRoute = AppFeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFunnelRoute = AppFunnelRouteImport.update({
   id: '/funnel',
   path: '/funnel',
@@ -45,43 +52,70 @@ const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
   path: '/accounts/$accountId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFeedbackFeedbackIdRoute = AppFeedbackFeedbackIdRouteImport.update({
+  id: '/feedback_/$feedbackId',
+  path: '/feedback/$feedbackId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
+  '/feedback': typeof AppFeedbackRoute
   '/funnel': typeof AppFunnelRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
+  '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
+  '/feedback': typeof AppFeedbackRoute
   '/funnel': typeof AppFunnelRoute
   '/': typeof AppIndexRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
+  '/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/accounts': typeof AppAccountsRoute
+  '/_app/feedback': typeof AppFeedbackRoute
   '/_app/funnel': typeof AppFunnelRoute
   '/_app/': typeof AppIndexRoute
   '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
+  '/_app/feedback_/$feedbackId': typeof AppFeedbackFeedbackIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/accounts' | '/funnel' | '/accounts/$accountId'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/accounts'
+    | '/feedback'
+    | '/funnel'
+    | '/accounts/$accountId'
+    | '/feedback/$feedbackId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/accounts' | '/funnel' | '/' | '/accounts/$accountId'
+  to:
+    | '/login'
+    | '/accounts'
+    | '/feedback'
+    | '/funnel'
+    | '/'
+    | '/accounts/$accountId'
+    | '/feedback/$feedbackId'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/accounts'
+    | '/_app/feedback'
     | '/_app/funnel'
     | '/_app/'
     | '/_app/accounts_/$accountId'
+    | '/_app/feedback_/$feedbackId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +153,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/feedback': {
+      id: '/_app/feedback'
+      path: '/feedback'
+      fullPath: '/feedback'
+      preLoaderRoute: typeof AppFeedbackRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/funnel': {
       id: '/_app/funnel'
       path: '/funnel'
@@ -133,21 +174,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsAccountIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/feedback_/$feedbackId': {
+      id: '/_app/feedback_/$feedbackId'
+      path: '/feedback/$feedbackId'
+      fullPath: '/feedback/$feedbackId'
+      preLoaderRoute: typeof AppFeedbackFeedbackIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
+  AppFeedbackRoute: typeof AppFeedbackRoute
   AppFunnelRoute: typeof AppFunnelRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
+  AppFeedbackFeedbackIdRoute: typeof AppFeedbackFeedbackIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
+  AppFeedbackRoute: AppFeedbackRoute,
   AppFunnelRoute: AppFunnelRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
+  AppFeedbackFeedbackIdRoute: AppFeedbackFeedbackIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

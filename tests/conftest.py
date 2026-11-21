@@ -374,10 +374,7 @@ def import_version(dataset, records, *, name="Native transformation"):
 
 @pytest.fixture(scope="session")
 def sandbox_server():
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    url, token = f"http://127.0.0.1:{port}", secrets.token_hex(16)
+    token = secrets.token_hex(16)
     scratch = tempfile.TemporaryDirectory(prefix="sandbox-test-")
     # Deeper than a Unix socket path holds, as a deployment's temporary directory may be.
     deep = Path(scratch.name) / ("deep-" * 20)
@@ -390,7 +387,7 @@ def sandbox_server():
         # Its own memory ledger: parallel test servers must not share /tmp/sandbox.
         "TMPDIR": str(deep),
     }
-    command = [sys.executable, "-m", "sandbox", "--host", "127.0.0.1", "--port", str(port)]
+    image = os.environ.get("SANDBOX_TEST_IMAGE", "overmind-dev")
     container = None
     proxy = None
     if sys.platform == "darwin" or os.environ.get("SANDBOX_CONTAINER_TESTS") == "1":
@@ -432,12 +429,19 @@ def sandbox_server():
             "SYS_PTRACE",
         ):
             command += ["--cap-add", capability]
-        command += [os.environ.get("SANDBOX_TEST_IMAGE", "overmind-dev"), "-m", "sandbox"]
-    proc = subprocess.Popen(
-        command,
-        cwd=Path(__file__).resolve().parents[1],
-        env=env,
-    )
+        command += [image, "-m", "sandbox"]
+        proc = subprocess.Popen(command, cwd=Path(__file__).resolve().parents[1], env=env)
+    else:
+        # The server inherits a socket this process already listens on. A port probed and then
+        # released can be taken by another xdist worker's sandbox before this one binds it.
+        with socket.create_server(("127.0.0.1", 0)) as listener:
+            url = f"http://127.0.0.1:{listener.getsockname()[1]}"
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "sandbox", "--fd", str(listener.fileno())],
+                cwd=Path(__file__).resolve().parents[1],
+                env=env,
+                pass_fds=[listener.fileno()],
+            )
     try:
         if container:
             # Docker Desktop cannot publish an internal-only container to macOS.
@@ -466,10 +470,10 @@ socketserver.ThreadingTCPServer(('0.0.0.0',8080),Relay).serve_forever()
                     "--network",
                     "bridge",
                     "-p",
-                    f"127.0.0.1:{port}:8080",
+                    "127.0.0.1::8080",
                     "--entrypoint",
                     "python",
-                    os.environ.get("SANDBOX_TEST_IMAGE", "overmind-dev"),
+                    image,
                     "-c",
                     forwarding,
                     container,
@@ -480,6 +484,10 @@ socketserver.ThreadingTCPServer(('0.0.0.0',8080),Relay).serve_forever()
             subprocess.run(
                 ["docker", "network", "connect", container, proxy], check=True, capture_output=True
             )
+            published = subprocess.run(
+                ["docker", "port", proxy, "8080/tcp"], check=True, capture_output=True, text=True
+            )
+            url = f"http://{published.stdout.split()[0]}"
         deadline = time.monotonic() + 30
         while True:
             try:

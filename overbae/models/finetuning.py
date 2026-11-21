@@ -74,12 +74,10 @@ class FinetuningJob(models.Model):
         LARGE = "large"
 
     class Provider(models.TextChoices):
-        TOGETHER_AI = "together_ai"
         # Legacy providers — retired backends kept so existing job rows render;
-        # new submissions only go to TOGETHER_AI, BASETEN, or MODAL.
+        # new submissions only go to MODAL.
         NEBIUS = "nebius"
         TINKER = "tinker"
-        BASETEN = "baseten"
         MODAL = "modal"
 
     class SplitMethod(models.TextChoices):
@@ -185,7 +183,7 @@ class FinetuningJob(models.Model):
     model_tier = models.CharField(max_length=20, choices=Tier.choices, blank=True, default="")
 
     # Set once on submission; never changes.
-    provider = models.CharField(max_length=20, choices=Provider.choices, default=Provider.BASETEN)
+    provider = models.CharField(max_length=20, choices=Provider.choices, default=Provider.MODAL)
 
     base_model = models.CharField(max_length=255)
     preparation = models.ForeignKey(
@@ -232,8 +230,7 @@ class FinetuningJob(models.Model):
 
     celery_task_id = models.CharField(max_length=255, blank=True, default="")
 
-    # Per-job USD from Baseten's GET /v1/billing/usage_summary breakdown item
-    # subtotal; credits there are account-level only.
+    # Recorded training charge in USD.
     cost_usd = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     billed_minutes = models.PositiveIntegerField(null=True, blank=True)
     cost_synced_at = models.DateTimeField(null=True, blank=True)

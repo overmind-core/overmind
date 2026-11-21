@@ -8,7 +8,7 @@ from overbae.api.serializers import FinetuningJobSerializer
 from overbae.services.finetuning_policy import (
     TrainingPlanError,
     default_epochs,
-    derive_baseten_training_plan,
+    derive_training_plan,
     qlora_learning_rate,
     should_pack,
 )
@@ -31,12 +31,12 @@ def _plan(**overrides):
         gpu_count=1,
     )
     kwargs.update(overrides)
-    return derive_baseten_training_plan(**kwargs)
+    return derive_training_plan(**kwargs)
 
 
 def test_modal_plan_uses_its_catalog_bounds_for_shared_model_id():
     config = ModalRunner.model_config("Qwen/Qwen3.5-2B")
-    assert config["backend"] == "baseten"
+    assert config["backend"] == "modal"
     plan = _plan(
         hyperparameters={"batch_size": 1},
         model_min_batch=config["finetuning"]["min_batch_size"],
@@ -149,7 +149,7 @@ class TestExplicitValuesWin:
         )
         assert accepted["training_type"]["lora_r"] == 32
 
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_recommender_output_is_reproduced_exactly(self):
         entry = {
             "total_params_b": 8.0,

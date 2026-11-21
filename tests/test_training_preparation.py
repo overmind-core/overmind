@@ -630,7 +630,7 @@ def test_preparation_retry_skips_submitted_training_or_other_backends(retry_job,
     job, _, _, _ = retry_job
     job.remote_job_id = remote
     if not remote:
-        settings.FINETUNING_BACKEND = "together"
+        settings.FINETUNING_BACKEND = "other"
     with patch.object(preparation, "for_job") as request:
         preparation.retry_for_job(job)
     request.assert_not_called()

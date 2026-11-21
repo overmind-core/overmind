@@ -6,11 +6,12 @@ import re
 
 EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _CREDENTIAL = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"
     r"|\b(?:sk[-_]|rk_live_|gh[pousr]_|github_pat_|xox[baprs]-|phx_|phs_|ovr_)[A-Za-z0-9_\-]{8,}"
     r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
     r"|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
-    r"|(?i:\b(?:api[_ -]?key|authorization|password|secret|token)\s*[:=]\s*\S+)"
+    r"|(?i:\b(?:api[_ -]?key|authorization|password|secret|token)\s*[:=]\s*(?:bearer\s+)?\S+)"
+    r"|(?i:\bbearer\s+[A-Za-z0-9._~+/=-]{8,})"
 )
 
 
@@ -47,3 +48,17 @@ def posthog_url(host: str, path: str, *, ingest: bool = False) -> str:
     if host not in allowed:
         raise ValueError("unapproved_posthog_host")
     return host + path
+
+
+_URL = re.compile(r"\bhttps?://\S+")
+_HOME = re.compile(r"(?:~/|/home/|/Users/|[A-Za-z]:\\Users\\)\S+")
+_IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+def report_text(text: str) -> str:
+    """Keep what a coding agent says about the platform; drop what identifies the customer."""
+    text = _CREDENTIAL.sub("[credential removed]", text)
+    text = EMAIL.sub("[email]", text)
+    text = _URL.sub("[link]", text)
+    text = _HOME.sub("[path]", text)
+    return _IPV4.sub("[ip]", text)

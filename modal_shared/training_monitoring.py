@@ -28,7 +28,7 @@ DEFAULT_POLICY = {
 
 
 def capabilities(provider):
-    controlled = provider in {"modal", "baseten"}
+    controlled = provider == "modal"
     return {
         "schedule_modes": ["adaptive", "steps", "epoch", "off"] if controlled else ["off"],
         "loss_metrics": controlled,
@@ -84,7 +84,7 @@ def resolve_policy(value, *, has_development, provider):
     if value is not None and (not isinstance(value, dict) or set(value) - DEFAULT_POLICY.keys()):
         raise ValueError("Unknown monitoring configuration fields")
     policy = {**DEFAULT_POLICY, **(value or {})}
-    if value is None and (not has_development or provider not in {"modal", "baseten"}):
+    if value is None and (not has_development or provider != "modal"):
         policy["mode"] = "off"
     if policy["version"] != 1 or type(policy["version"]) is not int:
         raise ValueError("Unsupported monitoring version")
@@ -192,7 +192,7 @@ def resolve_policy(value, *, has_development, provider):
     if policy["mode"] != "off":
         if not has_development:
             raise ValueError("Monitoring requires development data")
-        if provider not in {"modal", "baseten"}:
+        if provider != "modal":
             raise ValueError("This provider does not support the requested monitoring policy")
     if required:
         if not policy["final"]:

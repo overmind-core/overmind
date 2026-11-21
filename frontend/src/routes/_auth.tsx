@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 
 import apiClient from "@/client";
+import { AgentFeedbackNotice } from "@/components/agent-feedback";
 import { OutOfCreditsDialog } from "@/components/billing/out-of-credits-dialog";
 import { BreadcrumbSwitcher } from "@/components/breadcrumb-switcher";
 import { ConnectionScene } from "@/components/connection-scene";
@@ -418,6 +419,7 @@ function RootLayout() {
                 >
                   <Breadcrumb />
                 </header>
+                {flowFull ? null : <AgentFeedbackNotice />}
                 {/* relative: absolute descendants (e.g. sr-only spans in pagination
                   buttons) must resolve their containing block inside this clipper —
                   otherwise they escape to the ICB, extend the hidden-overflow body,

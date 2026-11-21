@@ -216,9 +216,10 @@ models/Exploration.ts
 models/ExplorationRequestKindEnum.ts
 models/ExplorationRequestRequest.ts
 models/FamilyEnum.ts
+models/FeedbackAreaEnum.ts
 models/FeedbackCreate.ts
-models/FeedbackCreateCategoryEnum.ts
 models/FeedbackCreateRequest.ts
+models/FeedbackKindEnum.ts
 models/FinetuningBenchmarkSnapshot.ts
 models/FinetuningCatalogTrainingType.ts
 models/FinetuningCostEstimate.ts
@@ -356,6 +357,7 @@ models/PatchedFinetuningJobRequest.ts
 models/PatchedProjectRequest.ts
 models/PatchedSignalSubscriptionRequest.ts
 models/PatchedUserOnboardingRequest.ts
+models/PatchedUserPreferencesRequest.ts
 models/PerformanceRequestRequest.ts
 models/PerformanceWorkloadRequest.ts
 models/PermissionEnum.ts

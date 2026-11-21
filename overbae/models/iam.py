@@ -68,6 +68,9 @@ class User(AbstractUser):
         db_index=True,
         help_text="Stable Stripe customer id; one per user.",
     )
+    # Null until the person chooses; their coding agents report friction only when True.
+    agent_feedback = models.BooleanField(null=True, blank=True, default=None)
+    agent_feedback_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

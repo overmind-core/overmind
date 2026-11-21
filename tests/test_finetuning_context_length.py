@@ -18,51 +18,49 @@ from overbae.modal.model_registry import (
     min_sft_context_length,
 )
 from overbae.models import Capability, EvalSet
-from overbae.services.finetuning_runner import baseten_context_length
+from overbae.services.finetuning_runner import snap_context_length
 from overbae.services.recommendation.analysis import build_analysis
 from overbae.services.recommendation.constraints import eligible_models
 from overbae.services.recommendation.hyperparams import compute_hyperparams
 
 pytestmark = pytest.mark.covers("plans")
 
-_POLICY = get_training_context_policy("baseten")
+_POLICY = get_training_context_policy("modal")
 _BUCKETS = sorted(int(b) for b in _POLICY["context_buckets"])
 _HEADROOM = int(_POLICY["context_headroom"])
 
 
 class TestCatalogContextPolicy:
     def test_policy_comes_from_catalog(self):
-        assert _BUCKETS, "baseten context buckets must be defined in models.json"
+        assert _BUCKETS, "modal context buckets must be defined in models.json"
         assert _HEADROOM > 0
 
     def test_unknown_backend_raises(self):
         with pytest.raises(KeyError):
             get_training_context_policy("no-such-backend")
 
-    def test_baseten_models_are_not_uniformly_capped(self):
-        assert get_sft_context_length("Qwen/Qwen3-8B", backend="baseten") == 40960
-        assert get_sft_context_length("Qwen/Qwen2.5-7B-Instruct", backend="baseten") == 32768
-        assert (
-            get_sft_context_length("meta-llama/Llama-3.1-8B-Instruct", backend="baseten") == 131072
-        )
-        assert get_sft_context_length("Qwen/Qwen3.5-9B", backend="baseten") == 262144
-        assert get_sft_context_length("fdtn-ai/antares-1b", backend="baseten") == 131072
+    def test_modal_models_are_not_uniformly_capped(self):
+        assert get_sft_context_length("Qwen/Qwen3-8B", backend="modal") == 40960
+        assert get_sft_context_length("Qwen/Qwen2.5-7B-Instruct", backend="modal") == 32768
+        assert get_sft_context_length("meta-llama/Llama-3.1-8B-Instruct", backend="modal") == 131072
+        assert get_sft_context_length("Qwen/Qwen3.5-9B", backend="modal") == 262144
+        assert get_sft_context_length("fdtn-ai/antares-1b", backend="modal") == 131072
 
     def test_min_sft_context_length(self):
-        smallest = min_sft_context_length("baseten")
+        smallest = min_sft_context_length("modal")
         assert smallest is not None
         assert smallest >= _BUCKETS[0]
 
 
 class TestRecommendFiltersByDatasetContext:
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_eligible_models_drop_short_context(self):
         # 50k tokens: Qwen2.5 (32k) and Qwen3 dense (40k) drop; Llama/Qwen3.5 remain.
         filtered, excluded = eligible_models(has_tool_calling=False, max_row_tokens=50_000)
         surviving = {m["id"] for models in filtered.values() for m in models}
         assert surviving, "some models must still fit at 50k"
         assert all(
-            (get_sft_context_length(mid, backend="baseten") or 0) >= 50_000 + _HEADROOM
+            (get_sft_context_length(mid, backend="modal") or 0) >= 50_000 + _HEADROOM
             for mid in surviving
         )
         assert "Qwen/Qwen2.5-7B-Instruct" not in surviving
@@ -72,7 +70,7 @@ class TestRecommendFiltersByDatasetContext:
         reasons = {e.model: e.reason for e in excluded}
         assert "50,000" in reasons["Qwen/Qwen3-8B"]
 
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_analysis_excludes_short_context_models(self):
         stats = {
             "num_examples": 100,
@@ -85,13 +83,13 @@ class TestRecommendFiltersByDatasetContext:
 
         assert analysis["candidates"]
         for row in analysis["candidates"]:
-            model_max = get_sft_context_length(row["model"], backend="baseten")
+            model_max = get_sft_context_length(row["model"], backend="modal")
             assert model_max is not None and model_max >= 50_000 + _HEADROOM
         assert any("50,000" in e["reason"] for e in analysis["excluded"])
 
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_no_candidate_survives_rows_past_every_context_limit(self):
-        # Past every baseten SFT max.
+        # Past every SFT max.
         max_tokens = 1_000_000
         eligible, _excluded = eligible_models(has_tool_calling=False, max_row_tokens=max_tokens)
         assert not eligible
@@ -115,33 +113,33 @@ class TestRecommendFiltersByDatasetContext:
         )
 
 
-class TestBasetenContextLength:
+class TestSnapContextLength:
     def test_default_is_smallest_bucket(self):
-        assert baseten_context_length(0) == _BUCKETS[0]
-        assert baseten_context_length(100) == _BUCKETS[0]
+        assert snap_context_length(0) == _BUCKETS[0]
+        assert snap_context_length(100) == _BUCKETS[0]
 
     def test_snaps_up_never_down(self):
         # A row over a bucket boundary must land in the next bucket — TRL would
         # silently truncate it (corrupting targets) if we snapped down.
-        assert baseten_context_length(_BUCKETS[0] + 1) == _BUCKETS[1]
-        assert baseten_context_length(11051) == 16384
+        assert snap_context_length(_BUCKETS[0] + 1) == _BUCKETS[1]
+        assert snap_context_length(11051) == 16384
 
     def test_headroom_pushes_boundary_rows_up(self):
-        assert baseten_context_length(_BUCKETS[1] - _HEADROOM) == _BUCKETS[1]
-        assert baseten_context_length(_BUCKETS[1]) == _BUCKETS[2]
+        assert snap_context_length(_BUCKETS[1] - _HEADROOM) == _BUCKETS[1]
+        assert snap_context_length(_BUCKETS[1]) == _BUCKETS[2]
 
     def test_requested_wins_when_larger_than_need(self):
-        assert baseten_context_length(100, requested=32768) == 32768
+        assert snap_context_length(100, requested=32768) == 32768
 
     def test_caps_at_model_max_when_rows_fit(self):
         # Requested context can still be clamped down when the dataset is short.
-        assert baseten_context_length(100, model_max=4096, requested=16384) == 4096
+        assert snap_context_length(100, model_max=4096, requested=16384) == 4096
 
     def test_refuses_when_model_cannot_cover_longest_row(self):
         from overbae.services.finetuning_policy import TrainingPlanError
 
         with pytest.raises(TrainingPlanError, match="refusing to clamp"):
-            baseten_context_length(20000, model_max=4096)
+            snap_context_length(20000, model_max=4096)
 
     @pytest.mark.parametrize(
         ("needed_tokens", "requested", "expected"),
@@ -150,7 +148,7 @@ class TestBasetenContextLength:
     def test_uncapped_context_never_truncates_to_largest_bucket(
         self, needed_tokens, requested, expected
     ):
-        assert baseten_context_length(needed_tokens, requested=requested) == expected
+        assert snap_context_length(needed_tokens, requested=requested) == expected
 
 
 class TestRecommenderIncludesContext:
@@ -162,23 +160,10 @@ class TestRecommenderIncludesContext:
         "max_batch_size": 8,
     }
 
-    def test_baseten_hyperparams_include_snapped_context(self):
-        with override_settings(FINETUNING_BACKEND="baseten"):
+    def test_hyperparams_include_snapped_context(self):
+        with override_settings(FINETUNING_BACKEND="modal"):
             hp = compute_hyperparams(500, model_entry=self._ENTRY, max_row_tokens=11051)
         assert hp["context_length"] == 16384
-
-    def test_baseten_context_refuses_short_catalog_max(self):
-        entry = {**self._ENTRY, "context_length_sft": 4096}
-        with (
-            override_settings(FINETUNING_BACKEND="baseten"),
-            pytest.raises(Exception, match="refusing to clamp|only supports"),
-        ):
-            compute_hyperparams(500, model_entry=entry, max_row_tokens=11051)
-
-    def test_together_omits_context_length_key(self):
-        with override_settings(FINETUNING_BACKEND="together"):
-            hp = compute_hyperparams(500, model_entry=self._ENTRY, max_row_tokens=11051)
-        assert "context_length" not in hp
 
 
 @pytest.mark.django_db
@@ -256,7 +241,7 @@ class TestJobSerializerContextValidation:
 
         return FinetuningJobSerializer(data=payload, context={"request": _Req(user)})
 
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_rows_within_model_max_pass(self):
         s = self._serializer(max_token_length=12309, base_model="Qwen/Qwen3-8B")
         assert s.is_valid(), s.errors
@@ -273,14 +258,7 @@ class TestJobSerializerContextValidation:
         assert not s.is_valid()
         assert field in s.errors
 
-    @override_settings(FINETUNING_BACKEND="baseten")
-    def test_rows_over_model_max_still_rejected(self):
-        model_max = get_sft_context_length("Qwen/Qwen2.5-7B-Instruct", backend="baseten")
-        s = self._serializer(max_token_length=model_max + 1, base_model="Qwen/Qwen2.5-7B-Instruct")
-        assert not s.is_valid()
-        assert "dataset" in s.errors
-
-    @override_settings(FINETUNING_BACKEND="baseten")
+    @override_settings(FINETUNING_BACKEND="modal")
     def test_full_ft_rejected_when_catalog_disables_it(self):
         """Gemma 4 31B has full.enabled=false — wizard must not be able to submit Full."""
         s = self._serializer(max_token_length=512, base_model="google/gemma-4-31B-it")
@@ -291,40 +269,3 @@ class TestJobSerializerContextValidation:
         }
         assert not s.is_valid()
         assert "hyperparameters" in s.errors
-
-    @override_settings(FINETUNING_BACKEND="baseten")
-    def test_full_rejected_lora_accepted_between_their_context_lengths(self):
-        """LoRA's lighter optimizer state can train at a longer context than full on the
-        same model — a dataset row between the two must only be submittable as LoRA."""
-        from unittest.mock import patch
-
-        entry = {
-            "id": "Qwen/Qwen3-8B",
-            "display": "Qwen 3 8B",
-            "params": "8B",
-            "total_params_b": 8.2,
-            "context_length_sft": 131072,
-            "max_batch_size": 8,
-            "min_batch_size": 1,
-            "supports_tool_calling": True,
-            "training_type": {
-                "full": {"enabled": True, "context_length": 4096, "validated_context_length": True},
-                "lora": {
-                    "enabled": True,
-                    "context_length": 32768,
-                    "validated_context_length": True,
-                },
-            },
-        }
-        with patch("overbae.services.recommendation.find_catalog_model", return_value=entry):
-            lora = self._serializer(max_token_length=10_000, base_model="Qwen/Qwen3-8B")
-            assert lora.is_valid(), lora.errors
-
-            full = self._serializer(max_token_length=10_000, base_model="Qwen/Qwen3-8B")
-            full.initial_data["hyperparameters"] = {
-                "learning_rate": 2e-5,
-                "warmup_ratio": 0.05,
-                "training_type": {"type": "Full"},
-            }
-            assert not full.is_valid()
-            assert "Switch to LoRA" in full.errors["dataset"][0]

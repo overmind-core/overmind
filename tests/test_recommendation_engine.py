@@ -48,7 +48,7 @@ def dataset(db) -> Dataset:
 
 
 def _recommend(dataset: Dataset) -> dict[str, Any]:
-    with override_settings(FINETUNING_BACKEND="baseten"):
+    with override_settings(FINETUNING_BACKEND="modal"):
         return get_recommendation(str(dataset.id))
 
 
@@ -60,7 +60,7 @@ def _set_stats(dataset: Dataset, **overrides: Any) -> None:
 
 def test_every_constraint_passing_model_is_returned_in_rank_order(dataset):
     analysis = _recommend(dataset)
-    with override_settings(FINETUNING_BACKEND="baseten"):
+    with override_settings(FINETUNING_BACKEND="modal"):
         eligible, _exclusions = eligible_models(
             has_tool_calling=False, max_row_tokens=_STATS["max_token_length"]
         )

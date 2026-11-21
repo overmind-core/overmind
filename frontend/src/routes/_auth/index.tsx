@@ -22,6 +22,7 @@ import { useOnboardingMilestones } from "@/hooks/use-activity";
 import { useProjectsList } from "@/hooks/use-projects";
 import { getGuestProjectId } from "@/lib/guest";
 import { errorMessage } from "@/lib/notify";
+import { localStore } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import type { AgentGraph, CapabilityList } from "@/openapi";
 
@@ -52,13 +53,7 @@ function AgentHeader({ graph }: { graph?: AgentGraph }) {
 
 function OnboardingStrip({ projectId }: { projectId: string }) {
   const storageKey = `onboarding-dismissed:${projectId}`;
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return localStorage.getItem(storageKey) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [dismissed, setDismissed] = useState(() => localStore.get(storageKey) === "1");
   const onboarding = useOnboardingMilestones(projectId, "agent");
   const steps = onboarding.data ?? [];
   const completed = steps.filter((step) => step.completedAt).length;
@@ -101,9 +96,7 @@ function OnboardingStrip({ projectId }: { projectId: string }) {
         <Button
           aria-label="Dismiss onboarding progress"
           onClick={() => {
-            try {
-              localStorage.setItem(storageKey, "1");
-            } catch {}
+            localStore.set(storageKey, "1");
             setDismissed(true);
           }}
           size="icon-sm"

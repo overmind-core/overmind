@@ -19,10 +19,6 @@ from overbae.celery import app
 class ProcessAPI:
     def __init__(self, settings, directory, workers=2):
         # Match the hosted API's two workers without sharing the load generator's interpreter.
-        with socket.socket() as listener:
-            listener.bind(("127.0.0.1", 0))
-            self.port = listener.getsockname()[1]
-        self.url = f"http://127.0.0.1:{self.port}"
         self.workers = workers
         self.log_path = Path(directory) / "api-processes.log"
         self.env = {
@@ -39,26 +35,29 @@ class ProcessAPI:
 
     def __enter__(self):
         self.log = self.log_path.open("w")
-        self.process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "overbae.asgi:application",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(self.port),
-                "--workers",
-                str(self.workers),
-                "--log-level",
-                "warning",
-                "--no-access-log",
-            ],
-            env=self.env,
-            stdout=self.log,
-            stderr=subprocess.STDOUT,
-        )
+        # The API inherits a socket this process already listens on, so no other process
+        # can take its port between choosing it and binding it.
+        with socket.create_server(("127.0.0.1", 0)) as listener:
+            self.url = f"http://127.0.0.1:{listener.getsockname()[1]}"
+            self.process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "overbae.asgi:application",
+                    "--fd",
+                    str(listener.fileno()),
+                    "--workers",
+                    str(self.workers),
+                    "--log-level",
+                    "warning",
+                    "--no-access-log",
+                ],
+                env=self.env,
+                stdout=self.log,
+                stderr=subprocess.STDOUT,
+                pass_fds=[listener.fileno()],
+            )
         deadline = time.monotonic() + 30
         while self.process.poll() is None and time.monotonic() < deadline:
             try:

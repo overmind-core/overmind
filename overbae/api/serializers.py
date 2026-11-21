@@ -1073,9 +1073,13 @@ class TraceDetailSerializer(serializers.Serializer):
 
 
 class FeedbackCreateSerializer(serializers.ModelSerializer):
+    project = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+    page = serializers.CharField(required=False, allow_blank=True, max_length=200, write_only=True)
+    message = serializers.CharField(max_length=5000)
+
     class Meta:
         model = Feedback
-        fields = ["id", "category", "feedback", "created_at"]
+        fields = ["id", "kind", "area", "message", "project", "page", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
@@ -1347,7 +1351,7 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
     def validate_hyperparameters(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError("Use a JSON object for hyperparameters.")
-        if settings.FINETUNING_BACKEND in {"modal", "baseten"}:
+        if settings.FINETUNING_BACKEND == "modal":
             try:
                 validate_effective_batch(value)
             except ValueError as exc:
@@ -1856,54 +1860,6 @@ class FinetuningJobSerializer(serializers.ModelSerializer):
         if eval_set and not eval_set.rows.filter(enabled=True).exists():
             raise serializers.ValidationError({"eval_set": "This eval set has no enabled rows."})
 
-        # Baseten/Modal: rows over the *selected training kind's* max fine-tuning
-        # context are rejected outright — MAX_LENGTH truncation would corrupt
-        # training targets. Check train + validation; require headroom.
-        if getattr(settings, "FINETUNING_BACKEND", "") == "baseten" and entry:
-            from overbae.modal.model_registry import context_headroom
-            from overbae.modal.training_type import training_context_length, training_enabled
-
-            model_max = training_context_length(entry, training_kind_field)
-            headroom = context_headroom("baseten")
-            other_kind = "full" if training_kind_field == "lora" else "lora"
-            other_max = training_context_length(entry, other_kind)
-            other_supported = training_enabled(entry, other_kind)
-            for field_name, product in (
-                ("dataset", attrs.get("cell") or getattr(self.instance, "cell", None)),
-                ("validation_dataset", attrs.get("validation_cell")),
-            ):
-                if product is None or model_max is None:
-                    continue
-                stats = dict(product.stats or {})
-                try:
-                    max_tokens = int(stats.get("max_token_length") or 0)
-                except (TypeError, ValueError):
-                    max_tokens = 0
-                if max_tokens and int(model_max) < max_tokens + headroom:
-                    kind_label = "LoRA" if training_kind_field == "lora" else "full"
-                    suggestion = ". Shorten or split the long rows, or pick a longer-context model."
-                    if (
-                        other_supported
-                        and other_max is not None
-                        and other_max >= max_tokens + headroom
-                    ):
-                        other_label = "full" if other_kind == "full" else "LoRA"
-                        suggestion = f". Switch to {other_label} fine-tuning, which supports {other_max:,} tokens for this model."
-                    raise serializers.ValidationError(
-                        {
-                            field_name: (
-                                f"Longest dataset row is ≈{max_tokens:,} tokens but this model's "
-                                f"{kind_label} fine-tuning context is {int(model_max):,} tokens"
-                                + (
-                                    f" (need {max_tokens + headroom:,} with headroom)"
-                                    if headroom
-                                    else ""
-                                )
-                                + suggestion
-                            )
-                        }
-                    )
-
         return attrs
 
 
@@ -1918,10 +1874,7 @@ class FinetuningGpuConfigSerializer(serializers.Serializer):
 
 class FinetuningCostEstimateSerializer(serializers.Serializer):
     usd = serializers.FloatField()
-    # Null on the self-hosted backends: they bill GPU-minutes, not tokens.
-    price_per_million_usd = serializers.FloatField(allow_null=True)
     trained_tokens = serializers.IntegerField()
-    minimum_applied = serializers.BooleanField()
 
 
 class FinetuningTimeEstimateSerializer(serializers.Serializer):
@@ -2108,11 +2061,10 @@ class FinetuningModelCatalogEntrySerializer(serializers.Serializer):
 class FinetuningModelCatalogResponseSerializer(serializers.Serializer):
     """Response of ``GET /api/finetuning-jobs/models/``."""
 
-    backend = serializers.ChoiceField(choices=["together", "baseten", "modal"])
+    backend = serializers.ChoiceField(choices=["modal"])
     tiers = serializers.ListField(child=serializers.ChoiceField(choices=FinetuningJob.Tier.choices))
     models = serializers.DictField(child=FinetuningModelCatalogEntrySerializer(many=True))
     has_tool_calling = serializers.BooleanField()
-    max_context = serializers.IntegerField(allow_null=True)
     monitoring = serializers.JSONField()
 
 

@@ -37,6 +37,8 @@ MCP client
 
 With a PostHog token, the server sends `$mcp_*` analytics. Events carry identity, `project_id` and, on failure, `error_code`: `before_send` drops arguments, results and error text, `$exception` capture is off, and input models forbid extra fields so argument injection stays off. `tests/test_mcp_analytics.py` holds these rules.
 
+`submit_feedback` stores a coding agent's friction report in `Feedback` (`services/feedback.py`). `tools/list` shows it only when the user's `agent_feedback` is true, which the sign-up form, the OAuth connect screen, the Console notice or Settings records; null means not asked. It is the one write that read-only credentials see (`_READ_CREDENTIAL_WRITES`). `overwatch_privacy.report_text` cleans its text before it is saved, and Slack gets one message per problem a day.
+
 Product activity is separate from analytics. Shared activity records back the
 Console bell and onboarding milestones; `overmind://activity` pages those same
 outcomes with `offset`, `limit` and `path=agent|data`. Account credentials add
@@ -56,18 +58,18 @@ generic; client-reported logos never establish continuous agent presence.
 
 ## Layer ownership
 
-| Layer              | Location                                 | Responsibility                                                                         |
-| ------------------ | ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| Transport          | `services/mcp/server.py`                 | Protocol, allowed hosts and origins, request-size limit, SDK callbacks                 |
-| Authentication     | `services/mcp/auth.py`, `oauth.py`       | API keys and OAuth tokens, credential limits, context binding                          |
-| Context            | `services/mcp/context.py`                | Immutable `{user, token, project, client_ip, inference_base_url}` for the request only |
-| Catalog            | `services/mcp/catalog.py`                | Curated visible tools, contract validation, handler calls, known failures              |
-| Contracts          | `services/mcp/contracts/`                | Strict Pydantic inputs and outputs, resource links, pages, job receipts                |
-| Feature adapters   | `services/mcp/tools_*.py`                | Resolve project-scoped references and map an intent onto domain services               |
-| Domain logic       | `services/`, `innermind/`, models, tasks | Business rules, persistence, state transitions, background work                        |
-| Results and errors | `result_compat.py`, `errors.py`          | Same typed output for every client; safe, stable errors                                |
-| Resources          | `resources.py`                           | Read-only, project-scoped state and CLI handoff guidance                               |
-| Prompts            | `prompts.py`                             | Multi-step workflow recipes composed from the public catalog                           |
+| Layer              | Location                                 | Responsibility                                                                                              |
+| ------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Transport          | `services/mcp/server.py`                 | Protocol, allowed hosts and origins, request-size limit, SDK callbacks                                      |
+| Authentication     | `services/mcp/auth.py`, `oauth.py`       | API keys and OAuth tokens, credential limits, context binding                                               |
+| Context            | `services/mcp/context.py`                | Immutable `{user, token, project, client_ip, inference_base_url}` plus client headers, for the request only |
+| Catalog            | `services/mcp/catalog.py`                | Curated visible tools, contract validation, handler calls, known failures                                   |
+| Contracts          | `services/mcp/contracts/`                | Strict Pydantic inputs and outputs, resource links, pages, job receipts                                     |
+| Feature adapters   | `services/mcp/tools_*.py`                | Resolve project-scoped references and map an intent onto domain services                                    |
+| Domain logic       | `services/`, `innermind/`, models, tasks | Business rules, persistence, state transitions, background work                                             |
+| Results and errors | `result_compat.py`, `errors.py`          | Same typed output for every client; safe, stable errors                                                     |
+| Resources          | `resources.py`                           | Read-only, project-scoped state and CLI handoff guidance                                                    |
+| Prompts            | `prompts.py`                             | Multi-step workflow recipes composed from the public catalog                                                |
 
 Tools call the domain layer directly. They may share serializers or entity-resolution helpers, but never call frontend code, Console registries or an internal REST endpoint. If a Console workflow has no reusable service, fix the service boundary first.
 

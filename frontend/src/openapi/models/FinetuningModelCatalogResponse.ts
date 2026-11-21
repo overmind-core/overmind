@@ -67,12 +67,6 @@ export interface FinetuningModelCatalogResponse {
     hasToolCalling: boolean;
     /**
      *
-     * @type {number}
-     * @memberof FinetuningModelCatalogResponse
-     */
-    maxContext: number | null;
-    /**
-     *
      * @type {any}
      * @memberof FinetuningModelCatalogResponse
      */
@@ -89,7 +83,6 @@ export function instanceOfFinetuningModelCatalogResponse(value: object): value i
     if (!('tiers' in value) || value['tiers'] === undefined) return false;
     if (!('models' in value) || value['models'] === undefined) return false;
     if (!('hasToolCalling' in value) || value['hasToolCalling'] === undefined) return false;
-    if (!('maxContext' in value) || value['maxContext'] === undefined) return false;
     if (!('monitoring' in value) || value['monitoring'] === undefined) return false;
     return true;
 }
@@ -108,7 +101,6 @@ export function FinetuningModelCatalogResponseFromJSONTyped(json: any, ignoreDis
         'tiers': ((json['tiers'] as Array<any>).map(TiersEnumFromJSON)),
         'models': json['models'],
         'hasToolCalling': json['has_tool_calling'],
-        'maxContext': json['max_context'],
         'monitoring': json['monitoring'],
     };
 }
@@ -128,7 +120,6 @@ export function FinetuningModelCatalogResponseToJSONTyped(value?: FinetuningMode
         'tiers': ((value['tiers'] as Array<any>).map(TiersEnumToJSON)),
         'models': value['models'],
         'has_tool_calling': value['hasToolCalling'],
-        'max_context': value['maxContext'],
         'monitoring': value['monitoring'],
     };
 }

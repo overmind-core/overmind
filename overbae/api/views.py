@@ -123,6 +123,7 @@ from overbae.models import (
     Span,
     User,
 )
+from overbae.services import feedback as feedback_service
 from overbae.services import native_evaluation as native_evaluation_service
 from overbae.services import training_monitoring
 from overbae.services.datasets.lifecycle import DatasetError
@@ -1210,15 +1211,6 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
                     "When true, only models that support function-calling fine-tuning are returned."
                 ),
             ),
-            OpenApiParameter(
-                "max_context",
-                int,
-                required=False,
-                description=(
-                    "Only return models whose context window is at least this many tokens. "
-                    "Non-numeric values are ignored. Together only; ignored for Baseten."
-                ),
-            ),
         ],
         responses={200: FinetuningModelCatalogResponseSerializer},
     )
@@ -1226,26 +1218,20 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     def models(self, request):
         """Return the curated model catalog organised by tier.
 
-        When ``FINETUNING_BACKEND`` is ``baseten``, the Baseten catalog from
-        models.json is returned. Pass ``?has_tool_calling=true`` to receive
-        only models that support function-calling fine-tuning. Tiers that
-        contain no eligible models are omitted from the response.
+        The catalog is the ``FINETUNING_BACKEND`` rows of models.json. Pass
+        ``?has_tool_calling=true`` to receive only models that support
+        function-calling fine-tuning. Tiers that contain no eligible models are
+        omitted from the response.
         """
         raw = request.query_params.get("has_tool_calling", "").lower()
         has_tool_calling = raw in {"true", "1", "yes"}
 
-        max_context: int | None = None
-        raw_ctx = request.query_params.get("max_context", "")
-        if raw_ctx.isdigit():
-            max_context = int(raw_ctx)
-
         from overbae.services.finetuning_catalog import fetch_finetuning_model_catalog
 
         return Response(
-            fetch_finetuning_model_catalog(
-                has_tool_calling=has_tool_calling,
-                max_context=max_context,
-            )
+            FinetuningModelCatalogResponseSerializer(
+                fetch_finetuning_model_catalog(has_tool_calling=has_tool_calling)
+            ).data
         )
 
     @extend_schema(
@@ -1255,7 +1241,7 @@ class FinetuningJobViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["post"], url_path="validate-dataset")
     def validate_dataset(self, request):
-        """Check whether a dataset's datapoints conform to Together AI's format."""
+        """Check whether a dataset's datapoints conform to the fine-tuning format."""
         from overbae.services.finetuning_validator import validate_dataset
 
         body = DatasetValidateRequestSerializer(data=request.data)
@@ -1498,8 +1484,23 @@ class FeedbackViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = Feedback.objects.none()
 
     def perform_create(self, serializer):
-        user = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(user=user)
+        data = serializer.validated_data
+        project_id = data.get("project")
+        project = (
+            Project.objects.filter(
+                pk=project_id, pk__in=project_ids_for(self.request.user, self.request.auth)
+            ).first()
+            if project_id
+            else None
+        )
+        serializer.instance = feedback_service.record_console_feedback(
+            user=self.request.user,
+            project=project,
+            kind=data["kind"],
+            area=data.get("area", Feedback.Area.OTHER),
+            message=data["message"].strip(),
+            page=data.get("page", ""),
+        )
 
 
 @extend_schema_view(

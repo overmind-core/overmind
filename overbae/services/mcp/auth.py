@@ -38,6 +38,13 @@ def _auth_error(detail: str) -> MCPError:
     return MCPError("authentication_failed", "The API key is invalid.")
 
 
+def _client_headers(request) -> dict[str, str]:
+    return {
+        "user_agent": request.headers.get("User-Agent", "")[:200],
+        "protocol_version": request.headers.get("MCP-Protocol-Version", "")[:32],
+    }
+
+
 def _authenticate_sync(scope: Scope) -> MCPContext:
     request = _request_for_scope(scope)
     authorization = request.headers.get("Authorization", "").split(None, 1)
@@ -58,6 +65,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
             inference_base_url=str(
                 URL(scope=scope).replace(scheme=request.scheme, path="/api/v1", query="")
             ),
+            **_client_headers(request),
         )
     try:
         result = APITokenBackend().resolve(request)
@@ -116,6 +124,7 @@ def _authenticate_sync(scope: Scope) -> MCPContext:
         inference_base_url=str(
             URL(scope=scope).replace(scheme=request.scheme, path="/api/v1", query="")
         ),
+        **_client_headers(request),
     )
 
 

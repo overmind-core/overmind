@@ -55,7 +55,7 @@ def _job(*, incumbent: str = "") -> FinetuningJob:
         eval_set=eset,
         base_model="Qwen/Qwen3-8B",
         status=FinetuningJob.Status.RUNNING,
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         baseline_model=incumbent,
         eval_incumbent_before=True,
         eval_model_before=False,
@@ -151,7 +151,7 @@ def test_resolve_baseline_prefers_snapshot_over_live_capability():
         capability=capability,
         dataset=dataset,
         base_model="Qwen/Qwen3-8B",
-        provider=FinetuningJob.Provider.BASETEN,
+        provider=FinetuningJob.Provider.MODAL,
         baseline_model="",  # not snapshotted yet → live capability model
     )
     assert resolve_baseline_model(job) == "anthropic/claude-sonnet-5"

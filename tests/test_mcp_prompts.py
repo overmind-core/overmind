@@ -201,7 +201,7 @@ def test_checkpoint_prompt_uses_mcp_deployment_id_and_local_cli_boundary():
     )
     assert "deployment id supplied by MCP" in text
     assert "presigned URL" in text
-    assert "baseten or modal" in text
+    assert "archived checkpoints" in text
     assert "local `path`" in text
     assert "`bytes_written`" in text
     assert "refuses to overwrite" in text

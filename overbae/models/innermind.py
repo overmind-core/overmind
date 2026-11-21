@@ -21,7 +21,6 @@ class ModelRef(models.Model):
         OPENAI = "openai"
         ANTHROPIC = "anthropic"
         GEMINI = "gemini"
-        TOGETHER = "together"
         CUSTOM = "custom"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -35,7 +34,7 @@ class ModelRef(models.Model):
     model_id = models.CharField(max_length=512)
     # Empty => the provider default.
     base_url = models.CharField(max_length=1024, blank=True, default="")
-    # Env var name holding the API key, e.g. "TOGETHER_API_KEY" — secrets are
+    # Env var name holding the API key, e.g. "INFERENCE_API_KEY" — secrets are
     # never stored in the DB.
     api_key_ref = models.CharField(max_length=128, blank=True, default="")
     # Extra completion kwargs forwarded to LiteLLM (temperature, max_tokens…).

@@ -13,10 +13,7 @@ from overbae.services.mcp.contracts.model_catalog import (
 
 @sync_to_async(thread_sensitive=True)
 def _get_model_catalog(payload, _context):
-    catalog = fetch_finetuning_model_catalog(
-        has_tool_calling=payload.has_tool_calling,
-        max_context=payload.max_context,
-    )
+    catalog = fetch_finetuning_model_catalog(has_tool_calling=payload.has_tool_calling)
     count = sum(len(models) for models in catalog["models"].values())
     return GetModelCatalogOutput(
         summary=f"{count} fine-tuning catalog entries returned for {catalog['backend']}.",

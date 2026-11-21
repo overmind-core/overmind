@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { useRouterState } from "@tanstack/react-router";
+
 import apiClient from "@/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { FeedbackCreateCategoryEnum as FeedbackCategoryEnum } from "@/openapi/models/FeedbackCreateCategoryEnum";
+import { FeedbackAreaEnum } from "@/openapi/models/FeedbackAreaEnum";
+import { FeedbackKindEnum } from "@/openapi/models/FeedbackKindEnum";
 
 interface FeedbackDialogProps {
   open: boolean;
@@ -32,78 +35,96 @@ type SubmitState = "idle" | "submitting" | "submitted" | "error";
 
 const DISCORD_URL = "https://discord.gg/TPF722ZKuj";
 
-const CATEGORIES: {
-  value: FeedbackCategoryEnum;
-  label: string;
-  placeholder: string;
-}[] = [
+// The kinds a person reports; coding agents also report mismatches and dead ends.
+const KINDS: { value: FeedbackKindEnum; label: string; placeholder: string }[] = [
   {
-    label: "Report bug",
-    placeholder: "What went wrong? Steps to reproduce help us fix it faster…",
-    value: FeedbackCategoryEnum.bug,
+    label: "Something failed",
+    placeholder: "What you did, what you expected and what happened.",
+    value: FeedbackKindEnum.failure,
   },
   {
-    label: "Suggest improvement",
-    placeholder: "What could work better? Tell us what you'd like to see improved…",
-    value: FeedbackCategoryEnum.improvement,
+    label: "Unclear",
+    placeholder: "The screen, message or document, and the part that is unclear.",
+    value: FeedbackKindEnum.confusing,
   },
   {
-    label: "Ask a question",
-    placeholder: "What's on your mind? We're happy to help…",
-    value: FeedbackCategoryEnum.question,
+    label: "Missing capability",
+    placeholder: "What you need to do and why.",
+    value: FeedbackKindEnum.missing,
   },
   {
-    label: "Share what you love",
-    placeholder: "Tell us what's working well — we love hearing it…",
-    value: FeedbackCategoryEnum.love,
+    label: "Slow or stuck",
+    placeholder: "The operation, how long it took and what it showed.",
+    value: FeedbackKindEnum.stuck,
   },
   {
-    label: "Request feature",
-    placeholder: "What feature would you love to see? Describe the use case…",
-    value: FeedbackCategoryEnum.feature,
+    label: "Idea",
+    placeholder: "The change and the problem it solves.",
+    value: FeedbackKindEnum.idea,
   },
-  {
-    label: "Performance issue",
-    placeholder: "Where is it slow? What were you doing when it happened…",
-    value: FeedbackCategoryEnum.performance,
-  },
-  {
-    label: "Accessibility issue",
-    placeholder: "Tell us where we fell short — we want this to work for everyone…",
-    value: FeedbackCategoryEnum.accessibility,
-  },
-  {
-    label: "Security concern",
-    placeholder: "Describe the concern. For sensitive reports, please email security@…",
-    value: FeedbackCategoryEnum.security,
-  },
-  {
-    label: "Documentation issue",
-    placeholder: "What was unclear, missing, or wrong in the docs…",
-    value: FeedbackCategoryEnum.documentation,
-  },
-  {
-    label: "Other",
-    placeholder: "Tell us what you're thinking…",
-    value: FeedbackCategoryEnum.other,
-  },
+  { label: "Worked well", placeholder: "What worked.", value: FeedbackKindEnum.praise },
+  { label: "Question", placeholder: "Your question.", value: FeedbackKindEnum.question },
 ];
 
-const DEFAULT_CATEGORY: FeedbackCategoryEnum = FeedbackCategoryEnum.improvement;
+const AREAS: { value: FeedbackAreaEnum; label: string; path?: RegExp }[] = [
+  {
+    label: "Setup and connection",
+    path: /^\/(projects|capabilities)?\/?$/,
+    value: FeedbackAreaEnum.setup,
+  },
+  { label: "Observability", path: /^\/observability/, value: FeedbackAreaEnum.observability },
+  { label: "Datasets", path: /^\/datasets/, value: FeedbackAreaEnum.datasets },
+  { label: "Evaluation", path: /^\/evaluations/, value: FeedbackAreaEnum.evaluation },
+  { label: "Optimiser", path: /^\/optimiser/, value: FeedbackAreaEnum.optimizer },
+  { label: "Training", path: /^\/training/, value: FeedbackAreaEnum.training },
+  { label: "Serving", path: /^\/inference/, value: FeedbackAreaEnum.serving },
+  { label: "Billing", path: /^\/settings/, value: FeedbackAreaEnum.billing },
+  { label: "Other", value: FeedbackAreaEnum.other },
+];
+
+const DEFAULT_KIND = FeedbackKindEnum.failure;
+
+function areaFor(pathname: string): FeedbackAreaEnum {
+  return AREAS.find((area) => area.path?.test(pathname))?.value ?? FeedbackAreaEnum.other;
+}
+
+function DiscordLink() {
+  return (
+    <a
+      className="flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      href={DISCORD_URL}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <Icon.discord className="size-4" />
+      Discord community
+    </a>
+  );
+}
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
-  const [category, setCategory] = useState<FeedbackCategoryEnum>(DEFAULT_CATEGORY);
-  const [feedback, setFeedback] = useState("");
+  const location = useRouterState({ select: (s) => s.location });
+  const projectId = (location.search as { projectId?: string }).projectId;
+  const [kind, setKind] = useState<FeedbackKindEnum>(DEFAULT_KIND);
+  const [area, setArea] = useState<FeedbackAreaEnum | null>(null);
+  const [message, setMessage] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
 
-  const activeCategory = CATEGORIES.find((c) => c.value === category) ?? CATEGORIES[0];
+  const activeKind = KINDS.find((item) => item.value === kind) ?? KINDS[0];
+  const selectedArea = area ?? areaFor(location.pathname);
 
   const handleSubmit = async () => {
-    if (!feedback.trim()) return;
+    if (!message.trim()) return;
     setSubmitState("submitting");
     try {
       await apiClient.feedback.feedbackCreate({
-        feedbackCreateRequest: { category, feedback: feedback.trim() },
+        feedbackCreateRequest: {
+          area: selectedArea,
+          kind,
+          message: message.trim(),
+          page: location.pathname,
+          project: projectId ?? null,
+        },
       });
       setSubmitState("submitted");
     } catch {
@@ -114,8 +135,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const handleClose = () => {
     onOpenChange(false);
     setTimeout(() => {
-      setFeedback("");
-      setCategory(DEFAULT_CATEGORY);
+      setMessage("");
+      setKind(DEFAULT_KIND);
+      setArea(null);
       setSubmitState("idle");
     }, 200);
   };
@@ -129,55 +151,73 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
         <DialogHeader>
           <DialogTitle>Feedback & support</DialogTitle>
           <DialogDescription>
-            {isSubmitted
-              ? "Thanks for reaching out — we really appreciate it."
-              : "Have a question, found a bug, or want to share an idea? We read everything."}
+            {isSubmitted ? "Sent to the Overmind team." : "Goes to the Overmind team."}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
           {!isSubmitted && (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="feedback-category">Category</Label>
-                <Select
-                  disabled={isPending}
-                  onValueChange={(v) => setCategory(v as FeedbackCategoryEnum)}
-                  value={category}
-                >
-                  <SelectTrigger className="w-full" id="feedback-category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="feedback-kind">Kind</Label>
+                  <Select
+                    disabled={isPending}
+                    onValueChange={(value) => setKind(value as FeedbackKindEnum)}
+                    value={kind}
+                  >
+                    <SelectTrigger className="w-full" id="feedback-kind">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KINDS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="feedback-area">Area</Label>
+                  <Select
+                    disabled={isPending}
+                    onValueChange={(value) => setArea(value as FeedbackAreaEnum)}
+                    value={selectedArea}
+                  >
+                    <SelectTrigger className="w-full" id="feedback-area">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AREAS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="feedback-text">Your message</Label>
+                <Label htmlFor="feedback-text">Message</Label>
                 <Textarea
                   autoFocus
                   className="min-h-[140px] resize-none"
                   disabled={isPending}
                   id="feedback-text"
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder={activeCategory.placeholder}
-                  value={feedback}
+                  maxLength={5000}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={activeKind.placeholder}
+                  value={message}
                 />
                 {submitState === "error" && (
-                  <p className="text-sm text-muted-foreground">
-                    Something went wrong — please try again.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Not sent. Try again.</p>
                 )}
               </div>
 
               <Button
                 className="w-full"
-                disabled={!feedback.trim() || isPending}
+                disabled={!message.trim() || isPending}
                 onClick={handleSubmit}
                 size="lg"
               >
@@ -186,16 +226,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
               </Button>
 
               <Separator className="-mx-5 data-[orientation=horizontal]:w-auto" />
-
-              <a
-                className="flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                href={DISCORD_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <Icon.discord className="size-4" />
-                Join our Discord community
-              </a>
+              <DiscordLink />
             </div>
           )}
 
@@ -206,15 +237,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 Close
               </Button>
               <Separator className="-mx-5 data-[orientation=horizontal]:w-auto" />
-              <a
-                className="flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                href={DISCORD_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <Icon.discord className="size-4" />
-                Join our Discord community
-              </a>
+              <DiscordLink />
             </div>
           )}
         </DialogBody>

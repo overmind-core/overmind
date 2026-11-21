@@ -186,7 +186,7 @@ eval dataset. Context warnings do not automatically block launch or change
 model selection. An approved preview's `judge_model` becomes
 `eval_judge_model` on `start_finetune`; omission preserves the set's judges.
 
-For Modal/Baseten, `batch_size` means the effective optimizer batch. The runtime
+For Modal, `batch_size` means the effective optimizer batch. The runtime
 derives micro-batching and accumulation; `gradient_accumulation_steps` and
 `per_device_train_batch_size` are rejected. Native decision readiness supplies
 eligible models, not a chat-benchmark ranking or an unmeasured price promise.
@@ -198,8 +198,8 @@ with `start_decision_job`. Use `start_finetune` for chat models. Native decision
 keep the four chat evaluation flags false and preserve the declared probability
 objective; both tools share the same durable training lifecycle.
 
-Freeze `hyperparameters.monitoring` with the rest of the recipe. Modal and Baseten
-support loss monitoring with adaptive/steps/epoch/off schedules; discover current
+Freeze `hyperparameters.monitoring` with the rest of the recipe. Modal supports loss
+monitoring with adaptive/steps/epoch/off schedules; discover current
 provider capabilities from the model catalogue. Modal also accepts explicit
 classification labels, exact matching, JSON Schema and `json_fields` generation probes. The
 agent supplies task semantics; the platform never invents labels or a success
@@ -315,9 +315,9 @@ through MCP, then run `overmind model download-checkpoint DEPLOYMENT --json` on 
 coding agent's filesystem with the deployment id supplied by MCP. The CLI
 authenticates with `X-Api-Key` from `--api-key`, the saved local project credential
 or `OVERMIND_API_KEY`, and uses the base URL from `OVERMIND_API_URL`, `--api-url` or
-`overmind.toml`. Only archived checkpoints for `baseten` and `modal` fine-tune
-providers are downloadable. Deployments without a fine-tuning job, unsupported
-providers and archives that are not ready are unavailable. The presigned S3 URL
+`overmind.toml`. Only archived checkpoints of fine-tuned models are downloadable.
+Deployments without a fine-tuning job and archives that are not ready are
+unavailable. The presigned S3 URL
 stays inside the server/CLI flow and must not enter model context. Parse the JSON
 result and report its local `path` and `bytes_written`; the CLI refuses to overwrite
 an existing file.
