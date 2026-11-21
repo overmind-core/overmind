@@ -579,12 +579,7 @@ class _BaseVLLMWorker:
             if _os.environ.get("OVERMIND_FOLD_ADAPTER"):
                 cmd = [sys.executable, "-m", "modal_shared.serving.fold_serve", *cmd[1:]]
         print(f"Starting {engine}:", " ".join(cmd))
-        if (
-            engine != "sglang_kev"
-            and not getattr(self, "_kev_checkpoint", "")
-            and getattr(self, "direct_vllm", False)
-            and _os.environ.get("INFERENCE_API_KEY")
-        ):
+        if getattr(self, "direct_vllm", False) and _os.environ.get("INFERENCE_API_KEY"):
             # The public tunnel hits this port. The key is not part of the logged command.
             cmd += ["--api-key", _os.environ["INFERENCE_API_KEY"]]
         self._serve_command = cmd
@@ -1315,7 +1310,7 @@ def _register_kev_dedicated(cls_name: str, gpu_type: str, target_app, owner) -> 
             resp = await client.request(
                 method=method,
                 url=f"http://localhost:{VLLM_PORT}{path}",
-                headers={"content-type": "application/json"},
+                headers=_local_vllm_headers(self, headers),
                 content=body,
             )
         return {"status": resp.status_code, "headers": dict(resp.headers), "body": resp.content}

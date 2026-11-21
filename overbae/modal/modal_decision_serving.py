@@ -121,8 +121,9 @@ def _decision_worker(cls_name, *, engine="vllm"):
                     checkpoint = artifact_path(self.artifact_identity)
                     if str(checkpoint) != self.weights_path:
                         raise ValueError("Serving path differs from the pinned artifact")
-                    if not (checkpoint / "head.pt").is_file():
-                        raise ValueError("Kev artifact is missing head.pt")
+                    artifact = read_artifact(checkpoint)
+                    if artifact["identity"] != self.artifact_identity:
+                        raise ValueError("Serving identity differs")
                     model_path = str(checkpoint)
                 self.served_name = model_path
                 self.identity = self.base_repo or self.artifact_identity

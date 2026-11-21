@@ -14,6 +14,19 @@ from modal_shared.kev_bases import BASES
 from modal_shared.serving.artifacts import atomic_json, digest_file, read_base_manifest
 
 
+def admit_kev_row(row: dict) -> None:
+    require_kev_supervision(decision_line(row)["decision"])
+
+
+def require_kev_supervision(decision: dict) -> None:
+    weight = decision.get("weight", 1)
+    if type(weight) not in {int, float} or weight != 1:
+        raise ValueError("Kev training requires weight 1")
+    if "target_probabilities" not in decision:
+        raise ValueError("Kev training requires a one-hot target")
+    kev_label(decision)
+
+
 def kev_label(decision: dict) -> bool | int | str:
     probabilities = [float(item) for item in decision["target_probabilities"]]
     if any(item not in (0.0, 1.0) for item in probabilities) or probabilities.count(1.0) != 1:

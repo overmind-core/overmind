@@ -68,6 +68,36 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
     }
 
 
+def test_kev_dedicated_engine_sends_the_api_key(monkeypatch, tmp_path):
+    monkeypatch.setenv("INFERENCE_API_KEY", "secret")
+    monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr(serving, "IS_DEV", False)
+    monkeypatch.setattr(serving, "_wait_for_vllm", Mock())
+    monkeypatch.setattr(serving._BaseVLLMWorker, "_open_direct", lambda _self: None)
+    popen = Mock()
+    monkeypatch.setattr(serving.subprocess, "Popen", popen)
+    (tmp_path / "base").mkdir()
+    worker = serving._BaseVLLMWorker()
+    worker.model_path = "base"
+    worker.model_name = "dedicated/kev"
+    worker.max_model_len = 2048
+    worker.enable_lora = False
+    worker.max_lora_rank = 16
+    worker.gpu_type = "L4"
+    worker.snapshot_weights = False
+    worker.direct_vllm = True
+    worker.engine = "sglang_kev"
+    worker.adapter_path = ""
+    worker._journal = Mock()
+
+    worker._startup_inner(_json=json, _os=os)
+
+    command = popen.call_args.args[0]
+    assert command[command.index("--api-key") + 1] == "secret"
+    assert serving._local_vllm_headers(worker, {})["authorization"] == "Bearer secret"
+
+
 def test_prod_snapshot_engine_enables_the_sleep_route(monkeypatch, tmp_path):
     obj = serving._BaseVLLMWorker()
     obj.model_path = "base"
