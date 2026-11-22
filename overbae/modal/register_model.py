@@ -128,6 +128,18 @@ def _base_model_dir(repo_id: str) -> Path:
     return Path(WEIGHTS_MOUNT) / BASE_MODELS_DIRNAME / repo_id.replace("/", "--")
 
 
+def seal_ready_base(base_dir: Path, base_model: str) -> dict:
+    marker = base_dir / BASE_MANIFEST
+    if (
+        base_model in BASES
+        and marker.is_file()
+        and (base_dir / "head.pt").is_file()
+        and "head.pt" not in (json.loads(marker.read_text()).get("files") or {})
+    ):
+        marker.unlink()
+    return seal_base(base_dir, base_model)
+
+
 def cached_base_ready(base_dir: Path, base_model: str) -> bool:
     if not _snapshot_is_complete(base_dir):
         return False
@@ -804,7 +816,7 @@ def fetch_base_model(*, base_model: str) -> dict:
     base_dir = _base_model_dir(base_model)
     cached = cached_base_ready(base_dir, base_model)
     if cached:
-        manifest = seal_base(base_dir, base_model)
+        manifest = seal_ready_base(base_dir, base_model)
         print(f"[base] {base_model} already cached at {base_dir}")
     else:
         print(f"[base] Downloading {base_model} → {base_dir}")
@@ -827,7 +839,7 @@ def fetch_base_model(*, base_model: str) -> dict:
                 f"Base snapshot for {base_model} is incomplete after download "
                 f"({base_dir}) — refusing to hand a partial base to the LoRA merge"
             )
-        manifest = seal_base(base_dir, base_model)
+        manifest = seal_ready_base(base_dir, base_model)
         print(f"[base] {base_model} ready at {base_dir}")
     _ensure_draft(base_model)
     weights_vol.commit()
