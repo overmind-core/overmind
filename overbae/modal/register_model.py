@@ -47,6 +47,7 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.kev_bases import BASES
 from modal_shared.serving.artifacts import BASE_MANIFEST, seal_base
 
 WEIGHTS_MOUNT = "/weights"
@@ -125,6 +126,24 @@ BASE_MODELS_DIRNAME = ".base_models"
 
 def _base_model_dir(repo_id: str) -> Path:
     return Path(WEIGHTS_MOUNT) / BASE_MODELS_DIRNAME / repo_id.replace("/", "--")
+
+
+def seal_ready_base(base_dir: Path, base_model: str) -> dict:
+    marker = base_dir / BASE_MANIFEST
+    if (
+        base_model in BASES
+        and marker.is_file()
+        and (base_dir / "head.pt").is_file()
+        and "head.pt" not in (json.loads(marker.read_text()).get("files") or {})
+    ):
+        marker.unlink()
+    return seal_base(base_dir, base_model)
+
+
+def cached_base_ready(base_dir: Path, base_model: str) -> bool:
+    if not _snapshot_is_complete(base_dir):
+        return False
+    return base_model not in BASES or (base_dir / "head.pt").is_file()
 
 
 def _snapshot_is_complete(base_dir: Path) -> bool:
@@ -791,30 +810,36 @@ def fetch_base_model(*, base_model: str) -> dict:
     serialize here; the second sees a complete snapshot. The deploy path calls the same
     Function, so a cold base is still correct.
     """
-    from huggingface_hub import snapshot_download  # noqa: PLC0415
+    from huggingface_hub import hf_hub_download, snapshot_download  # noqa: PLC0415
 
     weights_vol.reload()
     base_dir = _base_model_dir(base_model)
-    cached = _snapshot_is_complete(base_dir)
+    cached = cached_base_ready(base_dir, base_model)
     if cached:
-        manifest = seal_base(base_dir, base_model)
+        manifest = seal_ready_base(base_dir, base_model)
         print(f"[base] {base_model} already cached at {base_dir}")
     else:
         print(f"[base] Downloading {base_model} → {base_dir}")
         base_dir.mkdir(parents=True, exist_ok=True)
+        kev = BASES.get(base_model)
         snapshot_download(
             repo_id=base_model,
             local_dir=str(base_dir),
-            ignore_patterns=["*.bin", "original/*", "*.pt"],
+            ignore_patterns=["*.bin", "original/*", *(() if kev else ("*.pt",))],
             token=os.environ.get("HF_TOKEN") or None,
             max_workers=16,
         )
+        if kev and not (base_dir / "head.pt").is_file():
+            raise RuntimeError(f"Kev snapshot {base_model} is missing head.pt")
+        if kev and not (base_dir / "config.json").is_file():
+            backbone, revision = kev
+            hf_hub_download(backbone, "config.json", revision=revision, local_dir=str(base_dir))
         if not _snapshot_is_complete(base_dir):
             raise RuntimeError(
                 f"Base snapshot for {base_model} is incomplete after download "
                 f"({base_dir}) — refusing to hand a partial base to the LoRA merge"
             )
-        manifest = seal_base(base_dir, base_model)
+        manifest = seal_ready_base(base_dir, base_model)
         print(f"[base] {base_model} ready at {base_dir}")
     _ensure_draft(base_model)
     weights_vol.commit()

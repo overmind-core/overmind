@@ -15,6 +15,7 @@ describe("getModelProviderInfo", () => {
     expect(getModelProviderInfo("mixtral-8x7b").id).toBe("mistral");
     expect(getModelProviderInfo("qwen3.5-0.8b").id).toBe("qwen");
     expect(getModelProviderInfo("jev-1.13").id).toBe("typesafe");
+    expect(getModelProviderInfo("kev-0.8b").id).toBe("jaredpalmer");
     expect(getModelProviderInfo("grok-4").id).toBe("xai");
     expect(getModelProviderInfo("command-r").id).toBe("cohere");
     expect(getModelProviderInfo("glm-5.2").id).toBe("zhipu");
@@ -48,6 +49,8 @@ describe("getModelProviderInfo", () => {
     expect(getModelProviderInfo("bytedance-seed/seed-2.0-lite").id).toBe("bytedance");
     expect(getModelProviderInfo("nousresearch/hermes-4-70b").id).toBe("nous");
     expect(getModelProviderInfo("tencent/hunyuan-a13b-instruct").id).toBe("tencent");
+    expect(getModelProviderInfo("jaredpalmer/kev-0.8b").id).toBe("jaredpalmer");
+    expect(getModelProviderInfo("jaredpalmer/kev-0.8b").providerLabel).toBe("Jared Palmer");
     expect(getModelProviderInfo("typesafe/jev-1.13").id).toBe("typesafe");
     expect(getModelProviderInfo("typesafe/jev-1.13").providerLabel).toBe("TypeSafe");
     expect(getModelProviderInfo("stepfun/step-3.5-flash").id).toBe("stepfun");

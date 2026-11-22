@@ -63,8 +63,9 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
     catalog = client.get("/api/decision-models/")
     assert catalog.status_code == 200
     entries = {entry["id"]: entry for entry in catalog.data}
-    assert {entry["family"] for entry in entries.values()} == {"clef", "d3", "d1"}
+    assert {entry["family"] for entry in entries.values()} == {"clef", "d3", "d1", "kev"}
     assert entries["Cloudflare/clef-flash"]["training_available"]
+    assert entries["jaredpalmer/kev-0.8b"]["training_available"]
     assert not entries["vllm-sr/d3-edge"]["training_available"]
     assert "LiquidAI/d1-omni-600M" not in entries
     payload = {
@@ -106,6 +107,7 @@ def test_decision_identity_reuses_the_exact_training_run(monkeypatch, settings):
         "clef",
         "d3",
         "d1",
+        "kev",
     }
     receipt = call_tool("get_job", {"kind": "decision_job", "id": first.data["id"]}, context)
     assert not receipt.isError, receipt.structuredContent

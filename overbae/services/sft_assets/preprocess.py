@@ -31,6 +31,7 @@ def preprocess_rows(
     output=None,
     row_offset=0,
     decision_encode=None,
+    decision_admit=None,
 ):
     artifacts = []
     issues = []
@@ -53,6 +54,8 @@ def preprocess_rows(
         identity = row.get("source_row", index)
         try:
             if native:
+                if decision_admit is not None:
+                    decision_admit(row)
                 result = encoder.training_row(row)
                 ids = result["input_ids"]
                 total_tokens += len(ids)
@@ -130,7 +133,15 @@ def preprocess_rows(
     return artifacts, report
 
 
-def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize, *, decision_encode=None):
+def run(
+    request_path: Path,
+    output_dir: Path,
+    load_tokenizer,
+    tokenize,
+    *,
+    decision_encode=None,
+    decision_admit=None,
+):
     request = json.loads(request_path.read_text())
     output_dir.mkdir(parents=True, exist_ok=True)
     if processor_fingerprint(Path(__file__).parent) != request["processor"]:
@@ -162,7 +173,12 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize, *, decis
     if file_digest(source_path) != request["rows_sha256"]:
         raise ValueError("The preparation input changed.")
     report = prepare_shards(
-        request, output_dir, tokenizer, tokenize, decision_encode=decision_encode
+        request,
+        output_dir,
+        tokenizer,
+        tokenize,
+        decision_encode=decision_encode,
+        decision_admit=decision_admit,
     )
     report["vocab_fingerprint"] = hashlib.sha256(
         json.dumps(tokenizer.get_vocab(), sort_keys=True).encode()
@@ -180,18 +196,18 @@ def run(request_path: Path, output_dir: Path, load_tokenizer, tokenize, *, decis
     (output_dir / "report.json").write_text(json.dumps(report, sort_keys=True))
 
 
-def prepare_shards(request, output_dir, tokenizer, tokenize, *, decision_encode=None):
-    identity = hashlib.sha256(
-        json.dumps(
-            {
-                "request": request,
-                "vocab": tokenizer.get_vocab(),
-                "template": tokenizer.chat_template,
-                "revision": tokenizer.init_kwargs.get("_commit_hash"),
-            },
-            sort_keys=True,
-        ).encode()
-    ).hexdigest()
+def prepare_shards(
+    request, output_dir, tokenizer, tokenize, *, decision_encode=None, decision_admit=None
+):
+    identity_payload = {
+        "request": request,
+        "vocab": tokenizer.get_vocab(),
+        "template": tokenizer.chat_template,
+        "revision": tokenizer.init_kwargs.get("_commit_hash"),
+    }
+    if decision_admit is not None:
+        identity_payload["admit"] = "kev-one-hot"
+    identity = hashlib.sha256(json.dumps(identity_payload, sort_keys=True).encode()).hexdigest()
     directory = output_dir / "shards"
     directory.mkdir(exist_ok=True)
     manifest_path = directory / "manifest.json"
@@ -241,6 +257,7 @@ def prepare_shards(request, output_dir, tokenizer, tokenize, *, decision_encode=
                     output=output,
                     row_offset=offset,
                     decision_encode=decision_encode,
+                    decision_admit=decision_admit,
                 )
             temporary.replace(path)
             manifest["shards"].append(

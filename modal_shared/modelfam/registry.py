@@ -13,6 +13,7 @@ from modal_shared.modelfam.families import (
     DEFAULT,
     GEMMA4,
     GPT_OSS,
+    KEV,
     LFM2,
     LFM3,
     LLAMA,
@@ -33,6 +34,7 @@ from modal_shared.modelfam.spec import FamilySpec
 
 # Order is load-bearing — specific before general (qwen35/coder before qwen_mm before qwen).
 _FAMILIES: tuple[FamilySpec, ...] = (
+    KEV,
     CLEF,
     D3,
     D1,

@@ -26,6 +26,9 @@ TRAIN_U2026_8_18 = "u2026_8_18"
 TRAIN_U2026_9_2 = "u2026_9_2"
 TRAIN_U2026_10_7 = "u2026_10_7"
 TRAIN_DECISION = "u2026_10_3_decision"
+# Kev's trainer is not Unsloth and refuses torch 2.10. Own image, own key.
+TRAIN_KEV = "kev_2026_11"
+KEV_REV = "051142bf849c2c6ad3f23e17a7b5aea2686d9a91"
 
 # Chat images eligible as a native decision foundation.
 NATIVE_FOUNDATION_STACKS = frozenset({TRAIN_U2026_8_18, TRAIN_U2026_10_7})
@@ -39,6 +42,7 @@ TRAIN_STACKS: tuple[str, ...] = (
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
     TRAIN_DECISION,
+    TRAIN_KEV,
 )
 
 # Historical FamilySpec / models.json keys. Lookup must normalize.
@@ -62,6 +66,7 @@ TRAIN_FUNCTION_NAMES: dict[str, str] = {s: f"sft_{s}" for s in TRAIN_STACKS}
 
 TRAIN_STACK_PINS: dict[str, str] = {
     TRAIN_DECISION: "unsloth==2026.10.3 / unsloth_zoo==2026.10.3 / torch==2.10.0 / transformers==5.17.0 / trl==1.13.0",
+    TRAIN_KEV: "torch==2.8.0 / transformers==5.17.0 / peft==0.22.0 / huggingface_hub==1.33.0 / kev@051142bf",
     TRAIN_U2026_7: "unsloth[cu128-torch270]==2026.7.5 / torch==2.7.0 / transformers>=5.2 / trl v1.10.0",
     TRAIN_U2026_8_TF510: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
     TRAIN_U2026_8_TF515: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.15 / trl v1.10.0",
@@ -92,13 +97,16 @@ def train_function_name(stack_or_alias: str | None) -> str:
 SERVE_VLLM = "vllm"
 SERVE_SGLANG = "sglang"
 SERVE_SGLANG_LFM3 = "sglang_lfm3"
+# Kev's pointer head is served by SGLang 0.5.23. 0.5.22 does not load it.
+SERVE_SGLANG_KEV = "sglang_kev"
 
-SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM, SERVE_SGLANG, SERVE_SGLANG_LFM3)
+SERVE_STACKS: tuple[str, ...] = (SERVE_VLLM, SERVE_SGLANG, SERVE_SGLANG_LFM3, SERVE_SGLANG_KEV)
 
 SERVE_STACK_PINS: dict[str, str] = {
     SERVE_VLLM: "vllm/vllm-openai:v0.33.0 + runai-model-streamer>=0.15.7",
     SERVE_SGLANG: "lmsysorg/sglang:v0.5.22",
     SERVE_SGLANG_LFM3: "lmsysorg/sglang:dev-lfm3",
+    SERVE_SGLANG_KEV: "lmsysorg/sglang:v0.5.23",
 }
 
 # (gpu_type, serve_image) pairs we deploy. Cls name is ``{gpu}_{serve_image}``

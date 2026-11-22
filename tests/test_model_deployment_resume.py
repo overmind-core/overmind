@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -573,6 +574,26 @@ def test_failed_parent_waits_for_child_gpu_work_before_retry(fake_modal):
     assert deployment.poll_operation("fc-parent") == ("pending", None)
     child.state = "cancelled"
     assert deployment.poll_operation("fc-parent") == ("failed", "Remote operation timed out.")
+
+
+def test_decision_verification_names_the_base_only_for_kev(monkeypatch):
+    monkeypatch.setattr("modal.Function.from_name", lambda *_args, **_kwargs: None)
+
+    def deployed(base_model_id):
+        return SimpleNamespace(
+            inference_contract="decision",
+            serving_runtime={"app": "overmind-decision-serve-old", "environment": "overmind-dev"},
+            weights_path="/weights/.decisions/abc",
+            checkpoint_hash="abc",
+            max_model_len=2048,
+            gpu_type="H100",
+            base_model_id=base_model_id,
+        )
+
+    _, clef = deployment.verification_operation(deployed("Cloudflare/clef-flash"))
+    _, kev = deployment.verification_operation(deployed("jaredpalmer/kev-0.8b"))
+    assert "base_model_id" not in clef
+    assert kev["base_model_id"] == "jaredpalmer/kev-0.8b"
 
 
 def test_lfm3_warm_and_inference_carry_the_base_id(deployed, fake_modal):

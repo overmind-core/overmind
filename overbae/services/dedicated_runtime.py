@@ -48,13 +48,20 @@ def _drive(result):
 def worker_class_name(deployed, gpu_type: str) -> str:
     # Not `{gpu}_vllm`: that global is the serverless class, and Modal loads a class
     # with getattr(module, name).
+    from modal_shared.modelfam import resolve
     from modal_shared.serving.engine import engine_for
 
     token = gpu_type.replace("-", "")
-    engine = "vllm"
-    quant = getattr(deployed, "quantization", None) or "bf16"
-    if getattr(deployed, "inference_contract", "") != "decision" and quant in ("bf16", "none", ""):
-        engine = engine_for(getattr(deployed, "base_model_id", "") or "")
+    base = getattr(deployed, "base_model_id", "") or ""
+    if getattr(deployed, "inference_contract", "") == "decision":
+        # Class suffix is the family's serve image. Clef stays on vLLM.
+        image = resolve(base).serve_image
+        engine = image if image not in ("", "vllm") else "vllm"
+    else:
+        engine = "vllm"
+        quant = getattr(deployed, "quantization", None) or "bf16"
+        if quant in ("bf16", "none", ""):
+            engine = engine_for(base)
     return f"{token}_{engine}_dedicated"
 
 

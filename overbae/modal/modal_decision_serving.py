@@ -13,12 +13,13 @@ import modal
 
 from modal_shared.decision_artifact import read_artifact
 from modal_shared.decisions import decision_request
-from modal_shared.images.serve import dedicated_vllm_image
+from modal_shared.images.serve import dedicated_sglang_kev_image, dedicated_vllm_image
 from modal_shared.images.train import TRAIN_IMAGES
 from modal_shared.operational_events import STORE, Journal
 from modal_shared.serving.artifacts import read_base_manifest
 from modal_shared.serving.decision_http import (
     decision_base_vllm_command,
+    decision_sglang_command,
     decision_vllm_command,
     probabilities_for,
     systemone_body,
@@ -100,7 +101,7 @@ def _wait_until_healthy(process: subprocess.Popen, log_path: Path) -> None:
     raise RuntimeError("vLLM did not become healthy")
 
 
-def _decision_worker(cls_name):
+def _decision_worker(cls_name, *, engine="vllm"):
     class DecisionEndpoint:
         max_model_len: int = modal.parameter()
         weights_path: str = modal.parameter(default="")
@@ -112,7 +113,24 @@ def _decision_worker(cls_name):
             self.work = Path(tempfile.mkdtemp(prefix="decision-serving-"))
             log_path = self.work / "worker.log"
             self.log = log_path.open("w")
-            if self.base_repo:
+            if engine == "sglang_kev":
+                if self.base_repo:
+                    model_path = self.base_repo
+                else:
+                    weights.reload()
+                    checkpoint = artifact_path(self.artifact_identity)
+                    if str(checkpoint) != self.weights_path:
+                        raise ValueError("Serving path differs from the pinned artifact")
+                    artifact = read_artifact(checkpoint)
+                    if artifact["identity"] != self.artifact_identity:
+                        raise ValueError("Serving identity differs")
+                    model_path = str(checkpoint)
+                self.served_name = model_path
+                self.identity = self.base_repo or self.artifact_identity
+                command = decision_sglang_command(
+                    model_path=model_path, max_model_len=self.max_model_len, port=VLLM_PORT
+                )
+            elif self.base_repo:
                 if self.base_repo == "LiquidAI/d1-omni-600M":
                     raise ValueError(
                         "LiquidAI/d1-omni-600M cannot be served: text_config has no num_attention_heads."
@@ -247,39 +265,52 @@ def _decision_worker(cls_name):
     return DecisionEndpoint
 
 
-def register_decision_endpoint(modal_app, cls_name, *, max_containers=1):
+def register_decision_endpoint(modal_app, cls_name, *, max_containers=1, engine="vllm"):
     # The serving-release secret is what lets a container import build this app object.
     return modal_app.cls(
-        image=dedicated_vllm_image,
+        image=dedicated_sglang_kev_image if engine == "sglang_kev" else dedicated_vllm_image,
         gpu="H100",
         timeout=1800,
         scaledown_window=120,
         max_containers=max_containers,
         volumes={"/weights": weights},
         secrets=[modal.Secret.from_dict({"OVERMIND_SERVING_RELEASE": json.dumps(RELEASE)})],
-    )(modal.concurrent(max_inputs=16)(_decision_worker(cls_name)))
+    )(modal.concurrent(max_inputs=16)(_decision_worker(cls_name, engine=engine)))
 
 
 DecisionEndpoint = register_decision_endpoint(app, "DecisionEndpoint")
+KevEndpoint = register_decision_endpoint(app, "KevEndpoint", engine="sglang_kev")
 # Modal loads a deployed class with getattr(module, name). This is the user class.
 decision_dedicated = _decision_worker("decision_dedicated")
 
 
+def _endpoint(base_model_id: str):
+    from modal_shared.modelfam import resolve
+
+    return KevEndpoint if resolve(base_model_id).key == "kev" else DecisionEndpoint
+
+
 @app.function(image=image, timeout=1200)
-def pre_warm(weights_path, artifact_identity, max_model_len, gpu_type):
+def pre_warm(weights_path, artifact_identity, max_model_len, gpu_type, base_model_id=""):
     journal = Journal("call:" + modal.current_function_call_id())
     journal.emit("waiting_for_worker")
-    result = DecisionEndpoint.with_options(gpu=gpu_type)(
-        weights_path=weights_path, artifact_identity=artifact_identity, max_model_len=max_model_len
-    ).predict.remote(
-        [
-            {
-                "state": "Serving readiness check.",
-                "question": "Select an option.",
-                "kind": "choice",
-                "options": ["A", "B"],
-            }
-        ]
+    result = (
+        _endpoint(base_model_id)
+        .with_options(gpu=gpu_type)(
+            weights_path=weights_path,
+            artifact_identity=artifact_identity,
+            max_model_len=max_model_len,
+        )
+        .predict.remote(
+            [
+                {
+                    "state": "Serving readiness check.",
+                    "question": "Select an option.",
+                    "kind": "choice",
+                    "options": ["A", "B"],
+                }
+            ]
+        )
     )
     if result.get("error_code") or result.get("model_identity") != artifact_identity:
         journal.emit("verification_failed", error_code="verification_rejected")
@@ -296,11 +327,15 @@ def inference_request(request_id, payload):
     journal = Journal("call:" + modal.current_function_call_id())
     journal.emit("waiting_for_worker")
     started = time.monotonic()
-    result = DecisionEndpoint.with_options(gpu=payload["gpu_type"])(
-        weights_path=payload["weights_path"],
-        artifact_identity=payload["artifact_identity"],
-        max_model_len=payload["max_model_len"],
-    ).predict.remote(payload["decisions"])
+    result = (
+        _endpoint(payload.get("base_model_id") or "")
+        .with_options(gpu=payload["gpu_type"])(
+            weights_path=payload["weights_path"],
+            artifact_identity=payload["artifact_identity"],
+            max_model_len=payload["max_model_len"],
+        )
+        .predict.remote(payload["decisions"])
+    )
     result["latency_ms"] = (time.monotonic() - started) * 1000
     journal.emit(
         "failed" if result.get("error_code") else "completed",

@@ -48,6 +48,16 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
         quantization="fp8",
     )
     assert worker_class_name(fp8, "H100") == "H100_vllm_dedicated"
+    kev = SimpleNamespace(
+        inference_contract="decision",
+        base_model_id="jaredpalmer/kev-0.8b",
+    )
+    clef = SimpleNamespace(
+        inference_contract="decision",
+        base_model_id="cloudflare/clef-flash",
+    )
+    assert worker_class_name(kev, "L4") == "L4_sglang_kev_dedicated"
+    assert worker_class_name(clef, "L4") == "L4_vllm_dedicated"
     assert parameters(deployment) == {
         "model_path": ".base_models/Qwen--Qwen2.5-0.5B-Instruct",
         "model_name": "dedicated/ft-9be76bc2",
@@ -56,6 +66,36 @@ def test_dedicated_lora_uses_the_plain_worker_and_no_runtime_adapter():
         "max_lora_rank": 16,
         "adapter_path": ".adapters/ft-9be76bc2",
     }
+
+
+def test_kev_dedicated_engine_sends_the_api_key(monkeypatch, tmp_path):
+    monkeypatch.setenv("INFERENCE_API_KEY", "secret")
+    monkeypatch.setattr(serving, "WEIGHTS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(serving, "weights_vol", Mock())
+    monkeypatch.setattr(serving, "IS_DEV", False)
+    monkeypatch.setattr(serving, "_wait_for_vllm", Mock())
+    monkeypatch.setattr(serving._BaseVLLMWorker, "_open_direct", lambda _self: None)
+    popen = Mock()
+    monkeypatch.setattr(serving.subprocess, "Popen", popen)
+    (tmp_path / "base").mkdir()
+    worker = serving._BaseVLLMWorker()
+    worker.model_path = "base"
+    worker.model_name = "dedicated/kev"
+    worker.max_model_len = 2048
+    worker.enable_lora = False
+    worker.max_lora_rank = 16
+    worker.gpu_type = "L4"
+    worker.snapshot_weights = False
+    worker.direct_vllm = True
+    worker.engine = "sglang_kev"
+    worker.adapter_path = ""
+    worker._journal = Mock()
+
+    worker._startup_inner(_json=json, _os=os)
+
+    command = popen.call_args.args[0]
+    assert command[command.index("--api-key") + 1] == "secret"
+    assert serving._local_vllm_headers(worker, {})["authorization"] == "Bearer secret"
 
 
 def test_prod_snapshot_engine_enables_the_sleep_route(monkeypatch, tmp_path):

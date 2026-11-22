@@ -17,6 +17,7 @@ from modal.call_graph import InputStatus
 
 from modal_shared.decision_artifact import verify_report
 from modal_shared.decisions import DECISION_OBJECTIVES
+from modal_shared.modelfam import resolve
 from modal_shared.serving.args import snap_lora_rank
 from overbae.core.errors import InputValidationError
 from overbae.modal.gpu_selector import gpu_vram_gb, select_gpu
@@ -485,14 +486,19 @@ def _remote_operation(deployed: DeployedModel):
 def verification_operation(deployed: DeployedModel):
     if deployed.inference_contract == "decision":
         runtime = deployed.serving_runtime
-        return modal.Function.from_name(
-            runtime["app"], "pre_warm", environment_name=runtime["environment"]
-        ), {
+        base = get_hf_base(deployed.base_model_id)
+        arguments = {
             "weights_path": deployed.weights_path,
             "artifact_identity": deployed.checkpoint_hash,
             "max_model_len": deployed.max_model_len,
             "gpu_type": deployed.gpu_type,
         }
+        # Saved Clef apps take the four arguments above. Kev routing needs the base.
+        if resolve(base).key == "kev":
+            arguments["base_model_id"] = base
+        return modal.Function.from_name(
+            runtime["app"], "pre_warm", environment_name=runtime["environment"]
+        ), arguments
     return modal.Function.from_name(
         "overmind-inference", "pre_warm", environment_name=modal_environment()
     ), {

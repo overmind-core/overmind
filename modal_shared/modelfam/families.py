@@ -4,12 +4,22 @@ from __future__ import annotations
 
 from modal_shared.modelfam.spec import FamilySpec
 from modal_shared.stacks import (
+    SERVE_SGLANG_KEV,
     TRAIN_DECISION,
+    TRAIN_KEV,
     TRAIN_U2026_8_GPOS,
     TRAIN_U2026_8_TF510,
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
+)
+
+KEV = FamilySpec(
+    key="kev",
+    patterns=("jaredpalmer/kev-",),
+    train_image=TRAIN_KEV,
+    serve_image=SERVE_SGLANG_KEV,
+    notes="Pointer head. Trains with kev.train and serves on SGLang 0.5.23.",
 )
 
 CLEF = FamilySpec(

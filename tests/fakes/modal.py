@@ -552,7 +552,9 @@ class DecisionBackend:
             "artifact_identity": artifact_identity,
         }
 
-    def _pre_warm(self, *, weights_path, artifact_identity, max_model_len, gpu_type) -> dict:
+    def _pre_warm(
+        self, *, weights_path, artifact_identity, max_model_len, gpu_type, base_model_id=""
+    ) -> dict:
         return {"verified": True, "artifact_identity": artifact_identity}
 
     def _serve(self, requests: list[dict]) -> dict:

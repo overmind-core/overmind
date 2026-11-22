@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from overbae.modal.register_model import _base_model_dir, _snapshot_is_complete
+from overbae.modal.register_model import (
+    _base_model_dir,
+    _snapshot_is_complete,
+    cached_base_ready,
+    seal_ready_base,
+)
 
 pytestmark = pytest.mark.covers("model-runtime")
 
@@ -68,6 +73,31 @@ def test_accepts_legacy_single_file_cache(tmp_path: Path):
     (d / "config.json").write_text("{}")
     _shard(d, "model.safetensors")
     assert _snapshot_is_complete(d)
+
+
+def test_kev_cache_needs_the_pointer_head(tmp_path: Path):
+    d = tmp_path / "base"
+    _write_sharded(d, ["a.safetensors"])
+    _shard(d, "a.safetensors")
+    assert not cached_base_ready(d, "jaredpalmer/kev-0.8b")
+    assert cached_base_ready(d, "Qwen/Qwen2.5-0.5B-Instruct")
+    (d / "head.pt").write_bytes(b"head")
+    assert cached_base_ready(d, "jaredpalmer/kev-0.8b")
+
+
+def test_repaired_kev_base_seals_the_pointer_head(tmp_path: Path):
+    from modal_shared.serving.artifacts import seal_base
+
+    d = tmp_path / "base"
+    _write_sharded(d, ["a.safetensors"])
+    _shard(d, "a.safetensors")
+    first = seal_base(d, "jaredpalmer/kev-0.8b")
+    assert "head.pt" not in first["files"]
+    (d / "head.pt").write_bytes(b"head")
+    repaired = seal_ready_base(d, "jaredpalmer/kev-0.8b")
+    assert repaired["files"]["head.pt"]["size"] == 4
+    assert repaired["identity"] != first["identity"]
+    assert seal_ready_base(d, "jaredpalmer/kev-0.8b")["identity"] == repaired["identity"]
 
 
 def test_rejects_missing_dir(tmp_path: Path):

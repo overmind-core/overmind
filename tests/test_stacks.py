@@ -43,8 +43,11 @@ def test_every_family_train_image_is_a_known_stack() -> None:
 
 
 def test_canaries_cover_unsloth_stacks() -> None:
+    from modal_shared.stacks import TRAIN_STACK_PINS
+
     covered = {c.stack for c in TRAIN_CANARIES}
-    missing = set(TRAIN_STACKS) - covered
+    unsloth = {stack for stack, pin in TRAIN_STACK_PINS.items() if "unsloth" in pin}
+    missing = unsloth - covered
     assert not missing, f"unsloth stacks with no canary: {missing}"
 
 
