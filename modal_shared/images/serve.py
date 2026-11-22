@@ -74,7 +74,7 @@ dedicated_sglang_kev_image = attach_serving_args(
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
     )
     .entrypoint([])
-    .pip_install("runai-model-streamer>=0.15.7")
+    .pip_install("runai-model-streamer==0.16.1")
 )
 # LFM3 conv layers are absent from v0.5.22 and from vLLM 0.33. Support is the
 # untagged image built from sgl-project/sglang#46858. Do not point other models here.

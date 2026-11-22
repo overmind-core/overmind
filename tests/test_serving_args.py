@@ -419,8 +419,13 @@ def test_systemone_probabilities_follow_the_option_order() -> None:
     assert body["model"] == "decision"
     assert body["questions"]["0"]["criteria"] == {"low": "low", "high": "high"}
     assert probabilities_for(request, {"probabilities": {"low": 0.2, "high": 0.8}}) == [0.2, 0.8]
-    noul = {**request, "kind": "noul"}
+    noul = {**request, "kind": "noul", "options": ["No", "Yes"]}
     assert probabilities_for(noul, {"noul": 0.75}) == [0.25, 0.75]
+    assert probabilities_for(noul, {"noul": 0.98, "probabilities": {"yes": 0.98, "no": 0.02}}) == [
+        0.02,
+        0.98,
+    ]
+    assert probabilities_for(noul, {"probabilities": {"no": 0.2, "yes": 0.8}}) == [0.2, 0.8]
 
 
 def test_binary_serving_keeps_custom_false_and_true_criteria():

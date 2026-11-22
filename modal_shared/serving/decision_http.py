@@ -115,15 +115,26 @@ def systemone_question(request: dict) -> dict:
     }
 
 
+def _labeled(options: list[str], raw: dict) -> list[float] | None:
+    if all(option in raw for option in options):
+        return [float(raw[option]) for option in options]
+    folded = {str(key).casefold(): value for key, value in raw.items()}
+    if all(option.casefold() in folded for option in options):
+        return [float(folded[option.casefold()]) for option in options]
+    return None
+
+
 def probabilities_for(request: dict, answer: dict) -> list[float]:
     options = request["options"]
     raw = answer.get("probabilities")
-    if isinstance(raw, dict):
-        values = [float(raw.get(option) or 0) for option in options]
+    labeled = _labeled(options, raw) if isinstance(raw, dict) else None
+    if labeled is not None:
+        values = labeled
     elif isinstance(raw, list) and len(raw) == len(options):
         values = [float(item) for item in raw]
     elif request["kind"] == "noul" and "noul" in answer:
-        # Wire order matches the socket worker: options[1] is the positive class.
+        # vLLM labels a noul answer yes/no. The criteria text is options[0]/options[1],
+        # and options[1] is the positive class.
         positive = float(answer["noul"])
         values = [1 - positive, positive]
     else:

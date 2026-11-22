@@ -290,16 +290,17 @@ _kev = _finish(
     )
     .pip_install(
         "transformers==5.17.0",
-        "peft>=0.21",
-        "accelerate>=1.12",
-        "datasets>=3",
-        "pydantic>=2.9",
-        "safetensors",
-        "sentencepiece",
-        "protobuf",
-        "huggingface_hub",
-        "einops",
-        "numpy",
+        "peft==0.22.0",
+        "accelerate==1.16.0",
+        "datasets==5.2.0",
+        "pydantic==2.14.4",
+        "safetensors==0.8.0",
+        "sentencepiece==0.2.3",
+        "protobuf==7.36.2",
+        "huggingface_hub==1.33.0",
+        "einops==0.8.2",
+        # The image is Python 3.11. NumPy 2.5 requires 3.12.
+        "numpy==2.4.6",
     )
     .run_commands(
         "git clone https://github.com/jaredpalmer/kev.git /opt/kev"

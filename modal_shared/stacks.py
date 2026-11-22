@@ -66,7 +66,7 @@ TRAIN_FUNCTION_NAMES: dict[str, str] = {s: f"sft_{s}" for s in TRAIN_STACKS}
 
 TRAIN_STACK_PINS: dict[str, str] = {
     TRAIN_DECISION: "unsloth==2026.10.3 / unsloth_zoo==2026.10.3 / torch==2.10.0 / transformers==5.17.0 / trl==1.13.0",
-    TRAIN_KEV: "torch==2.8.0 / transformers==5.17.0 / peft>=0.21 / kev@051142bf",
+    TRAIN_KEV: "torch==2.8.0 / transformers==5.17.0 / peft==0.22.0 / huggingface_hub==1.33.0 / kev@051142bf",
     TRAIN_U2026_7: "unsloth[cu128-torch270]==2026.7.5 / torch==2.7.0 / transformers>=5.2 / trl v1.10.0",
     TRAIN_U2026_8_TF510: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
     TRAIN_U2026_8_TF515: "unsloth[cu128-torch2100]==2026.8.5 / torch==2.10.0 / transformers>=5.15 / trl v1.10.0",
