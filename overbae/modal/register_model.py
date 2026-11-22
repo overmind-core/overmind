@@ -47,6 +47,7 @@ from pathlib import Path
 
 import modal
 
+from modal_shared.kev_bases import BASES
 from modal_shared.serving.artifacts import BASE_MANIFEST, seal_base
 
 WEIGHTS_MOUNT = "/weights"
@@ -125,6 +126,12 @@ BASE_MODELS_DIRNAME = ".base_models"
 
 def _base_model_dir(repo_id: str) -> Path:
     return Path(WEIGHTS_MOUNT) / BASE_MODELS_DIRNAME / repo_id.replace("/", "--")
+
+
+def cached_base_ready(base_dir: Path, base_model: str) -> bool:
+    if not _snapshot_is_complete(base_dir):
+        return False
+    return base_model not in BASES or (base_dir / "head.pt").is_file()
 
 
 def _snapshot_is_complete(base_dir: Path) -> bool:
@@ -793,11 +800,9 @@ def fetch_base_model(*, base_model: str) -> dict:
     """
     from huggingface_hub import hf_hub_download, snapshot_download  # noqa: PLC0415
 
-    from modal_shared.kev_bases import BASES
-
     weights_vol.reload()
     base_dir = _base_model_dir(base_model)
-    cached = _snapshot_is_complete(base_dir)
+    cached = cached_base_ready(base_dir, base_model)
     if cached:
         manifest = seal_base(base_dir, base_model)
         print(f"[base] {base_model} already cached at {base_dir}")

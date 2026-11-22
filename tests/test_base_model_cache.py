@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from overbae.modal.register_model import _base_model_dir, _snapshot_is_complete
+from overbae.modal.register_model import (
+    _base_model_dir,
+    _snapshot_is_complete,
+    cached_base_ready,
+)
 
 pytestmark = pytest.mark.covers("model-runtime")
 
@@ -68,6 +72,16 @@ def test_accepts_legacy_single_file_cache(tmp_path: Path):
     (d / "config.json").write_text("{}")
     _shard(d, "model.safetensors")
     assert _snapshot_is_complete(d)
+
+
+def test_kev_cache_needs_the_pointer_head(tmp_path: Path):
+    d = tmp_path / "base"
+    _write_sharded(d, ["a.safetensors"])
+    _shard(d, "a.safetensors")
+    assert not cached_base_ready(d, "jaredpalmer/kev-0.8b")
+    assert cached_base_ready(d, "Qwen/Qwen2.5-0.5B-Instruct")
+    (d / "head.pt").write_bytes(b"head")
+    assert cached_base_ready(d, "jaredpalmer/kev-0.8b")
 
 
 def test_rejects_missing_dir(tmp_path: Path):
