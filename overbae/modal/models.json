@@ -2726,7 +2726,7 @@
         "context_length": 65536,
         "max_batch_size": 4,
         "min_batch_size": 1,
-        "unsloth_image": "gemma4",
+        "unsloth_image": "u2026_8_tf510",
         "training_type": {
           "full": {
             "enabled": false,

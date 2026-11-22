@@ -19,6 +19,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
+    TRAIN_U2026_11_9,
 )
 
 _SFT_ENV = {
@@ -58,13 +59,25 @@ def _clone_trl(image: modal.Image, *, branch: str | None = "v1.10.0") -> modal.I
     return image.run_commands(cmd)
 
 
-def _assert_versions(label: str, *, torch_prefix: str, tf_min: tuple[int, int] | None) -> str:
+def _assert_versions(
+    label: str,
+    *,
+    torch_prefix: str,
+    tf_min: tuple[int, int] | None,
+    tf_max: tuple[int, int] | None = None,
+) -> str:
     tf_check = ""
     if tf_min:
         maj, minor = tf_min
-        tf_check = (
+        tf_check += (
             f"assert tuple(int(x) for x in transformers.__version__.split('.')[:2]) "
             f">= ({maj}, {minor}), transformers.__version__; "
+        )
+    if tf_max:
+        maj, minor = tf_max
+        tf_check += (
+            f"assert tuple(int(x) for x in transformers.__version__.split('.')[:2]) "
+            f"< ({maj}, {minor}), transformers.__version__; "
         )
     return (
         'python -c "import torch, transformers; from torch.nn.functional import ScalingType; '
@@ -209,6 +222,34 @@ def _unsloth_torch210_107() -> modal.Image:
     )
 
 
+def _unsloth_torch210_119() -> modal.Image:
+    # Gemma 4. transformers 5.15+ raises AmbiguousGlobalPerLayerAttributeError on head_dim.
+    return _base_cuda.pip_install(
+        "torch==2.10.0",
+        index_url="https://download.pytorch.org/whl/cu128",
+    ).pip_install(
+        "unsloth[cu128-torch2100]==2026.11.9",
+        "unsloth_zoo==2026.11.9",
+        "transformers>=5.10.2,<5.15",
+        "datasets>=3.0.0",
+        "huggingface_hub>=0.34.0",
+        "sentencepiece",
+        "protobuf",
+    )
+
+
+_u2026_11_9 = _finish(
+    _clone_trl(_unsloth_torch210_119()).run_commands(
+        _assert_versions("u2026_11_9-ok", torch_prefix="2.10", tf_min=(5, 10), tf_max=(5, 15)),
+    ),
+    {
+        **_SFT_ENV,
+        "TRL_SRC": "/opt/trl_src",
+        "UNSLOTH_IMAGE": TRAIN_U2026_11_9,
+    },
+)
+
+
 _u2026_10_7 = _finish(
     _clone_trl(_unsloth_torch210_107()).run_commands(
         _assert_versions("u2026_10_7-ok", torch_prefix="2.10", tf_min=(5, 17)),
@@ -323,4 +364,5 @@ TRAIN_IMAGES: dict[str, modal.Image] = {
     TRAIN_U2026_8_18: _u2026_8_18,
     TRAIN_U2026_9_2: _u2026_9_2,
     TRAIN_U2026_10_7: _u2026_10_7,
+    TRAIN_U2026_11_9: _u2026_11_9,
 }
