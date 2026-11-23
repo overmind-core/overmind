@@ -85,13 +85,24 @@ class ScoringLostError(Exception):
     pass
 
 
-@transaction.atomic
-def _save(score: EvalScore, task_id: str) -> None:
-    """Each score is saved as soon as it exists, and only while this scorer holds the run."""
-    held = EvalRun.objects.select_for_update().filter(pk=score.run_id, scoring_task_id=task_id)
+def _hold(run_id, task_id) -> None:
+    """Writes go through only while this scorer holds the run; the caller is atomic."""
+    held = EvalRun.objects.select_for_update().filter(pk=run_id, scoring_task_id=task_id)
     if held.values_list("pk", flat=True).first() is None:
         raise ScoringLostError("scoring was handed to another worker")
+
+
+@transaction.atomic
+def _save(score: EvalScore, task_id: str) -> None:
+    """Each score is saved as soon as it exists."""
+    _hold(score.run_id, task_id)
     score.save()
+
+
+@transaction.atomic
+def _row_failed(run_row: EvalRunRow, task_id: str, error: str) -> None:
+    _hold(run_row.run_id, task_id)
+    EvalRunRow.objects.filter(pk=run_row.pk).update(error=error)
 
 
 async def score_rows(run: EvalRun, task_id: str) -> int:
@@ -114,8 +125,8 @@ async def score_rows(run: EvalRun, task_id: str) -> int:
                 break
             except DecisionError as exc:
                 if attempt + 1 == ROW_ATTEMPTS:
-                    await EvalRunRow.objects.filter(pk=run_row.pk).aupdate(
-                        error=f"scoring failed: Jev {exc.reason}"
+                    await sync_to_async(_row_failed)(
+                        run_row, task_id, f"scoring failed: Jev {exc.reason}"
                     )
                     return None
                 await asyncio.sleep(RETRY_SECONDS * 2**attempt)

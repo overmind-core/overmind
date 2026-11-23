@@ -12,6 +12,7 @@ from collections import defaultdict
 from celery import current_app, shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.cache import cache
+from django.db.models import Q
 
 from overbae.core import async_loop
 from overbae.innermind import admission, generation, runs, signals, span_processor, trajectory
@@ -254,7 +255,7 @@ def score_eval_run(self, *, eval_run_id: str) -> dict:
     try:
         scored = runs.score(eval_run_id, self.request.id)
     except SoftTimeLimitExceeded:
-        runs.fail(eval_run_id, "scoring timed out")
+        runs.fail(eval_run_id, "scoring timed out", where=Q(scoring_task_id=self.request.id))
         scored = False
     return {"scored": scored}
 

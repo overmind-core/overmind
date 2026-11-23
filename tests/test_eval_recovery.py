@@ -64,6 +64,8 @@ def test_a_lost_scorer_is_replaced_and_keeps_the_scores_it_saved():
 
     with pytest.raises(dataset.ScoringLostError):
         dataset._save(EvalScore(project=run.project, run=run, source_id="late"), lost)
+    with pytest.raises(dataset.ScoringLostError):
+        dataset._row_failed(first, lost, "late judge error")
     replacement = handed(run)
     assert replacement != lost
     assert runs.score(run.pk, replacement)

@@ -203,11 +203,10 @@ def score(run_id, task_id) -> bool:
         return False
     run = EvalRun.objects.select_related("dataset__capability", "cell", "model_ref").get(pk=run_id)
 
-    def held():
-        return EvalRun.objects.filter(pk=run_id, scoring_task_id=task_id)
-
+    held = Q(scoring_task_id=task_id)
     beat = heartbeat.start(
-        lambda: held().update(updated_at=timezone.now()), owner=f"scoring {run_id}"
+        lambda: EvalRun.objects.filter(held, pk=run_id).update(updated_at=timezone.now()),
+        owner=f"scoring {run_id}",
     )
     try:
         async_loop.run(dataset.score_rows(run, task_id))
@@ -215,14 +214,11 @@ def score(run_id, task_id) -> bool:
         return False
     except Exception as exc:
         logger.exception("Scoring run %s failed", run_id)
-        if held().exists():
-            fail(run_id, f"scoring failed: {exc}")
+        fail(run_id, f"scoring failed: {exc}", where=held)
         return False
     finally:
         beat.set()
-    if not held().exists():
-        return False
-    finish(run)
+    finish(run, where=held)
     return True
 
 
@@ -261,14 +257,15 @@ def aggregate(run: EvalRun) -> dict:
     }
 
 
-def finish(run: EvalRun) -> None:
+def finish(run: EvalRun, *, where: Q = Q()) -> None:
     """Completes the run, then wires its consumers explicitly on fresh rows: the
-    status flip is a queryset update, so no model signal fires."""
+    status flip is a queryset update, so no model signal fires. ``where`` must still
+    hold when the status flips."""
     summary = aggregate(run)
     if found := classes.class_metrics(run):
         summary["class_metrics"] = found
     if (
-        not EvalRun.objects.filter(pk=run.pk)
+        not EvalRun.objects.filter(where, pk=run.pk)
         .exclude(status__in=EvalRun.TERMINAL)
         .update(
             status=EvalRun.Status.COMPLETED,
@@ -295,10 +292,11 @@ def on_terminal(run: EvalRun) -> None:
     on_candidate_eval_finished(run)
 
 
-def fail(run_id, reason: str) -> bool:
+def fail(run_id, reason: str, *, where: Q = Q()) -> bool:
+    """``where`` must still hold when the status flips."""
     now = timezone.now()
     if (
-        not EvalRun.objects.filter(pk=run_id)
+        not EvalRun.objects.filter(where, pk=run_id)
         .exclude(status__in=EvalRun.TERMINAL)
         .update(status=EvalRun.Status.FAILED, error=reason, completed_at=now, updated_at=now)
     ):
@@ -350,20 +348,23 @@ def reap_stalled() -> int:
     now = timezone.now()
     reaped = 0
     running = EvalRun.objects.filter(status=EvalRun.Status.RUNNING)
+    silent = Q(updated_at__lt=now - SCORER_STALE)
     for run_id, token, started, attempts, updated in (
         running.exclude(scoring_task_id="")
-        .filter(updated_at__lt=now - SCORER_STALE)
+        .filter(silent)
         .values_list(
             "pk", "scoring_task_id", "scoring_started_at", "scoring_attempts", "updated_at"
         )
     ):
         if started is None and updated >= now - STALL:
             continue  # The hand-off may still wait in the queue.
+        # A scorer that beat again since the read keeps its run.
+        still = silent & Q(scoring_task_id=token)
         if started is not None and attempts >= SCORING_ATTEMPTS:
-            reaped += fail(run_id, f"scoring stopped {attempts} times")
+            reaped += fail(run_id, f"scoring stopped {attempts} times", where=still)
             continue
         # The dispatcher hands the run to a new scorer; the old token can no longer save.
-        running.filter(pk=run_id, scoring_task_id=token).update(
+        running.filter(still, pk=run_id).update(
             scoring_task_id="", scoring_started_at=None, updated_at=now
         )
     for run_id in running.filter(scoring_task_id="", updated_at__lt=now - STALL).values_list(
@@ -381,7 +382,8 @@ def reap_stalled() -> int:
         status=EvalRun.Status.PENDING, updated_at__lt=now - PENDING_RESEND
     ).values_list("pk", "updated_at"):
         if updated < now - PENDING_LIMIT:
-            reaped += fail(run_id, "The run never started. Re-launch it.")
+            never_started = Q(status=EvalRun.Status.PENDING, updated_at__lt=now - PENDING_LIMIT)
+            reaped += fail(run_id, "The run never started. Re-launch it.", where=never_started)
             continue
         # start() claims the run once, so a duplicate start does nothing.
         result = run_eval_run.delay(eval_run_id=str(run_id))
