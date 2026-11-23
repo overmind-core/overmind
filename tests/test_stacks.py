@@ -27,12 +27,12 @@ _MODELS_JSON = Path(__file__).resolve().parents[1] / "overbae" / "modal" / "mode
 
 def test_normalize_train_stack_aliases() -> None:
     assert normalize_train_stack("default") == "u2026_8_18"
-    assert normalize_train_stack("gemma4") == "u2026_8_tf510"
+    assert normalize_train_stack("gemma4") == "u2026_11_9"
     assert normalize_train_stack("nemotron35") == "u2026_8_tf510"
     assert normalize_train_stack("muse") == "u2026_8_tf515"
     assert normalize_train_stack("gpt_oss") == "u2026_8_gptoss"
     assert normalize_train_stack("u2026_8_tf510") == "u2026_8_tf510"
-    assert train_function_name("gemma4") == "sft_u2026_8_tf510"
+    assert train_function_name("gemma4") == "sft_u2026_11_9"
     assert train_function_name("nemotron35") == "sft_u2026_8_tf510"
 
 

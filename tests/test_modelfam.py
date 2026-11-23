@@ -27,6 +27,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
+    TRAIN_U2026_11_9,
 )
 
 pytestmark = pytest.mark.covers("model-runtime")
@@ -127,7 +128,7 @@ def test_serve_image_from_checkpoint_finetune_ids() -> None:
 
 
 def test_gemma4_train_image() -> None:
-    assert resolve("google/gemma-4-E4B-it").train_image == TRAIN_U2026_8_TF510
+    assert resolve("google/gemma-4-E4B-it").train_image == TRAIN_U2026_11_9
     assert resolve("unsloth/Muse-Glimmer-30B").train_image == TRAIN_U2026_8_TF515
     assert resolve("unsloth/Muse-Glimmer-30B").serve_image == "vllm"
     assert resolve("Qwen/Qwen3-8B").train_image == TRAIN_U2026_10_7

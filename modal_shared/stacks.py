@@ -25,6 +25,9 @@ TRAIN_U2026_8_GPOS = "u2026_8_gptoss"
 TRAIN_U2026_8_18 = "u2026_8_18"
 TRAIN_U2026_9_2 = "u2026_9_2"
 TRAIN_U2026_10_7 = "u2026_10_7"
+# Gemma 4. 2026.8.5 on this family's old image resolved transformers to 5.24 and
+# died reading head_dim. 2026.11.9 with transformers held below 5.15 trained.
+TRAIN_U2026_11_9 = "u2026_11_9"
 TRAIN_DECISION = "u2026_10_3_decision"
 # Kev's trainer is not Unsloth and refuses torch 2.10. Own image, own key.
 TRAIN_KEV = "kev_2026_11"
@@ -41,6 +44,7 @@ TRAIN_STACKS: tuple[str, ...] = (
     TRAIN_U2026_8_18,
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
+    TRAIN_U2026_11_9,
     TRAIN_DECISION,
     TRAIN_KEV,
 )
@@ -48,7 +52,7 @@ TRAIN_STACKS: tuple[str, ...] = (
 # Historical FamilySpec / models.json keys. Lookup must normalize.
 TRAIN_STACK_ALIASES: dict[str, str] = {
     "default": TRAIN_U2026_8_18,
-    "gemma4": TRAIN_U2026_8_TF510,
+    "gemma4": TRAIN_U2026_11_9,
     "nemotron35": TRAIN_U2026_8_TF510,
     "muse": TRAIN_U2026_8_TF515,
     "gpt_oss": TRAIN_U2026_8_GPOS,
@@ -59,6 +63,7 @@ TRAIN_STACK_ALIASES: dict[str, str] = {
     TRAIN_U2026_8_18: TRAIN_U2026_8_18,
     TRAIN_U2026_9_2: TRAIN_U2026_9_2,
     TRAIN_U2026_10_7: TRAIN_U2026_10_7,
+    TRAIN_U2026_11_9: TRAIN_U2026_11_9,
 }
 
 # Deployed Modal Function = sft_{stack}. One name per Image.
@@ -74,6 +79,7 @@ TRAIN_STACK_PINS: dict[str, str] = {
     TRAIN_U2026_8_18: "unsloth[cu128-torch2100]==2026.8.18 / unsloth_zoo==2026.8.12 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
     TRAIN_U2026_9_2: "unsloth[cu128-torch2100]==2026.9.2 / unsloth_zoo==2026.9.1 / torch==2.10.0 / transformers>=5.10.2 / trl v1.10.0",
     TRAIN_U2026_10_7: "unsloth[cu128-torch2100]==2026.10.7 / unsloth_zoo==2026.10.7 / torch==2.10.0 / transformers==5.17.0 / trl v1.10.0",
+    TRAIN_U2026_11_9: "unsloth[cu128-torch2100]==2026.11.9 / unsloth_zoo==2026.11.9 / torch==2.10.0 / transformers>=5.10.2,<5.15 / trl v1.10.0",
 }
 
 
@@ -192,10 +198,9 @@ TRAIN_CANARIES: tuple[TrainCanary, ...] = (
     TrainCanary(TRAIN_U2026_9_2, "Qwen/Qwen3-0.6B", "Full", 0.6, "pr"),
     TrainCanary(TRAIN_U2026_8_18, "LiquidAI/LFM2.5-230M", "Lora", 0.23, "pr"),
     TrainCanary(TRAIN_U2026_8_18, "LiquidAI/LFM2.5-230M", "Full", 0.23, "pr"),
-    # Gemma4 / Nemotron35 stay on tf510 — 8.18 + transformers 5.15 hits
-    # AmbiguousGlobalPerLayerAttributeError on Gemma4 head_dim.
-    TrainCanary(TRAIN_U2026_8_TF510, "unsloth/gemma-4-E2B-it", "Lora", 5.1, "pr"),
-    TrainCanary(TRAIN_U2026_8_TF510, "unsloth/gemma-4-E2B-it", "Full", 5.1, "pr"),
+    # Bolt stays on tf510. Gemma 4 moved to 2026.11.9.
+    TrainCanary(TRAIN_U2026_8_TF510, "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16", "Lora", 8.0, "pr"),
+    TrainCanary(TRAIN_U2026_11_9, "unsloth/gemma-4-E2B-it", "Lora", 5.1, "pr"),
     TrainCanary(TRAIN_U2026_7, "Qwen/Qwen3-0.6B", "Lora", 0.6, "nightly"),
     TrainCanary(TRAIN_U2026_8_TF515, "unsloth/Muse-Glimmer-30B", "Lora", 30.0, "nightly"),
     TrainCanary(

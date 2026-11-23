@@ -12,6 +12,7 @@ from modal_shared.stacks import (
     TRAIN_U2026_8_TF515,
     TRAIN_U2026_9_2,
     TRAIN_U2026_10_7,
+    TRAIN_U2026_11_9,
 )
 
 KEV = FamilySpec(
@@ -85,7 +86,7 @@ PHI4 = FamilySpec(
 GEMMA4 = FamilySpec(
     key="gemma4",
     patterns=("gemma-4", "gemma4"),
-    train_image=TRAIN_U2026_8_TF510,
+    train_image=TRAIN_U2026_11_9,
     # Native <|tool_call>call:…<tool_call|> — hermes never matches.
     tool_call_parser="gemma4",
     pretok_headers=(r"<\|turn>(\w+)\n",),
