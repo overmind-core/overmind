@@ -122,4 +122,4 @@ Always re-read the PR afterwards (`gh pr view <n>`) to confirm the edit landed.
 - Never push directly to `main`; land work via a PR from a feature branch. A hook blocks a push that names `main` or `master`, and any `git push` while `main` or `master` is checked out.
 - Verify the actual current branch with `git status -sb` before pushing — the session-start banner can be stale.
 - Commit messages: short subject + at most one body line. No co-author trailers.
-- For fix-sweep PRs, a before/after table in the body is the house style.
+- The body opens with the template's Summary: one line for the whole change, then the What / Before / After / Why table (one row per change, short phrases, measured numbers where they exist). The Decisions and Assumptions sections follow, one bullet each.

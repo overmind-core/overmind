@@ -1,5 +1,5 @@
 from celery import shared_task
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from overbae.models import DeployedModel, InferenceCall, InferenceRequest, OperationalRun
@@ -16,7 +16,7 @@ def inspect_inference_request(request_id):
 def reconcile_inference_requests():
     for request_id in InferenceRequest.objects.filter(
         Q(state__in=ACTIVE, next_poll_at__lte=timezone.now())
-        | (Q(state__in=FINISHED) & ~Q(pk__in=InferenceCall.objects.values("pk")))
+        | Q(~Exists(InferenceCall.objects.filter(pk=OuterRef("pk"))), state__in=FINISHED)
     ).values_list("id", flat=True)[:100]:
         inspect_inference_request.delay(str(request_id))
     for operation_id in OperationalRun.objects.filter(
