@@ -124,19 +124,36 @@ def test_a_stale_task_id_cannot_claim_the_row(limits):
     assert generation.claim(row_id, task_id) is False
 
 
-def test_lost_running_work_is_recorded_unknown_and_not_replayed(limits):
+def test_lost_running_work_runs_once_more_under_a_new_token_then_is_unknown(limits):
+    make_run(count=1)
+    published = Published()
+    published.tick()
+    for _ in range(generation.GENERATION_ATTEMPTS):
+        row_id, task_id = published.rows[-1]
+        assert generation.claim(row_id, task_id)
+        EvalRunRow.objects.filter(pk=row_id).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        assert published.tick()["expired"] == 1
+        assert not generation.claim(row_id, task_id)
+    row = EvalRunRow.objects.get(pk=row_id)
+    assert row.state == EvalRunRow.State.UNKNOWN
+    assert row.attempts == generation.GENERATION_ATTEMPTS
+    assert "unknown" in row.error
+    assert len(published.rows) == generation.GENERATION_ATTEMPTS
+
+
+def test_a_message_lost_before_its_claim_waits_again_without_an_attempt(limits):
     make_run(count=1)
     published = Published()
     published.tick()
     row_id, task_id = published.rows[0]
-    generation.claim(row_id, task_id)
     EvalRunRow.objects.filter(pk=row_id).update(expires_at=timezone.now() - timedelta(seconds=1))
-
-    assert published.tick()["expired"] == 1
+    published.tick()
     row = EvalRunRow.objects.get(pk=row_id)
-    assert row.state == EvalRunRow.State.UNKNOWN
-    assert "not replayed" in row.error
-    assert len(published.rows) == 1
+    assert (row.state, row.attempts, row.error) == (EvalRunRow.State.QUEUED, 0, "")
+    assert not generation.claim(row_id, task_id)
+    assert generation.claim(*published.rows[-1])
 
 
 def test_a_saved_result_survives_worker_loss_without_replay(limits):

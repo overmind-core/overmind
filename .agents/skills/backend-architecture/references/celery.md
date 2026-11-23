@@ -37,7 +37,7 @@ Waiting work is a PostgreSQL row, admitted by a row-locked dispatcher in least-r
 - `EvalGenerationScheduler` — `EVAL_MAX_IN_FLIGHT`, `EVAL_MAX_IN_FLIGHT_PER_PROJECT` and `EVAL_MAX_IN_FLIGHT_PER_RUN`; completion and a 30-second control tick refill slots.
 - `DatasetPipelineRun` is the exception: a queued run takes a per-project Redis slot or retries through the broker every 2 s, and fails after 15 minutes without capacity. The default project limit stays below the minimum interactive worker size.
 
-A lost started attempt becomes an explicit unknown outcome. It is never repeated automatically. Queue metrics report durable backlog and oldest waiting age.
+A lost started attempt is repeated only where a repeat has no outside effect: an upload until `imports.MAX_ATTEMPTS`, and an eval row's generation once (`generation.GENERATION_ATTEMPTS`), since it replays recorded tools. Anything else becomes an explicit unknown outcome and is never repeated automatically. Queue metrics report durable backlog and oldest waiting age.
 
 ## Leases and reconcilers
 

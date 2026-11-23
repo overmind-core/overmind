@@ -265,6 +265,7 @@ class EvalRun(models.Model):
     last_admitted_at = models.DateTimeField(null=True, blank=True)
     scoring_task_id = models.CharField(max_length=255, blank=True, default="")
     scoring_started_at = models.DateTimeField(null=True, blank=True)
+    scoring_attempts = models.SmallIntegerField(db_default=0)
 
     triggered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -335,6 +336,7 @@ class EvalRunRow(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.SmallIntegerField(db_default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

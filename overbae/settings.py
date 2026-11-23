@@ -527,7 +527,7 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.finetuning_reconciler.reconcile_finetuning_jobs",
         "schedule": 15.0,
     },
-    # Fails runs stuck in RUNNING with no row progress and no healthy generation wait.
+    # Hands a silent scorer to a new worker, resends a lost run start and fails stalled runs.
     "reap-stalled-eval-runs": {
         "task": "overbae.tasks.innermind.reap_stalled_runs",
         "schedule": 300.0,

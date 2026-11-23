@@ -6,7 +6,7 @@ Span-only: there is no Trace table. A trace is the spans sharing a `trace_id`; t
 
 ## Ingest
 
-`POST /api/v1/traces` (alias `/v1/traces`) accepts an OTLP protobuf or JSON export → flatten `ResourceSpans → ScopeSpans → Span` → bulk upsert on `span_id` → `process_span` → `enqueue_scoring`, which adds `LiveScoringWork` rows and wakes `dispatch_live_scoring`; `execute_live_scoring` then runs `span_processor.score_spans`. Connector imports use the same path.
+`POST /api/v1/traces` (alias `/v1/traces`) accepts an OTLP protobuf or JSON export of at most `MAX_EXPORT_BYTES` (20 MiB) before and after gzip, else 413 → flatten `ResourceSpans → ScopeSpans → Span` → bulk upsert on `span_id` → `process_span` → `enqueue_scoring`, which adds `LiveScoringWork` rows and wakes `dispatch_live_scoring`; `execute_live_scoring` then runs `span_processor.score_spans`. Connector imports use the same path.
 
 Span cost has one owner: `services/span_pricing.stamp_span_cost` runs on every OTLP and connector span before storage. A reported cost (any alias, coalesced to `genai.cost`) is kept; otherwise `genai-prices` prices it from model, tokens and cache reads. The SDK never prices. Gateway billing is separate on purpose: it charges what OpenRouter reports (`usage.cost`), with `model_catalog.estimate_cost` list prices as the fallback.
 

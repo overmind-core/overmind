@@ -8,10 +8,11 @@ import json
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.db import transaction
 
 from overbae.core.decisions import DecisionError
 from overbae.innermind import generation
-from overbae.innermind.span_processor import EVAL_SCORE_BATCH, SpanProcessor
+from overbae.innermind.span_processor import SpanProcessor
 from overbae.models import EvalMatrix, EvalRun, EvalRunRow, EvalScore, Span
 from overbae.services.datasets import rows as row_store
 
@@ -65,7 +66,13 @@ class DatasetRowProcessor(SpanProcessor):
 
 
 def scoreable(run: EvalRun) -> list[tuple[row_store.DatasetRow, EvalRunRow]]:
-    run_rows = list(run.rows.filter(error="", degraded=False).exclude(output=None))
+    """Rows a previous scorer already saved are skipped."""
+    scored = set(run.scores.values_list("source_id", flat=True))
+    run_rows = [
+        row
+        for row in run.rows.filter(error="", degraded=False).exclude(output=None)
+        if f"{run.cell_id}:{row.row_index}" not in scored
+    ]
     if not run_rows:
         return []
     dataset_rows = {
@@ -74,7 +81,20 @@ def scoreable(run: EvalRun) -> list[tuple[row_store.DatasetRow, EvalRunRow]]:
     return [(dataset_rows[r.row_index], r) for r in run_rows if r.row_index in dataset_rows]
 
 
-async def score_rows(run: EvalRun) -> int:
+class ScoringLostError(Exception):
+    pass
+
+
+@transaction.atomic
+def _save(score: EvalScore, task_id: str) -> None:
+    """Each score is saved as soon as it exists, and only while this scorer holds the run."""
+    held = EvalRun.objects.select_for_update().filter(pk=score.run_id, scoring_task_id=task_id)
+    if held.values_list("pk", flat=True).first() is None:
+        raise ScoringLostError("scoring was handed to another worker")
+    score.save()
+
+
+async def score_rows(run: EvalRun, task_id: str) -> int:
     """Appends one EvalScore per scoreable row and returns how many were written. The
     run must arrive with ``dataset__capability`` and ``cell`` loaded."""
     pairs = await sync_to_async(scoreable)(run)
@@ -99,7 +119,7 @@ async def score_rows(run: EvalRun) -> int:
                     )
                     return None
                 await asyncio.sleep(RETRY_SECONDS * 2**attempt)
-        return EvalScore(
+        saved = EvalScore(
             project_id=run.project_id,
             source_type=EvalScore.SourceType.DATASET_ROW,
             source_id=f"{run.cell_id}:{run_row.row_index}",
@@ -107,8 +127,8 @@ async def score_rows(run: EvalRun) -> int:
             score=span.eval_attributes["score"],
             metrics=span.eval_attributes["metrics"],
         )
+        await sync_to_async(_save)(saved, task_id)
+        return saved
 
     results = await asyncio.gather(*(score(row, run_row) for row, run_row in pairs))
-    scores = [score for score in results if score is not None]
-    await EvalScore.objects.abulk_create(scores, batch_size=EVAL_SCORE_BATCH)
-    return len(scores)
+    return sum(score is not None for score in results)

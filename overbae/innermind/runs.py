@@ -20,6 +20,7 @@ from overbae.innermind import classes, comparison, dataset, generation
 from overbae.innermind.metrics import FAIL_BELOW
 from overbae.models import EvalMatrix, EvalRun, EvalRunRow, EvalSet, FinetuningJob
 from overbae.services.activity import update_task
+from overbae.services.datasets import heartbeat
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.alignment import system_prompt
 from overbae.services.datasets.sampling import select_rows
@@ -29,8 +30,13 @@ logger = logging.getLogger(__name__)
 ROW_BATCH = 500
 # A running run whose rows have not moved for this long is failed.
 STALL = timedelta(minutes=30)
-# Scoring writes nothing until it ends; it matches the scoring task's hard limit.
-SCORING_LIMIT = timedelta(hours=2)
+# A scorer beats while its process lives; a silent one is replaced, and the new
+# scorer skips the scores already saved.
+SCORER_STALE = timedelta(seconds=heartbeat.STALE_SECONDS)
+SCORING_ATTEMPTS = 3
+# A pending run whose start message was lost is sent again, then failed.
+PENDING_RESEND = timedelta(minutes=10)
+PENDING_LIMIT = timedelta(minutes=60)
 
 
 class RunError(ValueError):
@@ -196,11 +202,25 @@ def score(run_id, task_id) -> bool:
     if not generation.begin_scoring(run_id, task_id):
         return False
     run = EvalRun.objects.select_related("dataset__capability", "cell", "model_ref").get(pk=run_id)
+
+    def held():
+        return EvalRun.objects.filter(pk=run_id, scoring_task_id=task_id)
+
+    beat = heartbeat.start(
+        lambda: held().update(updated_at=timezone.now()), owner=f"scoring {run_id}"
+    )
     try:
-        async_loop.run(dataset.score_rows(run))
+        async_loop.run(dataset.score_rows(run, task_id))
+    except dataset.ScoringLostError:
+        return False
     except Exception as exc:
         logger.exception("Scoring run %s failed", run_id)
-        fail(run_id, f"scoring failed: {exc}")
+        if held().exists():
+            fail(run_id, f"scoring failed: {exc}")
+        return False
+    finally:
+        beat.set()
+    if not held().exists():
         return False
     finish(run)
     return True
@@ -329,14 +349,43 @@ def row_scores(run: EvalRun) -> dict[int, float | None]:
 def reap_stalled() -> int:
     now = timezone.now()
     reaped = 0
-    for run_id in (
-        EvalRun.objects.filter(status=EvalRun.Status.RUNNING, updated_at__lt=now - STALL)
-        .exclude(scoring_started_at__gte=now - SCORING_LIMIT)
-        .values_list("pk", flat=True)
+    running = EvalRun.objects.filter(status=EvalRun.Status.RUNNING)
+    for run_id, token, started, attempts, updated in (
+        running.exclude(scoring_task_id="")
+        .filter(updated_at__lt=now - SCORER_STALE)
+        .values_list(
+            "pk", "scoring_task_id", "scoring_started_at", "scoring_attempts", "updated_at"
+        )
+    ):
+        if started is None and updated >= now - STALL:
+            continue  # The hand-off may still wait in the queue.
+        if started is not None and attempts >= SCORING_ATTEMPTS:
+            reaped += fail(run_id, f"scoring stopped {attempts} times")
+            continue
+        # The dispatcher hands the run to a new scorer; the old token can no longer save.
+        running.filter(pk=run_id, scoring_task_id=token).update(
+            scoring_task_id="", scoring_started_at=None, updated_at=now
+        )
+    for run_id in running.filter(scoring_task_id="", updated_at__lt=now - STALL).values_list(
+        "pk", flat=True
     ):
         if generation.wait_is_healthy(run_id):
             continue
         reaped += fail(
             run_id, f"evaluation stalled for over {int(STALL.total_seconds() // 60)} minutes"
+        )
+    # tasks.innermind imports this module.
+    from overbae.tasks.innermind import run_eval_run  # noqa: PLC0415
+
+    for run_id, updated in EvalRun.objects.filter(
+        status=EvalRun.Status.PENDING, updated_at__lt=now - PENDING_RESEND
+    ).values_list("pk", "updated_at"):
+        if updated < now - PENDING_LIMIT:
+            reaped += fail(run_id, "The run never started. Re-launch it.")
+            continue
+        # start() claims the run once, so a duplicate start does nothing.
+        result = run_eval_run.delay(eval_run_id=str(run_id))
+        EvalRun.objects.filter(pk=run_id, status=EvalRun.Status.PENDING).update(
+            celery_task_id=result.id
         )
     return reaped
