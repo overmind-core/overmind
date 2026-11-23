@@ -1,5 +1,7 @@
 ## Summary
 
+<!-- One line: the whole change and its context. -->
+
 <!-- One row per change. Short phrases, not sentences. Put measured numbers in
      Before and After when you have them. Link the issue in Why if there is one. -->
 
@@ -7,10 +9,15 @@
 | ---- | ------ | ----- | --- |
 |      |        |       |     |
 
-## Decisions and assumptions
+## Decisions
 
-<!-- Every choice a reviewer could question, and every assumption the change
-     rests on. One bullet each. -->
+<!-- Every choice a reviewer could question. One bullet each. -->
+
+-
+
+## Assumptions
+
+<!-- Every fact the change rests on that you did not verify. One bullet each. -->
 
 -
 
