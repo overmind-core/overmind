@@ -216,7 +216,12 @@ def _resume(thread) -> None:
         return
     if last.kind == Kind.ASSISTANT and not last.payload["calls"]:
         return
-    if last.kind == Kind.TOOL_RESULT and last.presentation and presentation.asks(last.presentation):
+    # Any call of the newest reply that asked the user ends the answer, as in ``_answer``.
+    reply = thread.events.filter(kind=Kind.ASSISTANT).order_by("-sequence").first()
+    results = thread.events.filter(
+        kind=Kind.TOOL_RESULT, sequence__gt=reply.sequence if reply else 0
+    ).exclude(presentation=None)
+    if any(presentation.asks(result.presentation) for result in results.only("presentation")):
         return
     _answer(thread, time.monotonic() + TURN_SECONDS)
 

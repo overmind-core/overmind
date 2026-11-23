@@ -227,13 +227,23 @@ def test_a_turn_whose_worker_was_lost_is_taken_over_and_continues_its_reply(
         log.append(thread, "assistant", {"text": "late", "calls": [], "usage": {}}, turn=4)
 
 
-@pytest.mark.parametrize("ended", ["reply", "failure"])
+@pytest.mark.parametrize("ended", ["reply", "failure", "question"])
 def test_a_reply_that_ended_is_not_written_again_when_its_turn_is_taken_over(
     fake_llm, user, thread, ended
 ):
-    lost_midway(thread, user, calls=[])
+    calls = [
+        {"id": "ask", "name": "present", "raw": "{}"},
+        {"id": "q", "name": "query_dataset", "raw": "{}"},
+    ]
+    lost_midway(thread, user, calls=calls if ended == "question" else [])
     if ended == "failure":
         log.append(thread, "status", {"state": "failed", "detail": "The model did not answer."})
+    if ended == "question":
+        # The question came first; the reply's last call was an ordinary one.
+        question = {"root": {"type": "Question", "id": "task", "prompt": "Which task?"}}
+        for call, shown in (("ask", question), ("q", None)):
+            result = {"call": call, "name": "x", "ok": True, "content": {}}
+            log.append(thread, "tool_result", result, presentation=shown)
     turn.run(thread.pk)
     thread.refresh_from_db()
     assert thread.events.last().payload["state"] == "resumed"
