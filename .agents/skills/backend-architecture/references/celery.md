@@ -22,11 +22,11 @@ Each worker consumes only its own queue. Beat runs as its own `celery-beat` serv
 - `run_eval_run` routes to `io` because Modal warm-up blocks for minutes.
 - `io_traces` is separate from `io` so trace scoring cannot occupy preparation or serving slots.
 
-Every prefork lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved late-ack message is redelivered after the broker `visibility_timeout` (2 h), which must stay above every late-ack time limit.
+Every worker lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved late-ack message is redelivered after the broker `visibility_timeout` (2 h), which must stay above every late-ack time limit.
 
 ## Routing must agree in four places
 
-`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` checks that compose and `make worker` drain every routed queue, rejects a time-limited task on a compose thread pool, checks the prefork prefetch flags and the `io`/`io_traces` split in `worker-topology.json`, and imports `overbae.tasks` in a fresh worker. Nothing checks that `worker-topology.json` drains every queue; keep it in step by hand. Workers hot-restart via watchmedo on `.py` changes.
+`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` checks that compose and `make worker` drain every routed queue, rejects a time-limited task on a compose thread pool, checks every lane's prefetch flags and the `io`/`io_traces` split in `worker-topology.json`, and imports `overbae.tasks` in a fresh worker. Nothing checks that `worker-topology.json` drains every queue; keep it in step by hand. Workers hot-restart via watchmedo on `.py` changes.
 
 ## Durable admission
 
