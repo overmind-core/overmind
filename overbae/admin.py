@@ -9,7 +9,6 @@ from overbae.models import (
     Dataset,
     EvalMatrix,
     EvalRun,
-    EvalRunRow,
     EvalScore,
     EvalSet,
     Feedback,
@@ -251,6 +250,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
 @admin.register(BillingTelemetry)
 class BillingTelemetryAdmin(admin.ModelAdmin):
     list_display = ["user", "service", "amount", "project", "timestamp", "idempotency_key"]
+    list_select_related = ["user", "project"]
     list_filter = ["service"]
     search_fields = ["user__email", "idempotency_key"]
     readonly_fields = ["id", "timestamp"]
@@ -413,28 +413,24 @@ class EvalSetAdmin(admin.ModelAdmin):
     readonly_fields = ["id", "created_at", "updated_at"]
 
 
-class EvalRunRowInline(admin.TabularInline):
-    model = EvalRunRow
-    extra = 0
-    fields = ["row_index", "state", "degraded", "error"]
-    readonly_fields = fields
-
-
 @admin.register(EvalRun)
 class EvalRunAdmin(admin.ModelAdmin):
     list_display = ["name", "project", "status", "mode", "is_baseline", "group", "created_at"]
+    list_select_related = ["project"]
     list_filter = ["status", "mode", "created_at"]
     search_fields = ["name", "project__slug", "group"]
     readonly_fields = ["id", "created_at", "updated_at", "completed_at"]
-    inlines = [EvalRunRowInline]
+    raw_id_fields = ["project", "dataset", "cell", "eval_set", "model_ref", "triggered_by"]
 
 
 @admin.register(EvalScore)
 class EvalScoreAdmin(admin.ModelAdmin):
     list_display = ["source_type", "source_id", "score", "run", "project", "created_at"]
+    list_select_related = ["run", "project"]
     list_filter = ["source_type", "created_at"]
     search_fields = ["source_id", "run__name"]
     readonly_fields = ["id", "created_at"]
+    raw_id_fields = ["project", "run"]
 
 
 @admin.register(SignalSubscription)
