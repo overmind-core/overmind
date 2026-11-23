@@ -128,6 +128,7 @@ def relaunch(run: EvalRun) -> bool:
             completed_at=None,
             scoring_task_id="",
             scoring_started_at=None,
+            scoring_attempts=0,
             updated_at=timezone.now(),
         ):
             return False

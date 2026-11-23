@@ -185,8 +185,10 @@ def begin_scoring(run_id, task_id) -> bool:
         return False
     if run.scoring_task_id != task_id or run.scoring_started_at is not None:
         return False
+    # A hand-off that waited in the queue starts with a fresh heartbeat.
+    now = timezone.now()
     EvalRun.objects.filter(pk=run.pk).update(
-        scoring_started_at=timezone.now(), scoring_attempts=F("scoring_attempts") + 1
+        scoring_started_at=now, scoring_attempts=F("scoring_attempts") + 1, updated_at=now
     )
     return True
 

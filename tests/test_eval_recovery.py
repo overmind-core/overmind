@@ -77,6 +77,15 @@ def test_a_lost_scorer_is_replaced_and_keeps_the_scores_it_saved():
     )
 
 
+def test_a_hand_off_that_waited_in_the_queue_starts_with_a_fresh_heartbeat():
+    run = scored_run()
+    token = handed(run)
+    silence(run)
+    assert generation.begin_scoring(run.pk, token)
+    runs.reap_stalled()
+    assert EvalRun.objects.get(pk=run.pk).scoring_task_id == token
+
+
 def test_a_run_whose_start_was_lost_is_sent_again_then_failed(monkeypatch):
     sent = []
     monkeypatch.setattr(
