@@ -287,3 +287,36 @@ def test_a_recycled_scoring_row_waits_from_its_recycle_not_its_creation():
     admission.enqueue(project.pk, "span", ["a"])
     oldest = read_workloads()["io_traces"]["oldest"]
     assert timezone.now() - oldest < timedelta(minutes=1)
+
+
+@pytest.mark.django_db
+def test_eval_demand_counts_only_rows_admission_can_start(settings):
+    import uuid
+
+    from overbae.models import EvalRun, EvalRunRow, Project
+
+    settings.EVAL_MAX_IN_FLIGHT = 12
+    settings.EVAL_MAX_IN_FLIGHT_PER_RUN = 2
+    settings.EVAL_MAX_IN_FLIGHT_PER_PROJECT = 4
+
+    def run(project, rows, scoring=""):
+        made = EvalRun.objects.create(
+            project=project,
+            name="run",
+            status=EvalRun.Status.RUNNING,
+            mode=EvalRun.Mode.GENERATE,
+            model_name="openai/gpt-5-mini",
+            scoring_task_id=scoring,
+        )
+        EvalRunRow.objects.bulk_create(
+            [EvalRunRow(run=made, row_index=index) for index in range(rows)]
+        )
+
+    big = Project.objects.create(name="big", slug=uuid.uuid4().hex)
+    for _ in range(3):
+        run(big, 5000)
+    run(Project.objects.create(name="small", slug=uuid.uuid4().hex), 1)
+    run(big, 0, scoring=str(uuid.uuid4()))
+    workload = read_workloads()["batch"]
+    assert workload["waiting"] == 15001
+    assert workload["scaling_demand"] == 4 + 1 + 1

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
@@ -13,6 +14,7 @@ from overbae.models import (
     DatasetImport,
     DatasetLandingWork,
     DatasetPipelineRun,
+    EvalRun,
     EvalRunRow,
     LiveScoringWork,
 )
@@ -82,6 +84,26 @@ def read_workloads():
     )
     ages = [evaluation.pop(key) for key in ("oldest_waiting", "oldest_queued")]
     evaluation["oldest"] = min((stamp for stamp in ages if stamp is not None), default=None)
+    # Generation admits at most EVAL_MAX_IN_FLIGHT rows, per run and per project; each
+    # run being scored holds one more slot.
+    per_run = max(1, settings.EVAL_MAX_IN_FLIGHT_PER_RUN)
+    by_project = defaultdict(int)
+    for row in (
+        EvalRunRow.objects.filter(
+            run__status="running",
+            run__scoring_task_id="",
+            state__in=["waiting", "queued", "running"],
+        )
+        .values("run_id", "run__project_id")
+        .annotate(total=Count("pk"))
+    ):
+        by_project[row["run__project_id"]] += min(row["total"], per_run)
+    per_project = max(1, settings.EVAL_MAX_IN_FLIGHT_PER_PROJECT)
+    generating = sum(min(total, per_project) for total in by_project.values())
+    evaluation["scaling_demand"] = (
+        min(max(1, settings.EVAL_MAX_IN_FLIGHT), generating)
+        + EvalRun.objects.filter(status="running").exclude(scoring_task_id="").count()
+    )
     workshop = DatasetPipelineRun.objects.filter(state__in=["queued", "running"]).aggregate(
         waiting=Count("pk", filter=Q(state="queued")),
         running=Count("pk", filter=Q(state="running")),
