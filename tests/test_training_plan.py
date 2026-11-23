@@ -34,6 +34,11 @@ def _plan(**overrides):
     return derive_training_plan(**kwargs)
 
 
+def test_gpt_oss_lora_records_4bit():
+    plan = _plan(model_id="openai/gpt-oss-20b", params_b=21.0)
+    assert ModalRunner._training_env(plan, "openai/gpt-oss-20b")["LOAD_IN_4BIT"] == "1"
+
+
 def test_modal_plan_uses_its_catalog_bounds_for_shared_model_id():
     config = ModalRunner.model_config("Qwen/Qwen3.5-2B")
     assert config["backend"] == "modal"
@@ -84,7 +89,6 @@ class TestExplicitValuesWin:
         assert plan.token_budget == 32768
         env = ModalRunner._training_env(plan, "Qwen/Qwen3.5-4B")
         assert env["PADDED_TOKEN_BUDGET"] == "32768"
-        assert env["UNSLOTH_BLOCK_COMPILE"] == "0"
 
     @pytest.mark.parametrize("enabled", [True, False])
     def test_native_baseline_choice_reaches_worker_environment(self, enabled):

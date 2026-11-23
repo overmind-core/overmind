@@ -1,5 +1,5 @@
 {
-  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field naming the provider that trains and serves it (modal | decision). Models available on several backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). inference.lora_supported declares verified shared-base LoRA support for MoE models; dense models support it by default. inference.min_vram_gb is a measured minimum GPU capacity enforced for automatic inference selection, including short contexts. num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a model at its serving max_model_len, including input and reserved output. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. modal models train LoRA or Full on H100s/H200s via our train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM3-1.7B 262144, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is the 'from' price of a typical small LoRA run at cost: its typical GPU-minutes \u00d7 Modal's H100 rate ($3.95/h, modal.com/pricing, retrieved 2026-11-20) on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
+  "comment": "Single source of truth for all models supported by the Overmind platform. Each entry carries a 'backend' field naming the provider that trains and serves it (modal | decision). Models available on several backends appear as separate entries with their own inference/finetuning sub-configs. inference.gpu_type is the default for base-model inference (BF16 serving, single GPU). inference.lora_supported declares verified shared-base LoRA support for MoE models; dense models support it by default. inference.min_vram_gb is a measured minimum GPU capacity enforced for automatic inference selection, including short contexts. num_attn_layers/num_kv_heads/head_dim are used by gpu_selector.py to derive the optimal GPU + concurrency for a model at its serving max_model_len, including input and reserved output. For hybrid models (Qwen3.5), num_attn_layers counts only full-attention layers. Use model_registry.py helpers to filter by backend. To add/remove models, edit only this file. inference.dedicated_engine and inference.serverless_engine name the measured serve stack for that row. Omit a key to use the family serve image. modal models train LoRA or Full on H100s/H200s via our train.py; finetuning.context_length is the model's max trainable context = HF config max_position_embeddings (Qwen2.5 32768, Qwen3 dense 40960, Qwen3.5/3.6/3.8/Coder 262144, Llama 3.x / GPT-OSS / Antares-1B 131072, Antares-350M 32768, LFM3-1.7B 262144, LFM2.5-230M/350M/1.2B 32768 per Liquid's documented window, LFM2.5-8B-A1B 128000, LFM2.5-2.6B 131072; train.py applies no RoPE scaling). context_length (top-level) is the published inference window (YaRN-extended where the vendor documents it: Qwen2.5\u22657B and Qwen3 dense \u2192 131072; Qwen2.5-0.5B stays 32768). The runner snaps the actual training MAX_LENGTH up from dataset stats using finetuning_providers.<backend> policy below. pricing.train_from_usd is the 'from' price of a typical small LoRA run at cost: its typical GPU-minutes \u00d7 Modal's H100 rate ($3.95/h, modal.com/pricing, retrieved 2026-11-20) on 1\u00d7H100 (\u226472B). pricing.run_from_usd_per_1m_output is serving per 1M output tokens (Modal L4/L40S self-hosted vLLM floors; MoE uses active-param band). group is the marketing library tab label (Group on /models specs); provider comes from providers.display_names. model.marketing holds buyer-facing copy per model (pitch, description, overview, good_for) for the marketing site detail pages. group is only the library tab/filter label. library_filters defines the marketing /models multi-select filters (use_case, tier, context); each model.use_cases lists which use-case filter ids apply. tier/context filters match model.tier and model.context_length against library_filters entries. The order of the models array is the catalog display order within a tier (newest generation first); recommendation ranking is decided by benchmark grades, not by this order.",
   "providers": {
     "comment": "Friendly display name per model-id prefix (the part before the first '/'), keyed lowercase, under display_names. Used by overbae.services.model_library to label each model's family/provider on the public /library pages. Unknown prefixes fall back to a title-cased version of the raw prefix \u2014 add an entry here instead of hardcoding it in Python.",
     "display_names": {
@@ -33,6 +33,8 @@
       "hidden_size": 2560,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -96,6 +98,8 @@
       "hidden_size": 2048,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -159,6 +163,8 @@
       "hidden_size": 1024,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -223,6 +229,8 @@
       "hidden_size": 2560,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -286,6 +294,7 @@
       "hidden_size": 2048,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -347,6 +356,7 @@
       "hidden_size": 1024,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -408,6 +418,7 @@
       "hidden_size": 896,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -469,6 +480,7 @@
       "hidden_size": 3072,
       "fp8_supported": false,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -530,6 +542,7 @@
       "hidden_size": 2048,
       "fp8_supported": false,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -961,6 +974,7 @@
       "hidden_size": 1024,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 8192
       },
@@ -1021,6 +1035,8 @@
       "hidden_size": 4096,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 16384
       },
@@ -1085,6 +1101,8 @@
       "hidden_size": 4096,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 16384
       },
@@ -1148,6 +1166,7 @@
       "hidden_size": 3584,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L4",
         "max_model_len": 16384
       },
@@ -1522,6 +1541,7 @@
       "hidden_size": 5120,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
         "gpu_type": "L40S",
         "max_model_len": 16384
       },
@@ -1585,6 +1605,7 @@
       "hidden_size": 5120,
       "fp8_supported": true,
       "inference": {
+        "dedicated_engine": "sglang",
         "gpu_type": "L40S",
         "max_model_len": 16384
       },
@@ -1775,6 +1796,7 @@
       "hidden_size": 5120,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L40S",
         "max_model_len": 16384
       },
@@ -1838,6 +1860,7 @@
       "hidden_size": 5120,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "L40S",
         "max_model_len": 16384
       },
@@ -2026,6 +2049,7 @@
       "fp8_supported": false,
       "moe": true,
       "inference": {
+        "dedicated_engine": "sglang",
         "gpu_type": "A100-80GB",
         "max_model_len": 16384
       },
@@ -2090,6 +2114,7 @@
       "hidden_size": 2048,
       "fp8_supported": true,
       "inference": {
+        "serverless_engine": "sglang",
         "gpu_type": "H100",
         "max_model_len": 16384
       },

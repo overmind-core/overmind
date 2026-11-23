@@ -541,12 +541,14 @@ def derive_training_plan(
         lora_dropout = float(hp["lora_dropout"])
     else:
         lora_dropout = float(qlora["lora_dropout"])
-    # Gemma4 MoE (26B-A4B): PEFT ParamWrapper on expert params rejects dropout ≠ 0.
-    if model_id and lora_dropout and "a4b" in model_id.lower():
-        if "lora_dropout" in training_type or "lora_dropout" in hp:
-            raise TrainingPlanError("lora_dropout must be 0 for Gemma4 MoE.")
-        notes.append("lora_dropout=0 required for Gemma4 MoE")
-        lora_dropout = 0.0
+    # PEFT ParamWrapper on some expert params rejects dropout ≠ 0.
+    if model_id and lora_dropout:
+        spec = resolve(model_id)
+        if any(token in model_id.lower() for token in spec.zero_lora_dropout_tokens):
+            if "lora_dropout" in training_type or "lora_dropout" in hp:
+                raise TrainingPlanError(f"lora_dropout must be 0 for {spec.key}.")
+            notes.append(f"lora_dropout=0 required for {spec.key}")
+            lora_dropout = 0.0
     lora_target_modules = str(
         training_type.get("lora_trainable_modules")
         or _default_lora_target_modules(model_id)
@@ -575,19 +577,12 @@ def derive_training_plan(
         raise TrainingPlanError(
             "packing is unsupported for native decision training; choose packing=false."
         )
-    # Gemma4/Muse: Unsloth forces GC off + flex_attention. Nemotron 3.5: hybrid mamba.
-    # Packing fills every step to MAX_LENGTH → OOM on 1×H100.
-    if packing and model_id:
-        from modal_shared.modelfam import family_key  # noqa: PLC0415
-
-        fam = family_key(model_id)
-        if fam in ("gemma4", "muse_glimmer", "nemotron35"):
-            if hp.get("packing"):
-                raise TrainingPlanError(f"packing is unsupported for {fam}; choose packing=false.")
-            packing = False
-            notes.append(
-                "packing disabled for Gemma4/Muse/Nemotron 3.5 (hybrid / no gradient checkpointing)"
-            )
+    if packing and model_id and not resolve(model_id).packing:
+        fam = resolve(model_id).key
+        if hp.get("packing"):
+            raise TrainingPlanError(f"packing is unsupported for {fam}; choose packing=false.")
+        packing = False
+        notes.append(f"packing disabled for {fam}")
     # Train images have no flash-attn varlen. SDPA still crosses packed rows.
     if packing:
         from overbae.services.sft_assets.packing import packs_safely  # noqa: PLC0415

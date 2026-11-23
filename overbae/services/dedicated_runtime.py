@@ -382,18 +382,9 @@ def _tool_names(tools, only: str) -> list[str]:
     return names
 
 
-def _forced_tool_regex(spec_key: str, names: list[str]) -> str:
+def _forced_tool_regex(pattern: str, names: list[str]) -> str:
     alt = "|".join(re.escape(name) for name in names)
-    if spec_key == "gemma4":
-        # The gemma4 parser refuses JSON guided decoding, so the native call is the constraint.
-        return rf"<\|tool_call>call:(?:{alt})\{{[^{{}}]*\}}<tool_call\|>"
-    # Same skip in the Muse parser. The completion starts after `<|start|>assistant`.
-    return (
-        rf" to=(?:{alt})<\|message\|><atem:function_calls>\n"
-        rf"<atem:invoke name=\"(?:{alt})\">\n"
-        rf"(?:<atem:parameter name=\"[A-Za-z_][A-Za-z0-9_]*\">[^<]*</atem:parameter>\n)*"
-        rf"</atem:invoke>\n</atem:function_calls><\|eot\|>"
-    )
+    return pattern.replace("{alt}", alt)
 
 
 def shape_chat_payload(payload: dict, *, base_model_id: str) -> None:
@@ -452,17 +443,13 @@ def shape_chat_payload(payload: dict, *, base_model_id: str) -> None:
         _pin_system(payload, f"Call {name}.")
     elif payload.get("tool_choice") == "required":
         _pin_system(payload, "Call one of the available functions.")
-    elif spec.key == "muse_glimmer" and payload.get("parallel_tool_calls") is True:
-        _pin_system(
-            payload,
-            "Put one atem:invoke for each item the user names, and separate assistant "
-            "tool messages with <|eom|> rather than ending the turn after the first.",
-        )
+    elif spec.parallel_tool_hint and payload.get("parallel_tool_calls") is True:
+        _pin_system(payload, spec.parallel_tool_hint)
     if not forced or payload.get("structured_outputs"):
         return
     names = _tool_names(tools, name)
-    if spec.key in ("gemma4", "muse_glimmer") and names:
-        payload["structured_outputs"] = {"regex": _forced_tool_regex(spec.key, names)}
+    if spec.forced_tool_regex and names:
+        payload["structured_outputs"] = {"regex": _forced_tool_regex(spec.forced_tool_regex, names)}
 
 
 def _served_body(deployment, body: bytes, *, stream: bool) -> bytes:

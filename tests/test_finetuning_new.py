@@ -1249,10 +1249,10 @@ class TestTrainingPlan:
             snap_context_length(999_999, model_max=32768)
 
     def test_gemma4_full_never_gets_multi_gpu(self):
-        from overbae.services.finetuning_runner import clamp_gemma4_training_gpu
+        from modal_shared.modelfam import clamp_training_gpus
 
-        assert clamp_gemma4_training_gpu("google/gemma-4-31B-it", "H100", 4) == ("H200", 1)
-        assert clamp_gemma4_training_gpu("Qwen/Qwen3-32B", "H100", 4) == ("H100", 4)
+        assert clamp_training_gpus("google/gemma-4-31B-it", "H100", 4) == ("H200", 1)
+        assert clamp_training_gpus("Qwen/Qwen3-32B", "H100", 4) == ("H100", 4)
 
     def test_a_modal_run_stages_the_hub_base_weights_before_the_gpu_starts(self, sft, fake_modal):
         from overbae.services.deployment import get_hf_base

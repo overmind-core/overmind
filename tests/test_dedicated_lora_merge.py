@@ -254,6 +254,14 @@ def test_dedicated_chat_disables_thinking_and_keeps_parallel_tools():
     assert "get_time" in named["structured_outputs"]["regex"]
     assert "get_weather" not in named["structured_outputs"]["regex"]
 
+    bolt = {
+        "messages": [{"role": "user", "content": "time"}],
+        "tools": [{"type": "function", "function": {"name": "get_time"}}],
+        "tool_choice": "required",
+    }
+    shape_chat_payload(bolt, base_model_id="nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16")
+    assert "get_time" in bolt["structured_outputs"]["regex"]
+
     required = {
         "messages": [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "hi"}],
         "tools": [{"type": "function", "function": {"name": "get_weather"}}],

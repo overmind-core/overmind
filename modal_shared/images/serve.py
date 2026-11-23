@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import modal
 
-from modal_shared.images import attach_modelfam, attach_serving_args
+from modal_shared.images import attach_modelfam
 from modal_shared.stacks import SERVE_SGLANG, SERVE_SGLANG_KEV, SERVE_SGLANG_LFM3, SERVE_VLLM
 
 _SERVE_ENV = {
@@ -21,33 +21,31 @@ _SERVE_ENV = {
 def _from_vllm_openai(tag: str, *extra_pip: str, snapshot: bool = False) -> modal.Image:
     """Official ``vllm/vllm-openai`` image. ENTRYPOINT is ``vllm serve`` — must be
     cleared or Modal never runs the worker. Image has python3 only."""
-    return attach_serving_args(
-        attach_modelfam(
-            modal.Image.from_registry(
-                f"vllm/vllm-openai:{tag}",
-                setup_dockerfile_commands=[
-                    "RUN ln -sf $(command -v python3) /usr/local/bin/python",
-                ],
-            )
-            .entrypoint([])
-            .pip_install(
-                "httpx>=0.28.0",
-                # Concurrent safetensors reads into GPU; vLLM extra `runai`.
-                "runai-model-streamer==0.16.1" if snapshot else "runai-model-streamer>=0.15.7",
-                *extra_pip,
-            )
-            .env(
-                {
-                    **_SERVE_ENV,
-                    **(
-                        dict.fromkeys(
-                            ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"), "8"
-                        )
-                        if snapshot
-                        else {}
-                    ),
-                }
-            )
+    return attach_modelfam(
+        modal.Image.from_registry(
+            f"vllm/vllm-openai:{tag}",
+            setup_dockerfile_commands=[
+                "RUN ln -sf $(command -v python3) /usr/local/bin/python",
+            ],
+        )
+        .entrypoint([])
+        .pip_install(
+            "httpx>=0.28.0",
+            # Concurrent safetensors reads into GPU; vLLM extra `runai`.
+            "runai-model-streamer==0.16.1" if snapshot else "runai-model-streamer>=0.15.7",
+            *extra_pip,
+        )
+        .env(
+            {
+                **_SERVE_ENV,
+                **(
+                    dict.fromkeys(
+                        ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"), "8"
+                    )
+                    if snapshot
+                    else {}
+                ),
+            }
         )
     )
 
@@ -60,7 +58,7 @@ _DEDICATED_VLLM_TAG = _VLLM_TAG
 dedicated_vllm_image = _from_vllm_openai(_DEDICATED_VLLM_TAG)
 # v0.5.23-cu130 lowered Qwen3.5-4B from 443 to 347 tok/s on H100.
 _DEDICATED_SGLANG_TAG = "v0.5.22"
-dedicated_sglang_image = attach_serving_args(
+dedicated_sglang_image = attach_modelfam(
     modal.Image.from_registry(
         f"lmsysorg/sglang:{_DEDICATED_SGLANG_TAG}",
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
@@ -68,7 +66,7 @@ dedicated_sglang_image = attach_serving_args(
     .entrypoint([])
     .pip_install("runai-model-streamer>=0.15.7")
 )
-dedicated_sglang_kev_image = attach_serving_args(
+dedicated_sglang_kev_image = attach_modelfam(
     modal.Image.from_registry(
         "lmsysorg/sglang:v0.5.23",
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],
@@ -78,7 +76,7 @@ dedicated_sglang_kev_image = attach_serving_args(
 )
 # LFM3 conv layers are absent from v0.5.22 and from vLLM 0.33. Support is the
 # untagged image built from sgl-project/sglang#46858. Do not point other models here.
-dedicated_sglang_lfm3_image = attach_serving_args(
+dedicated_sglang_lfm3_image = attach_modelfam(
     modal.Image.from_registry(
         "lmsysorg/sglang:dev-lfm3",
         setup_dockerfile_commands=["RUN ln -sf $(command -v python3) /usr/local/bin/python"],

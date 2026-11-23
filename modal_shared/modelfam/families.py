@@ -15,6 +15,19 @@ from modal_shared.stacks import (
     TRAIN_U2026_11_9,
 )
 
+# Gemma 4 parser refuses JSON guided decoding. The native call is the constraint.
+_GEMMA_TOOL_REGEX = r"<\|tool_call>call:(?:{alt})\{[^{}]*\}<tool_call\|>"
+_MUSE_TOOL_REGEX = (
+    r" to=(?:{alt})<\|message\|><atem:function_calls>\n"
+    r"<atem:invoke name=\"(?:{alt})\">\n"
+    r"(?:<atem:parameter name=\"[A-Za-z_][A-Za-z0-9_]*\">[^<]*</atem:parameter>\n)*"
+    r"</atem:invoke>\n</atem:function_calls><\|eot\|>"
+)
+_MUSE_PARALLEL_HINT = (
+    "Put one atem:invoke for each item the user names, and separate assistant "
+    "tool messages with <|eom|> rather than ending the turn after the first."
+)
+
 KEV = FamilySpec(
     key="kev",
     patterns=("jaredpalmer/kev-",),
@@ -73,6 +86,7 @@ GPT_OSS = FamilySpec(
         "stock/BF16/MXFP4 start id skips BnB experts and breaks)."
     ),
     hooks_module="families.gpt_oss",
+    lora_load_in_4bit=True,
 )
 
 PHI4 = FamilySpec(
@@ -98,6 +112,10 @@ GEMMA4 = FamilySpec(
         "(Unsloth offload GC mismatches activations on Gemma4)."
     ),
     hooks_module="families.gemma4",
+    packing=False,
+    max_train_gpus=1,
+    zero_lora_dropout_tokens=("a4b",),
+    forced_tool_regex=_GEMMA_TOOL_REGEX,
 )
 
 MUSE_GLIMMER = FamilySpec(
@@ -129,6 +147,9 @@ MUSE_GLIMMER = FamilySpec(
         "multimodal-mapping fix (vLLM #53513)."
     ),
     hooks_module="families.muse_glimmer",
+    packing=False,
+    forced_tool_regex=_MUSE_TOOL_REGEX,
+    parallel_tool_hint=_MUSE_PARALLEL_HINT,
 )
 
 LFM3 = FamilySpec(
@@ -146,6 +167,10 @@ LFM3 = FamilySpec(
     dtype_override="bfloat16",
     notes="Tri-hybrid conv + sliding + full attention. Custom code. Thinking closes when enable_thinking is false.",
     hooks_module="families.lfm3",
+    # The LFM3 image allowlist has no conv or MLP names. "all" admits them.
+    sglang_serve_lora_targets="all",
+    sglang_adapter_targets="q_proj,k_proj,v_proj,o_proj,in_proj,out_proj",
+    sglang_process_env="modal_shared.serving.lfm3_lora",
 )
 
 LFM2 = FamilySpec(
@@ -189,6 +214,7 @@ BOLT = FamilySpec(
     force_mask_pairs=(("<|tool_response>", "<tool_response|>"),),
     notes="Gemma 4 E4B finetune. FastModel, SDPA, checkpointing off.",
     hooks_module="families.bolt",
+    forced_tool_regex=_GEMMA_TOOL_REGEX,
 )
 
 # Before generic NEMOTRON — "nemotron-3.5" would otherwise inherit SPECIAL_N pretok.
@@ -207,6 +233,8 @@ NEMOTRON35 = FamilySpec(
         "Nemotron 3.5 Lightning hybrid MoE (mamba+attn+experts); LoRA-only Unsloth "
         "on u2026_8_tf510; vLLM parsers nemotron_v3 / qwen3_coder."
     ),
+    packing=False,
+    vllm_process_env="modal_shared.serving.nemotron_lora",
 )
 
 NEMOTRON = FamilySpec(
@@ -245,6 +273,7 @@ QWEN38 = FamilySpec(
     config_fixups=("nest_qwen3_5_text",),
     notes="Qwen3.8 XML tool calls; natively multimodal; Unsloth 2026.9.2 train image.",
     hooks_module="families.qwen35",
+    string_content_as_parts=True,
 )
 
 QWEN35 = FamilySpec(
@@ -258,6 +287,7 @@ QWEN35 = FamilySpec(
     config_fixups=("nest_qwen3_5_text",),
     notes="Qwen3.5/3.6 and their Ornith and Fara finetunes. XML tool calls; natively multimodal.",
     hooks_module="families.qwen35",
+    string_content_as_parts=True,
 )
 
 QWEN3_CODER = FamilySpec(
@@ -276,8 +306,9 @@ QWEN_MM = FamilySpec(
     pretok_headers=(r"<\|im_start\|>(\w+)\n",),
     natively_multimodal=True,
     multimodal_id_tokens=("qwen3-vl", "qwen2-5-vl", "qwen2-vl"),
-    notes="Qwen-VL natively multimodal — wrap content as text-typed parts; JSON hermes tools.",
+    notes="Qwen-VL natively multimodal. JSON hermes tools.",
     hooks_module="families.qwen_mm",
+    string_content_as_parts=True,
 )
 
 QWEN = FamilySpec(

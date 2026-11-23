@@ -19,7 +19,7 @@ class FamilySpec:
     patterns: tuple[str, ...]
     # Modal Unsloth image key — frozen stack id in modal_shared.stacks.
     train_image: str = "u2026_8_18"
-    # Family default. Per-model shared-pool overrides live in serverless_engine.
+    # Family default when the catalog row omits dedicated_engine / serverless_engine.
     serve_image: str = "vllm"
     trust_remote_code: bool = False
     # Antares/Granite MoE hybrid — skip Unsloth for_inference / use_cache.
@@ -60,3 +60,24 @@ class FamilySpec:
     hooks_module: str | None = None
     # Extra substrings that flip trust_remote / llama31 helpers without changing key.
     llama31_patterns: tuple[str, ...] = field(default_factory=tuple)
+    # False when packing fills the step to MAX_LENGTH and the family OOMs.
+    packing: bool = True
+    # Modal refuses a larger GPU count and moves the run to clamped_train_gpu.
+    max_train_gpus: int | None = None
+    clamped_train_gpu: str = "H200"
+    # model_id substrings that force LoRA dropout to 0.
+    zero_lora_dropout_tokens: tuple[str, ...] = ()
+    # LoRA loads 4-bit even when the memory plan says bf16 fits.
+    lora_load_in_4bit: bool = False
+    # Bare string content hits the vision loader. Text parts do not.
+    string_content_as_parts: bool = False
+    # Dedicated forced-tool pattern. {alt} is the escaped function names.
+    forced_tool_regex: str | None = None
+    parallel_tool_hint: str = ""
+    # SGLang --lora-target-modules when the family list is not in the image allowlist.
+    sglang_serve_lora_targets: str = ""
+    # Adapter tensors to keep. Empty uses lora_target_modules.
+    sglang_adapter_targets: str = ""
+    # Module with process_env(), imported for that engine only.
+    sglang_process_env: str = ""
+    vllm_process_env: str = ""

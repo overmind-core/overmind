@@ -11,7 +11,7 @@ import pytest
 # other by bare name and only resolve with the directory itself on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "overbae" / "services" / "sft_assets"))
 
-from pretok import normalize_openai_wire  # noqa: E402
+from pretok import normalize_messages_for_model, normalize_openai_wire  # noqa: E402
 
 pytestmark = pytest.mark.covers("model-runtime")
 
@@ -79,3 +79,24 @@ def test_input_messages_are_not_mutated():
 def test_plain_turns_are_untouched():
     messages = [{"role": "user", "content": "hi"}, {"role": "tool", "content": "{}"}]
     assert normalize_openai_wire(messages) == messages
+
+
+def test_phi4_puts_tools_on_the_system_message():
+    messages, tools = normalize_messages_for_model(
+        "microsoft/Phi-4-mini-instruct",
+        [{"role": "user", "content": "hi"}],
+        [{"type": "function", "function": {"name": "send_email", "parameters": {}}}],
+    )
+    assert tools is None
+    assert messages[0]["role"] == "system"
+    assert "send_email" in messages[0]["tools"]
+
+
+def test_qwen35_string_content_becomes_a_text_part():
+    messages, tools = normalize_messages_for_model(
+        "Qwen/Qwen3.5-4B",
+        [{"role": "user", "content": "hi"}],
+        None,
+    )
+    assert tools is None
+    assert messages[0]["content"] == [{"type": "text", "text": "hi"}]

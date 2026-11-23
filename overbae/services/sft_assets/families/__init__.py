@@ -26,6 +26,10 @@ class TrainerHooks(Protocol):
 
     def peft_lora_dropout(self, default: float, *, model_id: str) -> float: ...
 
+    def normalize_messages(
+        self, messages: list[dict], tools: list[dict] | None
+    ) -> tuple[list[dict], list[dict] | None]: ...
+
 
 class DefaultHooks:
     def env_overrides(self, *, use_lora: bool) -> dict[str, str]:
@@ -51,6 +55,11 @@ class DefaultHooks:
 
     def peft_lora_dropout(self, default: float, *, model_id: str) -> float:
         return default
+
+    def normalize_messages(
+        self, messages: list[dict], tools: list[dict] | None
+    ) -> tuple[list[dict], list[dict] | None]:
+        return messages, tools
 
 
 _DEFAULT = DefaultHooks()
