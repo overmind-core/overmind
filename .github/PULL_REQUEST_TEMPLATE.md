@@ -1,10 +1,18 @@
-## What
+## Summary
 
-<!-- The change, in a sentence or two. -->
+<!-- One row per change. Short phrases, not sentences. Put measured numbers in
+     Before and After when you have them. Link the issue in Why if there is one. -->
 
-## Why
+| What | Before | After | Why |
+| ---- | ------ | ----- | --- |
+|      |        |       |     |
 
-<!-- The problem it solves. Link the issue if there is one. -->
+## Decisions and assumptions
+
+<!-- Every choice a reviewer could question, and every assumption the change
+     rests on. One bullet each. -->
+
+-
 
 ## Verification
 
