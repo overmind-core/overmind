@@ -26,6 +26,12 @@ class DocumentError(InputValidationError):
     pass
 
 
+class ParserUnavailableError(DocumentError):
+    """The sandbox stopped or refused the read; pages already read are saved."""
+
+    code = "parser_unavailable"
+
+
 def extract(
     path: Path,
     *,
@@ -79,6 +85,10 @@ def extract(
                     follow_redirects=False,
                 ) as response,
             ):
+                if response.status_code == 503:
+                    raise ParserUnavailableError(
+                        "The isolated document parser is busy or restarting. No source was landed."
+                    )
                 if response.status_code != 200:
                     raise DocumentError(
                         f"The isolated document parser returned HTTP {response.status_code}. No source was landed."
@@ -114,7 +124,11 @@ def extract(
                 return rows, metadata
     except DocumentError:
         raise
-    except (httpx.TransportError, FramingError, ValueError) as exc:
+    except (httpx.TransportError, FramingError) as exc:
+        raise ParserUnavailableError(
+            "The isolated document parser did not return a complete result. No source was landed."
+        ) from exc
+    except ValueError as exc:
         raise DocumentError(
             "The isolated document parser did not return a complete result. No source was landed."
         ) from exc

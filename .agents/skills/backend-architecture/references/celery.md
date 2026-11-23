@@ -33,7 +33,7 @@ Every worker lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved 
 Waiting work is a PostgreSQL row, admitted by a row-locked dispatcher in least-recent-project order:
 
 - `LiveScoringWork` — spans, trajectories and signals; global and per-project caps; fenced running lease longer than the five-minute hard limit.
-- `DatasetLandingWork` — one import per project, global admission follows observed landing capacity up to eight. Waiting never expires unless `DATASET_IMPORT_MAX_QUEUE_SECONDS` is nonzero. A lost started import needs explicit recovery.
+- `DatasetLandingWork` — one import per project, global admission follows observed landing capacity up to eight. Waiting never expires unless `DATASET_IMPORT_MAX_QUEUE_SECONDS` is nonzero. A started import whose worker or document parser stopped goes back to waiting under a new owner until `imports.MAX_ATTEMPTS`; the claim counts each attempt, so a file that keeps killing its worker stops.
 - `EvalGenerationScheduler` — `EVAL_MAX_IN_FLIGHT`, `EVAL_MAX_IN_FLIGHT_PER_PROJECT` and `EVAL_MAX_IN_FLIGHT_PER_RUN`; completion and a 30-second control tick refill slots.
 - `DatasetPipelineRun` is the exception: a queued run takes a per-project Redis slot or retries through the broker every 2 s, and fails after 15 minutes without capacity. The default project limit stays below the minimum interactive worker size.
 

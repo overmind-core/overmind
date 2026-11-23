@@ -43,7 +43,9 @@ logger = logging.getLogger(__name__)
 
 
 class LandError(ValueError):
-    pass
+    def __init__(self, detail: str, *, code: str = "import_failed") -> None:
+        super().__init__(detail)
+        self.code = code
 
 
 SPLIT_POSITIONS = ("head", "tail", "random")
@@ -291,7 +293,7 @@ def _read_one(
             )
     except (files.FileError, documents.DocumentError) as exc:
         progress({"stage": "failed"})
-        raise LandError(str(exc)) from exc
+        raise LandError(str(exc), code=getattr(exc, "code", "import_failed")) from exc
     if not rows and extraction.get("status") != "no_text":
         raise LandError("The file has no rows.")
     identity = store.file_sha256(path)

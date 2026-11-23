@@ -216,3 +216,80 @@ def test_publication_allows_its_independent_heartbeat_and_still_rejects_expired_
     publication.apply(task_id=str(work.pk), headers={admission.HEADER: str(work.owner)}).get(
         propagate=True
     )
+
+
+def admitted_upload(monkeypatch, filename, content):
+    from functools import partial
+
+    from overbae.models import DatasetImport
+    from overbae.services.datasets import dispatch, files
+    from overbae.tasks.datasets import LandingTask
+
+    # Submissions go through admission, as on a deployed worker.
+    monkeypatch.setattr(land, "apply_async", partial(LandingTask.apply_async, land))
+    upload_id, _ = files.begin_upload(filename)
+    files.append_chunk(upload_id, 0, content)
+    files.inspect_upload(upload_id, size=files.upload_received(upload_id))
+    dataset = dispatch.create_dataset(
+        project=make_project(), user=None, name="P", source={"uploads": [upload_id]}, intent="train"
+    )
+    return dataset, DatasetImport.objects.get(dataset=dataset), upload_id
+
+
+def lapse(run):
+    from overbae.models import DatasetImport
+
+    lapsed = timezone.now() - timedelta(seconds=1)
+    DatasetLandingWork.objects.filter(pk=run.pk).update(lease_until=lapsed)
+    DatasetImport.objects.filter(pk=run.pk).update(lease_until=lapsed)
+
+
+def test_a_lost_upload_retries_under_a_new_owner_until_its_attempt_limit(monkeypatch):
+    from overbae.services.datasets import files, imports
+
+    dataset, run, upload_id = admitted_upload(
+        monkeypatch, "passengers.csv", b"passenger_id,survived\n1,0\n2,1\n"
+    )
+    messages = []
+    admission.dispatch(lambda **message: messages.append(message))
+    owners = []
+    for attempt in range(1, imports.MAX_ATTEMPTS + 1):
+        owner = messages[-1]["headers"][admission.HEADER]
+        owners.append(owner)
+        assert admission.claim(run.pk, owner)
+        assert imports.claim(run.pk) is not None
+        lapse(run)
+        imports.reconcile()
+        admission.reconcile(lambda **message: messages.append(message))
+        run.refresh_from_db()
+        dataset.refresh_from_db()
+        if attempt < imports.MAX_ATTEMPTS:
+            assert (run.state, dataset.state) == ("queued", "landing")
+            assert len(messages) == attempt + 1
+    assert run.state == "blocked" and run.failure_code == "attempts_exhausted"
+    assert dataset.state == "error"
+    assert DatasetLandingWork.objects.get(pk=run.pk).state == "failed"
+    assert files.upload_data_path(upload_id).exists()
+    stale = land.apply(
+        kwargs=messages[0]["kwargs"], task_id=str(run.pk), headers={admission.HEADER: owners[0]}
+    )
+    assert stale.get() == {"status": "not_claimed"}
+
+
+def test_a_document_read_cut_by_a_sandbox_restart_is_retried(monkeypatch, settings):
+    from pathlib import Path
+
+    settings.SANDBOX_URL = "http://127.0.0.1:9"
+    scanned = (Path(__file__).parent / "fixtures/documents/scanned.pdf").read_bytes()
+    dataset, run, _ = admitted_upload(monkeypatch, "scanned.pdf", scanned)
+    messages = []
+    admission.dispatch(lambda **message: messages.append(message))
+    [message] = messages
+    assert land.apply(**message).get()["status"] == "retry"
+    run.refresh_from_db()
+    dataset.refresh_from_db()
+    assert (run.state, dataset.state) == ("running", "landing")
+    lapse(run)
+    admission.reconcile(lambda **message: messages.append(message))
+    run.refresh_from_db()
+    assert run.state == "queued" and len(messages) == 2
