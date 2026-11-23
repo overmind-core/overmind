@@ -51,7 +51,7 @@ export type AssistantEvent =
     > & {
       presentation: Presentation | null;
     })
-  | Envelope<"status", { state: "stopped" | "failed" | "interrupted"; detail: string }>
+  | Envelope<"status", { state: "stopped" | "failed" | "interrupted" | "resumed"; detail: string }>
   | Envelope<"summary", { text: string; through: number }>;
 
 /** The API refuses a longer message. */

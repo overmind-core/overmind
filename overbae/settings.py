@@ -442,6 +442,7 @@ CELERY_TASK_ROUTES = {
     "overbae.tasks.training_preparation.inspect_preparation": {"queue": "io"},
     # A streamed model reply holds a worker slot for its whole length, so steps have their
     # own queue. The reconciler only reads and enqueues: it must run when that queue is full.
+    "overbae.tasks.assistant.resume_lost_turns": {"queue": "control"},
     "overbae.tasks.assistant.run_turn": {"queue": "assistant"},
     "overbae.tasks.assistant.stop_kernel": {"queue": "assistant"},
     "overbae.tasks.assistant.forget_workspace_data": {"queue": "assistant"},
@@ -561,6 +562,11 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile-deployments": {
         "task": "overbae.tasks.inference_controller.reconcile_deployments",
         "schedule": 15.0,
+    },
+    "resume-lost-assistant-turns": {
+        "task": "overbae.tasks.assistant.resume_lost_turns",
+        "schedule": 60.0,
+        "options": {"expires": 55.0},
     },
     # Re-drives spans still waiting for an ancestor, stale claims and lost enqueues.
     "admit-live-scoring": {

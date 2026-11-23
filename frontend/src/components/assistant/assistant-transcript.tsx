@@ -235,6 +235,7 @@ function ToolGroup({ steps, active }: { steps: Step[]; active: boolean }) {
 const STATUS_NOTE = {
   failed: "text-error",
   interrupted: "text-warning",
+  resumed: "text-muted-foreground",
   stopped: "text-muted-foreground",
 };
 
