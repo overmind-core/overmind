@@ -87,7 +87,11 @@ class ScoringLostError(Exception):
 
 def _hold(run_id, task_id) -> None:
     """Writes go through only while this scorer holds the run; the caller is atomic."""
-    held = EvalRun.objects.select_for_update().filter(pk=run_id, scoring_task_id=task_id)
+    held = (
+        EvalRun.objects.select_for_update()
+        .filter(pk=run_id, scoring_task_id=task_id)
+        .exclude(status__in=EvalRun.TERMINAL)
+    )
     if held.values_list("pk", flat=True).first() is None:
         raise ScoringLostError("scoring was handed to another worker")
 

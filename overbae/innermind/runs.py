@@ -211,6 +211,8 @@ def score(run_id, task_id) -> bool:
     )
     try:
         async_loop.run(dataset.score_rows(run, task_id))
+        # Aggregation runs under the heartbeat too.
+        finish(run, where=held)
     except dataset.ScoringLostError:
         return False
     except Exception as exc:
@@ -219,7 +221,6 @@ def score(run_id, task_id) -> bool:
         return False
     finally:
         beat.set()
-    finish(run, where=held)
     return True
 
 
