@@ -251,6 +251,18 @@ def test_a_reply_that_ended_is_not_written_again_when_its_turn_is_taken_over(
     assert thread.state == AssistantThread.State.IDLE
 
 
+def test_an_answered_question_is_replied_to_when_its_turn_is_taken_over(fake_llm, user, thread):
+    lost_midway(thread, user, calls=[{"id": "ask", "name": "present", "raw": "{}"}])
+    question = {"root": {"type": "Question", "id": "task", "prompt": "Which task?"}}
+    result = {"call": "ask", "name": "present", "ok": True, "content": {}}
+    log.append(thread, "tool_result", result, presentation=question)
+    answer = {"input": "x", "user": user.pk, "text": "Chat", "cells": [], "interaction": None}
+    log.append(thread, "user", answer)
+    fake_llm.stream_rounds([([], "Chat it is.")])
+    turn.run(thread.pk)
+    assert len(fake_llm.streamed()) == 1
+
+
 def test_a_sender_who_left_the_project_runs_nothing(fake_llm, user, thread):
     threads.send(thread, user, request_key="k", text="Prepare it.")
     ProjectMembership.objects.filter(user=user).delete()
