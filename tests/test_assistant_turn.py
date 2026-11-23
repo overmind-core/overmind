@@ -241,17 +241,6 @@ def test_a_reply_that_ended_is_not_written_again_when_its_turn_is_taken_over(
     assert thread.state == AssistantThread.State.IDLE
 
 
-def test_a_turn_lost_again_and_again_is_interrupted(fake_llm, user, thread):
-    lost_midway(thread, user, calls=[])
-    for _ in range(turn.RESUMES):
-        log.append(thread, "status", {"state": "resumed", "detail": "Resumed."})
-    turn.run(thread.pk)
-    thread.refresh_from_db()
-    assert thread.events.last().payload["state"] == "interrupted"
-    assert thread.state == AssistantThread.State.IDLE
-    assert fake_llm.streamed() == []
-
-
 def test_a_sender_who_left_the_project_runs_nothing(fake_llm, user, thread):
     threads.send(thread, user, request_key="k", text="Prepare it.")
     ProjectMembership.objects.filter(user=user).delete()

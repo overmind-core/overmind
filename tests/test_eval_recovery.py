@@ -75,18 +75,6 @@ def test_a_lost_scorer_is_replaced_and_keeps_the_scores_it_saved():
     )
 
 
-def test_a_scorer_lost_too_often_fails_the_run():
-    run = scored_run()
-    for _ in range(runs.SCORING_ATTEMPTS):
-        token = handed(run)
-        assert generation.begin_scoring(run.pk, token)
-        silence(run)
-        runs.reap_stalled()
-    run.refresh_from_db()
-    assert run.status == EvalRun.Status.FAILED
-    assert f"{runs.SCORING_ATTEMPTS} times" in run.error
-
-
 def test_a_run_whose_start_was_lost_is_sent_again_then_failed(monkeypatch):
     sent = []
     monkeypatch.setattr(

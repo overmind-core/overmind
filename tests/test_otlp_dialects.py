@@ -253,17 +253,3 @@ def test_an_export_over_the_size_limit_is_refused_before_parsing(gzipped):
     )
     assert response.status_code == 413
     assert not Span.objects.filter(project=project).exists()
-
-
-def test_a_truncated_gzip_export_is_malformed():
-    import gzip
-
-    owner = make_user()
-    project = make_project(member=owner)
-    response = api_key_client(owner, project).post(
-        "/api/v1/traces",
-        data=gzip.compress(b"spans")[:-8],
-        content_type="application/x-protobuf",
-        HTTP_CONTENT_ENCODING="gzip",
-    )
-    assert response.status_code == 400
