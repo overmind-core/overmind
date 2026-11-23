@@ -245,11 +245,19 @@ def lapse(run):
 
 
 def test_a_lost_upload_retries_under_a_new_owner_until_its_attempt_limit(monkeypatch):
+    from factories import make_user
+
+    from overbae.services.assistant import threads
     from overbae.services.datasets import files, imports
+    from overbae.tasks.assistant import run_turn
 
     dataset, run, upload_id = admitted_upload(
         monkeypatch, "passengers.csv", b"passenger_id,survived\n1,0\n2,1\n"
     )
+    woken = []
+    monkeypatch.setattr(run_turn, "delay", woken.append)
+    conversation = threads.open_thread(dataset)
+    threads.send(conversation, make_user(), request_key="sent", text="Prepare it.")
     messages = []
     admission.dispatch(lambda **message: messages.append(message))
     owners = []
@@ -270,6 +278,8 @@ def test_a_lost_upload_retries_under_a_new_owner_until_its_attempt_limit(monkeyp
     assert dataset.state == "error"
     assert DatasetLandingWork.objects.get(pk=run.pk).state == "failed"
     assert files.upload_data_path(upload_id).exists()
+    # The message sent with the upload no longer waits for a source that will not land.
+    assert woken == [str(conversation.pk)]
     stale = land.apply(
         kwargs=messages[0]["kwargs"], task_id=str(run.pk), headers={admission.HEADER: owners[0]}
     )

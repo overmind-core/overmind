@@ -390,6 +390,14 @@ def reconcile(publish):
                 lease_until=None,
                 updated_at=now,
             )
+            # Lazy: the assistant reaches the MCP catalog, which imports this module.
+            from overbae.services.assistant.turn import wake_dataset
+
+            # A message sent with the upload waited for its source; landing has ended.
+            for target in targets:
+                transaction.on_commit(
+                    lambda dataset_id=target.pk: wake_dataset(dataset_id), robust=True
+                )
     DatasetLandingWork.objects.filter(state="waiting").exclude(dataset__state="landing").update(
         state="cancelled", finished_at=now, updated_at=now
     )
