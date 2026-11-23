@@ -25,6 +25,7 @@ from overbae.models import (
 from overbae.services import activity, operational_progress
 from overbae.services.datasets import (
     events,
+    heartbeat,
     lifecycle,
     lineage,
     measure,
@@ -337,9 +338,11 @@ def execute(run_id, *, script_executor=None):
             return
         if script_executor is None:
             return
-    from overbae.services.datasets.pipeline_runner import TASK_SECONDS, scratch
+    from overbae.services.datasets.pipeline_runner import scratch
 
-    seconds = TASK_SECONDS + 60
+    # A heartbeat renews the lease while the worker lives, so a lost run fails within
+    # minutes; the worker's hard time limit bounds the whole run.
+    seconds = heartbeat.STALE_SECONDS
     claimed = DatasetPipelineRun.objects.filter(pk=run_id, state="queued").update(
         state="running",
         updated_at=timezone.now(),
@@ -465,6 +468,13 @@ def execute(run_id, *, script_executor=None):
                 counting(f"step_{index + 1}_writing", done)
             yield row
 
+    beat = heartbeat.start(
+        lambda: DatasetPipelineRun.objects.filter(
+            pk=run.pk, state="running", attempt=run.attempt
+        ).update(lease_until=timezone.now() + timedelta(seconds=seconds)),
+        owner=f"pipeline lease {run.pk}",
+    )
+    local_files.callback(beat.set)
     try:
         if not progress("verifying_source"):
             return

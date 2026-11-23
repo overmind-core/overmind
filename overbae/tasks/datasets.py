@@ -533,7 +533,12 @@ def execute_pipeline(self, run_id):
         raise self.retry(exc=exc, countdown=2) from exc
     if not admitted:
         raise self.retry(countdown=2)
-    beat = heartbeat.start(pipeline_runner.heartbeat, owner=f"pipeline {run.pk}")
+
+    def beat_once():
+        pipeline_runner.renew_slot(run.dataset.project_id, owner)
+        pipeline_runner.heartbeat()
+
+    beat = heartbeat.start(beat_once, owner=f"pipeline {run.pk}")
     try:
         workbench.execute(run_id, script_executor=pipeline_runner.execute_script)
     except SoftTimeLimitExceeded:
