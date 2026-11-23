@@ -1,5 +1,7 @@
 const selfHosted = import.meta.env.VITE_SELF_HOSTED === "true";
-const enabled = !selfHosted && import.meta.env.MODE !== "development";
+// Vitest's mode is "test", so "not development" would still init the real project.
+const enabled =
+  !selfHosted && import.meta.env.MODE !== "development" && import.meta.env.MODE !== "test";
 
 const client = enabled
   ? import("posthog-js")

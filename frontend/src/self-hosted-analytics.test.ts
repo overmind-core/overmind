@@ -34,6 +34,16 @@ describe("self-hosted PostHog strip", () => {
     expect(posthogInit).not.toHaveBeenCalled();
   });
 
+  it("skips analytics.ts init when vitest sets MODE to test", async () => {
+    vi.stubEnv("VITE_SELF_HOSTED", "false");
+    vi.stubEnv("MODE", "test");
+    const { trackEvent } = await import("./analytics");
+    trackEvent("setup_prompt_copied", { project_id: "project-1" });
+    await vi.dynamicImportSettled();
+    expect(posthogInit).not.toHaveBeenCalled();
+    expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
   it("initializes once and preserves events captured while the SDK loads", async () => {
     vi.stubEnv("VITE_SELF_HOSTED", "false");
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
