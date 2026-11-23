@@ -45,7 +45,7 @@ Frequent beat tasks (live-scoring admission, import and evaluation dispatch, Wor
 
 ## Deployment
 
-Hosted commands come from `docker/worker-topology.json`. A rollout runs migrations, verifies a healthy landing-only consumer on the new image (`overbae.worker_health <queue>`), then updates workers, beat and API. Drain old consumers before stopping them; never discard reserved tasks or revoke acknowledged provider work. Scale-in needs an explicit idle drain.
+Hosted commands come from `docker/worker-topology.json`. A release (`scripts/deploy_ecs.py`) changes only each task definition's image, command and entrypoint; Terraform in cloud-platform owns everything else, including health checks, stop timeouts, scratch volumes and environment. A rollout runs migrations, verifies a healthy landing-only consumer on the new image (`overbae.worker_health <queue>`), then updates workers, beat and API. Drain old consumers before stopping them; never discard reserved tasks or revoke acknowledged provider work. Scale-in needs an explicit idle drain.
 
 ## HTTP clients
 
