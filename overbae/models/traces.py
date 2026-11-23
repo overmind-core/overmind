@@ -194,6 +194,13 @@ class Span(models.Model):
                 condition=~Q(eval_attributes__has_key="score"),
                 name="span_unscored_idx",
             ),
+            # Roots whose spans are scored and whose trajectory is not: the trajectory sweep.
+            models.Index(
+                fields=["received_at"],
+                condition=Q(parent_span_id__isnull=True, eval_attributes__has_key="score")
+                & ~Q(eval_attributes__has_key="trajectory"),
+                name="span_trajectory_due_idx",
+            ),
         ]
 
     def __str__(self) -> str:
