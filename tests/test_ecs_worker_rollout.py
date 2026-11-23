@@ -202,6 +202,24 @@ def test_dedicated_workshop_controller_has_no_deployable_command(definition):
         render_task_definition(definition, service="workshop-runner", image="repo:new")
 
 
+def test_migrate_waits_past_ten_minutes_for_a_running_migration(monkeypatch, definition, service):
+    definition["containerDefinitions"][0]["name"] = "api"
+    polls = iter(["RUNNING"] * 120 + ["STOPPED"])
+
+    def fake_aws(*args, payload=None):
+        if args[:2] == ("ecs", "run-task"):
+            return {"tasks": [{"taskArn": "migration"}]}
+        status = next(polls)
+        return {"tasks": [{"lastStatus": status, "containers": [{"name": "api", "exitCode": 0}]}]}
+
+    monkeypatch.setattr(deploy_ecs, "preflight", lambda cluster: None)
+    monkeypatch.setattr(deploy_ecs, "register", lambda *_: (service, definition))
+    monkeypatch.setattr(deploy_ecs, "aws", fake_aws)
+    monkeypatch.setattr(deploy_ecs.time, "sleep", lambda seconds: None)
+    deploy_ecs.migrate("test", "repo:new")
+    assert next(polls, "done") == "done"
+
+
 def test_deploy_does_not_guess_capacity_for_a_service_scaled_to_zero(monkeypatch):
     monkeypatch.setattr(deploy_ecs, "describe_service", lambda cluster, name: {"desiredCount": 0})
     with pytest.raises(ValueError, match="scaled to zero"):

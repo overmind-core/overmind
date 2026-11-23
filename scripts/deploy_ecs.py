@@ -17,6 +17,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# A large index build outlasts the AWS CLI waiter's 10 minutes; this stays inside the
+# deploy role's one-hour credentials.
+MIGRATION_SECONDS = 45 * 60
 READ_ONLY_FIELDS = (
     "taskDefinitionArn",
     "revision",
@@ -170,11 +173,12 @@ def migrate(cluster, image):
     if response.get("failures") or len(response.get("tasks", [])) != 1:
         raise RuntimeError(f"Migration task was not accepted: {response.get('failures')}")
     arn = response["tasks"][0]["taskArn"]
-    subprocess.run(
-        ["aws", "ecs", "wait", "tasks-stopped", "--cluster", cluster, "--tasks", arn],
-        check=True,
-    )
-    task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
+    task = _stopped(cluster, arn, MIGRATION_SECONDS)
+    if task is None:
+        raise TimeoutError(
+            f"Migration {arn} still runs after {MIGRATION_SECONDS // 60} minutes; "
+            "re-run the release once it stops."
+        )
     # Only the API app container runs migrations; ignore a successfully stopped sidecar.
     app = next(c for c in task["containers"] if c["name"] == "api")
     if app.get("exitCode") != 0:
@@ -200,17 +204,24 @@ def drain_io(cluster, image, timeout=4200):
     if result.get("failures") or len(result.get("tasks", [])) != 1:
         raise RuntimeError("IO drain task was not accepted; worker deployment stopped")
     arn = result["tasks"][0]["taskArn"]
-    deadline = time.monotonic() + timeout + 180
+    task = _stopped(cluster, arn, timeout + 180)
+    if task is None:
+        raise TimeoutError(f"IO drain did not complete: {arn}; worker deployment stopped")
+    app = next(c for c in task["containers"] if c["name"] == "api")
+    if app.get("exitCode") != 0:
+        raise RuntimeError(f"IO drain failed in {arn}; worker deployment stopped")
+    print(f"Mixed IO consumers drained: {arn}", flush=True)
+
+
+def _stopped(cluster, arn, timeout):
+    """The task once it stopped, or None at the deadline."""
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
         if task["lastStatus"] == "STOPPED":
-            app = next(c for c in task["containers"] if c["name"] == "api")
-            if app.get("exitCode") != 0:
-                raise RuntimeError(f"IO drain failed in {arn}; worker deployment stopped")
-            print(f"Mixed IO consumers drained: {arn}", flush=True)
-            return
+            return task
         time.sleep(10)
-    raise TimeoutError(f"IO drain did not complete: {arn}; worker deployment stopped")
+    return None
 
 
 def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
