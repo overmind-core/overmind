@@ -143,7 +143,7 @@ services:
   celery-control-worker:
     <<: *build-common
     entrypoint: ["/usr/local/bin/worker-entrypoint.sh"]
-    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=8 -Q control
+    command: watchmedo auto-restart --directory=/code/overbae --pattern='*.py' --recursive --signal SIGTERM -- celery -A overbae worker -l info --pool=threads --concurrency=8 --prefetch-multiplier=1 --disable-prefetch -Q control
     restart: unless-stopped
     environment:
       <<: *env-common

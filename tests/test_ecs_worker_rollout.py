@@ -80,37 +80,32 @@ def test_every_release_overrides_stale_worker_command(definition, queue):
     service = "celery-traces-worker" if queue == "io_traces" else f"celery-{queue}-worker"
     definition["family"] = service
     definition["containerDefinitions"][0]["name"] = service
-    rendered = render_task_definition(
-        definition, service=service, image="repo:new", cluster="test-cluster"
-    )
+    rendered = render_task_definition(definition, service=service, image="repo:new")
     container = rendered["containerDefinitions"][0]
     assert container["image"] == "repo:new"
     assert container["command"][-2:] == ["-Q", queue]
     assert f"--hostname={queue}@%h" in container["command"]
     assert container["entryPoint"] == ["/usr/local/bin/worker-entrypoint.sh"]
-    assert container["healthCheck"]["command"][-2:] == ["overbae.worker_health", queue]
-    assert container["stopTimeout"] == 120
     assert rendered["containerDefinitions"][1]["image"] == "otel:stable"
-    if queue in {"landing", "interactive"}:
-        assert {entry["name"]: entry["value"] for entry in container["environment"]}[
-            "TMPDIR"
-        ] == "/scratch/tmp"
-        assert {"name": "workshop-scratch"} in rendered["volumes"]
-        assert rendered["cpu"] == definition["cpu"] and rendered["memory"] == definition["memory"]
-        repeated = render_task_definition(
-            rendered, service=service, image="repo:newer", cluster="test-cluster"
-        )
-        assert repeated["volumes"] == rendered["volumes"]
-        assert repeated["containerDefinitions"][0]["mountPoints"] == container["mountPoints"]
-        next(volume for volume in rendered["volumes"] if volume["name"] == "workshop-scratch")[
-            "host"
-        ] = {}
-        assert (
-            render_task_definition(
-                rendered, service=service, image="repo:future", cluster="test-cluster"
-            )["volumes"]
-            == rendered["volumes"]
-        )
+
+
+@pytest.mark.parametrize("service", ["api", "sandbox", "celery-landing-worker"])
+def test_a_release_keeps_every_field_terraform_owns(definition, service):
+    app = definition["containerDefinitions"][0]
+    app["name"] = service
+    app["healthCheck"] = {"command": ["CMD", "terraform"], "interval": 30}
+    app["linuxParameters"] = {"initProcessEnabled": True}
+    app["environment"].append({"name": "MCP_SERVER_URL", "value": "https://terraform/api/mcp/"})
+    definition["volumes"].append({"name": "workshop-scratch"})
+    rendered = render_task_definition(definition, service=service, image="repo:new")
+    owned = {
+        key: value for key, value in definition.items() if key not in deploy_ecs.READ_ONLY_FIELDS
+    }
+    kept = {key: value for key, value in rendered.items() if key != "containerDefinitions"}
+    assert kept == {key: value for key, value in owned.items() if key != "containerDefinitions"}
+    container = rendered["containerDefinitions"][0]
+    for key in ("healthCheck", "linuxParameters", "environment", "stopTimeout", "mountPoints"):
+        assert container[key] == app[key]
 
 
 def test_migration_cannot_start_http_server(definition, service):
@@ -126,25 +121,6 @@ def test_migration_cannot_start_http_server(definition, service):
     assert (
         request["count"] == 1 and request["networkConfiguration"] == service["networkConfiguration"]
     )
-
-
-@pytest.mark.parametrize(
-    ("cluster", "url"),
-    [
-        ("overmind-prod-cluster", "https://api.overmindlab.ai/api/mcp/"),
-        ("overmind-staging-cluster", "https://api-staging.overmindlab.ai/api/mcp/"),
-    ],
-)
-def test_api_release_restores_environment_bound_mcp_url(definition, cluster, url):
-    app = definition["containerDefinitions"][0]
-    app["name"] = "api"
-    app["environment"].append({"name": "MCP_SERVER_URL", "value": "http://localhost:8000/api/mcp/"})
-    rendered = render_task_definition(definition, service="api", image="repo:new", cluster=cluster)
-    environment = {
-        item["name"]: item["value"] for item in rendered["containerDefinitions"][0]["environment"]
-    }
-    assert environment["MCP_SERVER_URL"] == url
-    assert environment["KEEP"] == "yes"
 
 
 def test_running_container_without_health_or_current_revision_is_not_ready():
@@ -209,31 +185,39 @@ def test_a_release_builds_on_the_latest_revision_of_the_family(monkeypatch, defi
     [release] = registered
     assert release["taskRoleArn"] == "arn:aws:iam::123:role/latest"
     assert release["containerDefinitions"][0]["environment"] == [
-        {"name": "FROM", "value": "terraform"},
-        {"name": "RUN_DB_BOOTSTRAP", "value": "0"},
+        {"name": "FROM", "value": "terraform"}
     ]
     assert release["containerDefinitions"][0]["image"] == "repo:new"
 
 
-def test_document_parser_keeps_main_isolation_command_and_health(definition):
+def test_document_parser_runs_the_reviewed_sandbox_command(definition):
     definition["containerDefinitions"][0]["name"] = "sandbox"
-    rendered = render_task_definition(
-        definition, service="sandbox", image="repo:new", cluster="test"
-    )
-    container = rendered["containerDefinitions"][0]
-    assert container["command"] == ["python", "-m", "sandbox"]
-    assert container["linuxParameters"]["initProcessEnabled"] is True
-    assert container["linuxParameters"]["capabilities"]["add"] == ["SYS_PTRACE"]
-    assert "NET_RAW" in container["linuxParameters"]["capabilities"]["drop"]
-    assert "/health" in container["healthCheck"]["command"][-1]
+    rendered = render_task_definition(definition, service="sandbox", image="repo:new")
+    assert rendered["containerDefinitions"][0]["command"] == ["python", "-m", "sandbox"]
 
 
 def test_dedicated_workshop_controller_has_no_deployable_command(definition):
     definition["containerDefinitions"][0]["name"] = "workshop-runner"
     with pytest.raises(ValueError, match="No reviewed command"):
-        render_task_definition(
-            definition, service="workshop-runner", image="repo:new", cluster="test"
-        )
+        render_task_definition(definition, service="workshop-runner", image="repo:new")
+
+
+def test_migrate_waits_past_ten_minutes_for_a_running_migration(monkeypatch, definition, service):
+    definition["containerDefinitions"][0]["name"] = "api"
+    polls = iter(["RUNNING"] * 120 + ["STOPPED"])
+
+    def fake_aws(*args, payload=None):
+        if args[:2] == ("ecs", "run-task"):
+            return {"tasks": [{"taskArn": "migration"}]}
+        status = next(polls)
+        return {"tasks": [{"lastStatus": status, "containers": [{"name": "api", "exitCode": 0}]}]}
+
+    monkeypatch.setattr(deploy_ecs, "preflight", lambda cluster: None)
+    monkeypatch.setattr(deploy_ecs, "register", lambda *_: (service, definition))
+    monkeypatch.setattr(deploy_ecs, "aws", fake_aws)
+    monkeypatch.setattr(deploy_ecs.time, "sleep", lambda seconds: None)
+    deploy_ecs.migrate("test", "repo:new")
+    assert next(polls, "done") == "done"
 
 
 def test_deploy_does_not_guess_capacity_for_a_service_scaled_to_zero(monkeypatch):

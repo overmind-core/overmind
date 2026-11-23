@@ -265,23 +265,24 @@ def _deployed_commands() -> dict[str, str]:
     return {name: " ".join(argv) for name, argv in topology.items()}
 
 
-def test_prefork_lanes_reserve_only_the_tasks_they_run():
+def test_worker_lanes_reserve_only_the_tasks_they_run():
     """A reserved late-ack message stays unacknowledged while it waits behind a
     running task. Behind a 42-minute turn it outlives the broker's visibility
     timeout and is delivered twice; reserving only for a free slot bounds the
-    unacknowledged time by the task's own time limit."""
+    unacknowledged time by the task's own time limit. A reserved message also
+    waits behind a busy thread instead of going to an idle worker."""
     commands = {
         **{f"compose:{name}": service["command"] for name, service in _compose_services().items()},
         **{f"deploy:{name}": command for name, command in _deployed_commands().items()},
     }
-    prefork = {name: c for name, c in commands.items() if "--pool=prefork" in c}
-    assert prefork
+    workers = {name: c for name, c in commands.items() if _worker_queues(c) is not None}
+    assert workers
     offenders = sorted(
         name
-        for name, command in prefork.items()
+        for name, command in workers.items()
         if "--prefetch-multiplier=1" not in command or "--disable-prefetch" not in command
     )
-    assert not offenders, f"prefork workers that reserve ahead of a free slot: {offenders}"
+    assert not offenders, f"workers that reserve ahead of a free slot: {offenders}"
 
 
 def test_redis_redelivers_only_after_every_late_ack_task_has_hit_its_time_limit():

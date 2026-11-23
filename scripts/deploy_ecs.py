@@ -17,13 +17,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-HEALTH_CHECKED_QUEUES = {
-    "celery-io-worker": "io",
-    "celery-assistant-worker": "assistant",
-    "celery-traces-worker": "io_traces",
-    "celery-landing-worker": "landing",
-    "celery-interactive-worker": "interactive",
-}
+# A large index build outlasts the AWS CLI waiter's 10 minutes; this stays inside the
+# deploy role's one-hour credentials.
+MIGRATION_SECONDS = 45 * 60
 READ_ONLY_FIELDS = (
     "taskDefinitionArn",
     "revision",
@@ -36,20 +32,20 @@ READ_ONLY_FIELDS = (
 )
 
 
-def _environment(container, **values):
-    existing = {item["name"]: item["value"] for item in container.get("environment", [])}
-    existing.update({name: str(value) for name, value in values.items()})
-    container["environment"] = [{"name": key, "value": value} for key, value in existing.items()]
+def _app_container(definition, service):
+    containers = [item for item in definition["containerDefinitions"] if item["name"] == service]
+    if len(containers) != 1:
+        raise ValueError(f"Expected exactly one app container named {service!r}")
+    return containers[0]
 
 
-def render_task_definition(document, *, service, image, cluster):
+def render_task_definition(document, *, service, image):
+    """Terraform (cloud-platform) owns every other field; a release changes only what
+    ships with the code."""
     result = copy.deepcopy(document)
     for field in READ_ONLY_FIELDS:
         result.pop(field, None)
-    containers = [item for item in result["containerDefinitions"] if item["name"] == service]
-    if len(containers) != 1:
-        raise ValueError(f"Expected exactly one app container named {service!r}")
-    app = containers[0]
+    app = _app_container(result, service)
     app["image"] = image
     topology = json.loads((ROOT / "docker/worker-topology.json").read_text())
     if service in topology:
@@ -57,86 +53,6 @@ def render_task_definition(document, *, service, image, cluster):
         app["entryPoint"] = ["/usr/local/bin/worker-entrypoint.sh"]
     elif service != "api":
         raise ValueError(f"No reviewed command for service {service!r}")
-    if service == "sandbox":
-        linux = app.setdefault("linuxParameters", {})
-        linux["initProcessEnabled"] = True
-        linux["capabilities"] = {
-            "add": ["SYS_PTRACE"],
-            "drop": [
-                "AUDIT_WRITE",
-                "FSETID",
-                "MKNOD",
-                "NET_BIND_SERVICE",
-                "NET_RAW",
-                "SETFCAP",
-                "SETPCAP",
-                "SYS_CHROOT",
-            ],
-        }
-        app["healthCheck"] = {
-            "command": [
-                "CMD",
-                "python",
-                "-c",
-                "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)",
-            ],
-            "interval": 30,
-            "timeout": 15,
-            "retries": 3,
-            "startPeriod": 90,
-        }
-        app["stopTimeout"] = 120
-    if service != "sandbox":
-        _environment(app, RUN_DB_BOOTSTRAP="0")
-    if service in {"celery-interactive-worker", "celery-landing-worker"}:
-        volumes = result.setdefault("volumes", [])
-        if any(
-            volume["name"] == "workshop-scratch"
-            and volume
-            not in ({"name": "workshop-scratch"}, {"name": "workshop-scratch", "host": {}})
-            for volume in volumes
-        ):
-            raise ValueError("Workshop scratch must use task-local ephemeral storage.")
-        if not any(volume["name"] == "workshop-scratch" for volume in volumes):
-            volumes.append({"name": "workshop-scratch"})
-        mounts = app.setdefault("mountPoints", [])
-        if any(
-            mount["containerPath"] == "/scratch"
-            and (mount["sourceVolume"] != "workshop-scratch" or mount.get("readOnly"))
-            for mount in mounts
-        ):
-            raise ValueError("The /scratch mount conflicts with Workshop temporary storage.")
-        if not any(mount["containerPath"] == "/scratch" for mount in mounts):
-            mounts.append(
-                {"sourceVolume": "workshop-scratch", "containerPath": "/scratch", "readOnly": False}
-            )
-        _environment(app, TMPDIR="/scratch/tmp")
-    if service == "api" and cluster in {"overmind-prod-cluster", "overmind-staging-cluster"}:
-        host = (
-            "api.overmindlab.ai"
-            if cluster == "overmind-prod-cluster"
-            else "api-staging.overmindlab.ai"
-        )
-        _environment(app, MCP_SERVER_URL=f"https://{host}/api/mcp/")
-    if service == "celery-control-worker":
-        _environment(app, QUEUE_METRICS_ENABLED="1", QUEUE_METRICS_CLUSTER=cluster)
-    if service in HEALTH_CHECKED_QUEUES:
-        app["healthCheck"] = {
-            "command": [
-                "CMD",
-                "python",
-                "-m",
-                "overbae.worker_health",
-                HEALTH_CHECKED_QUEUES[service],
-            ],
-            "interval": 30,
-            "timeout": 15,
-            "retries": 3,
-            "startPeriod": 90,
-        }
-        # Durable leases own retries after an interrupted process; scale-in
-        # remains disabled until a reviewed graceful-drain policy is installed.
-        app["stopTimeout"] = 120
     return result
 
 
@@ -236,9 +152,7 @@ def register(cluster, service_name, image):
     definition = aws("ecs", "describe-task-definition", "--task-definition", family)[
         "taskDefinition"
     ]
-    rendered = render_task_definition(
-        definition, service=service_name, image=image, cluster=cluster
-    )
+    rendered = render_task_definition(definition, service=service_name, image=image)
     registered = aws("ecs", "register-task-definition", payload=rendered)["taskDefinition"]
     return service, registered
 
@@ -259,11 +173,12 @@ def migrate(cluster, image):
     if response.get("failures") or len(response.get("tasks", [])) != 1:
         raise RuntimeError(f"Migration task was not accepted: {response.get('failures')}")
     arn = response["tasks"][0]["taskArn"]
-    subprocess.run(
-        ["aws", "ecs", "wait", "tasks-stopped", "--cluster", cluster, "--tasks", arn],
-        check=True,
-    )
-    task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
+    task = _stopped(cluster, arn, MIGRATION_SECONDS)
+    if task is None:
+        raise TimeoutError(
+            f"Migration {arn} still runs after {MIGRATION_SECONDS // 60} minutes; "
+            "re-run the release once it stops."
+        )
     # Only the API app container runs migrations; ignore a successfully stopped sidecar.
     app = next(c for c in task["containers"] if c["name"] == "api")
     if app.get("exitCode") != 0:
@@ -289,17 +204,24 @@ def drain_io(cluster, image, timeout=4200):
     if result.get("failures") or len(result.get("tasks", [])) != 1:
         raise RuntimeError("IO drain task was not accepted; worker deployment stopped")
     arn = result["tasks"][0]["taskArn"]
-    deadline = time.monotonic() + timeout + 180
+    task = _stopped(cluster, arn, timeout + 180)
+    if task is None:
+        raise TimeoutError(f"IO drain did not complete: {arn}; worker deployment stopped")
+    app = next(c for c in task["containers"] if c["name"] == "api")
+    if app.get("exitCode") != 0:
+        raise RuntimeError(f"IO drain failed in {arn}; worker deployment stopped")
+    print(f"Mixed IO consumers drained: {arn}", flush=True)
+
+
+def _stopped(cluster, arn, timeout):
+    """The task once it stopped, or None at the deadline."""
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", arn)["tasks"][0]
         if task["lastStatus"] == "STOPPED":
-            app = next(c for c in task["containers"] if c["name"] == "api")
-            if app.get("exitCode") != 0:
-                raise RuntimeError(f"IO drain failed in {arn}; worker deployment stopped")
-            print(f"Mixed IO consumers drained: {arn}", flush=True)
-            return
+            return task
         time.sleep(10)
-    raise TimeoutError(f"IO drain did not complete: {arn}; worker deployment stopped")
+    return None
 
 
 def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
@@ -362,7 +284,7 @@ def deploy(cluster, service_name, image, timeout=4200, desired_count=None):
             service,
             tasks,
             task_definition=arn,
-            require_health=service_name in HEALTH_CHECKED_QUEUES or service_name == "sandbox",
+            require_health="healthCheck" in _app_container(definition, service_name),
         ):
             print(f"Ready: {service_name} {arn}")
             return

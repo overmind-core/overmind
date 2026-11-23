@@ -507,7 +507,12 @@ def reconcile():
             ):
                 from overbae.models import DatasetLandingWork
 
-                if (
+                if DatasetLandingWork.objects.filter(
+                    pk=run.pk, state__in=("waiting", "admitted", "running")
+                ).exists():
+                    # Admission owns lost landing work and retries it.
+                    pass
+                elif (
                     run.attempts >= MAX_ATTEMPTS
                     or DatasetLandingWork.objects.filter(pk=run.pk).exists()
                 ):
@@ -683,6 +688,7 @@ def execute(task_id, inputs):
         run.refresh_from_db()
         return {"status": run.state}
     stage = paths.dataset_dir(dataset.pk) / "imports" / str(run.pk) / str(claimed.owner)
+    retrying = False
     beat = heartbeat.start(lambda: renew(claimed), owner=f"import {run.pk}")
     try:
         run.refresh_from_db()
@@ -765,6 +771,10 @@ def execute(task_id, inputs):
         return {"status": "ok", "rows": rows}
     except Exception as exc:  # noqa: BLE001 — a failed attempt retains its exact source
         logger.exception("dataset import %s failed", run.pk)
+        if getattr(exc, "code", "") == "parser_unavailable" and run.attempts < MAX_ATTEMPTS:
+            # The import stays claimed until its lease lapses; admission then retries it.
+            retrying = True
+            return {"status": "retry", "error": str(exc)}
         fail(claimed, str(exc), code=getattr(exc, "code", "import_failed"))
         return {"status": "failed", "error": str(exc)}
     finally:
@@ -773,7 +783,7 @@ def execute(task_id, inputs):
         from overbae.services.assistant.turn import wake_dataset
 
         try:
-            for target_id in _target_ids(run):
+            for target_id in [] if retrying else _target_ids(run):
                 operations.finished(target_id, task_id=str(run.pk))
                 # A message sent with the upload waited for its source, landed or failed.
                 try:

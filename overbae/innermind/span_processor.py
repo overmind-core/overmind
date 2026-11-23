@@ -17,7 +17,6 @@ from overbae.models import EvalMatrix, EvalScore, Span
 
 logger = logging.getLogger(__name__)
 
-EVAL_SCORE_BATCH = 500
 TRACE_SPAN_CAP = 2_000
 MAX_CONCURRENT_SPANS = 64
 # A claim older than this belongs to a worker that died; the sweep takes it over.

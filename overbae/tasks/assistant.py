@@ -11,6 +11,13 @@ def run_turn(thread_id):
     turn.run(thread_id)
 
 
+@shared_task(name="overbae.tasks.assistant.resume_lost_turns")
+def resume_lost_turns():
+    from overbae.services.assistant import turn
+
+    return {"resumed": turn.resume_lost()}
+
+
 @shared_task(name="overbae.tasks.assistant.stop_kernel")
 def stop_kernel(project_id, thread_id, turn):
     """End the kernel of the turn that was stopped, also during a cell: that turn gets its

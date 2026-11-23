@@ -1,15 +1,18 @@
 """A turn: from a user's message to the assistant's reply, in one task. The event log is
-saved at every step, so a turn that stops halfway leaves an exact record, and the next
-message starts a new turn from it. A turn is never resumed by itself.
+saved at every step, so a turn that stops halfway leaves an exact record.
 
-A turn holds the thread by its number and writes only while it is the newest. A turn that
-stopped moving for ``STALE`` is taken for interrupted, and from then on it can write
-nothing."""
+A turn holds the thread by its number and writes only while it is the newest, and a
+heartbeat moves the thread while its worker lives. When the worker is lost, another task
+takes the thread over under a new number and continues the reply from the log; a call that
+may have been running is answered as abandoned, never run again. After ``RESUMES`` such
+take-overs for one message, or once nothing resumed it for ``STALE``, the turn is marked
+interrupted."""
 
 import json
 import logging
 import time
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -27,8 +30,9 @@ from overbae.models import (
     Dataset,
 )
 from overbae.models.assistant import STALE
-from overbae.services.assistant import log, prompt, threads, tools
+from overbae.services.assistant import log, presentation, prompt, threads, tools
 from overbae.services.billing_ledger import InsufficientCredits, charge_llm_usage, ensure_credits
+from overbae.services.datasets import heartbeat
 
 logger = logging.getLogger(__name__)
 Kind, State = AssistantEvent.Kind, AssistantThread.State
@@ -36,6 +40,9 @@ Queued = AssistantInput.State.QUEUED
 
 # Longer than any one step: a model reply, a cell at its limit, or one poll of a job.
 TURN_SECONDS = 30 * 60
+# A turn whose heartbeat is this old lost its worker and may be taken over.
+LEASE = timedelta(minutes=2)
+RESUMES = 2
 DRAFT_INTERVAL_SECONDS = 0.1
 ABANDONED = {
     "error": "This call has no recorded result: the turn stopped or was interrupted. It may "
@@ -83,36 +90,55 @@ def wake_dataset(dataset_id) -> None:
 
 def settle(thread: AssistantThread) -> AssistantThread:
     """Mark a turn that stopped moving as interrupted. A page that reads the thread and a
-    user who writes to it call this; no process watches for it."""
+    user who writes to it call this, for when nothing resumed it."""
     if thread.state != State.RUNNING or thread.updated_at > timezone.now() - STALE:
         return thread
     with transaction.atomic():
         held = AssistantThread.objects.select_for_update().get(pk=thread.pk)
         if held.state == State.RUNNING and held.updated_at <= timezone.now() - STALE:
-            # A newer number fences the lost turn out of every later write.
-            held.turn += 1
-            held.state = State.IDLE
-            held.save(update_fields=["turn", "state", "updated_at"])
-            log.append(
-                held,
-                Kind.STATUS,
-                {
-                    "state": "interrupted",
-                    "detail": "The turn was interrupted. Send a message to continue.",
-                },
-            )
-            if ready(held).exists():
-                wake(held)
+            _interrupt(held)
     thread.refresh_from_db()
     return thread
 
 
+def _interrupt(held) -> None:
+    """The caller holds the thread's row lock."""
+    # A newer number fences the lost turn out of every later write.
+    held.turn += 1
+    held.state = State.IDLE
+    held.save(update_fields=["turn", "state", "updated_at"])
+    log.append(
+        held,
+        Kind.STATUS,
+        {"state": "interrupted", "detail": "The turn was interrupted. Send a message to continue."},
+    )
+    if ready(held).exists():
+        wake(held)
+
+
+def resume_lost() -> int:
+    """Wake every turn whose worker stopped beating; ``run`` takes each over."""
+    from overbae.tasks.assistant import run_turn  # lazy: tasks import the API serializers
+
+    lost = AssistantThread.objects.filter(
+        state=State.RUNNING, updated_at__lt=timezone.now() - LEASE
+    ).values_list("pk", flat=True)
+    for thread_id in lost:
+        run_turn.delay(str(thread_id))
+    return len(lost)
+
+
 def run(thread_id) -> None:
     """The task: one turn, and the next one when messages arrived as it ended."""
-    thread = _begin(thread_id)
+    thread, resumed = _begin(thread_id)
     if thread is None:
         return
+    beat = heartbeat.start(
+        lambda: _held(thread).update(updated_at=timezone.now()), owner=f"assistant {thread_id}"
+    )
     try:
+        if resumed:
+            _resume(thread)
         _turn(thread)
     except log.LostTurnError:
         logger.warning("assistant turn on %s was taken over", thread_id)
@@ -122,14 +148,17 @@ def run(thread_id) -> None:
     except Exception:
         logger.exception("assistant turn failed on %s", thread_id)
         _status(thread, "failed", "The turn failed. Send a message to continue.")
+    finally:
+        beat.set()
     if _held(thread).update(state=State.IDLE, stop_requested=False):
         log.changed(thread)
         if ready(thread).exists():
             wake(thread)
 
 
-def _begin(thread_id) -> AssistantThread | None:
-    """Take the thread for a turn, when a message waits and nothing holds it."""
+def _begin(thread_id) -> tuple[AssistantThread | None, bool]:
+    """Take the thread for a turn, when a message waits and nothing holds it, or take over
+    a turn whose worker was lost. True with a take-over."""
     thread = settle(AssistantThread.objects.select_related("project", "dataset").get(pk=thread_id))
     with transaction.atomic():
         thread = (
@@ -137,16 +166,65 @@ def _begin(thread_id) -> AssistantThread | None:
             .select_related("project", "dataset")
             .get(pk=thread_id)
         )
-        if thread.state == State.RUNNING or not ready(thread).exists():
-            return None
-        # A first message on a new dataset waits for its source; landing wakes the thread.
-        if thread.dataset.state == Dataset.State.LANDING:
-            return None
-        thread.state, thread.stop_requested = State.RUNNING, False
-        thread.turn += 1
-        thread.save(update_fields=["state", "stop_requested", "turn", "updated_at"])
+        resumed = thread.state == State.RUNNING
+        if resumed:
+            if thread.updated_at >= timezone.now() - LEASE:
+                return None, False
+            if _resumes(thread) >= RESUMES:
+                _interrupt(thread)
+                return None, False
+            # The new number fences the lost worker out of every later write.
+            thread.turn += 1
+            thread.save(update_fields=["turn", "updated_at"])
+            _status(thread, "resumed", "The reply continues after its worker stopped.")
+        else:
+            if not ready(thread).exists():
+                return None, False
+            # A first message on a new dataset waits for its source; landing wakes the thread.
+            if thread.dataset.state == Dataset.State.LANDING:
+                return None, False
+            thread.state, thread.stop_requested = State.RUNNING, False
+            thread.turn += 1
+            thread.save(update_fields=["state", "stop_requested", "turn", "updated_at"])
     log.changed(thread)
-    return thread
+    return thread, resumed
+
+
+def _resumes(thread) -> int:
+    """Take-overs since the newest message."""
+    since = (
+        thread.events.filter(kind=Kind.USER)
+        .order_by("-sequence")
+        .values_list("sequence", flat=True)
+        .first()
+    )
+    return thread.events.filter(
+        kind=Kind.STATUS, sequence__gt=since or 0, payload__state="resumed"
+    ).count()
+
+
+def _resume(thread) -> None:
+    """Continue the reply the lost worker was writing. Calls without a result are read as
+    abandoned (``messages``); a reply that ended, failed or asked the user is left."""
+    last = (
+        thread.events.exclude(kind=Kind.STATUS, payload__state="resumed")
+        .order_by("-sequence")
+        .only("kind", "payload", "presentation")
+        .first()
+    )
+    if last is None or last.kind == Kind.STATUS:
+        return
+    if last.kind == Kind.ASSISTANT and not last.payload["calls"]:
+        return
+    if last.kind == Kind.TOOL_RESULT:
+        # Any call of the newest reply that asked the user ends the answer, as in ``_answer``.
+        reply = thread.events.filter(kind=Kind.ASSISTANT).order_by("-sequence").first()
+        results = thread.events.filter(kind=Kind.TOOL_RESULT, sequence__gt=reply.sequence).exclude(
+            presentation=None
+        )
+        if any(presentation.asks(r.presentation) for r in results.only("presentation")):
+            return
+    _answer(thread, time.monotonic() + TURN_SECONDS)
 
 
 def _held(thread):

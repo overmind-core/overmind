@@ -219,3 +219,37 @@ def test_a_span_names_the_attributes_holding_its_input_and_output(
         input_attribute,
         output_attribute,
     )
+
+
+def test_a_name_longer_than_its_column_does_not_reject_the_batch():
+    project = make_project()
+    span_id = uuid.uuid4().hex[:16]
+    ingest_spans(
+        project,
+        [{"name": "n" * 4000, "attributes": {}, "span_id": span_id}],
+        resource={"service.name": "s" * 4000},
+    )
+    span = Span.objects.get(project=project, span_id=span_id)
+    assert span.name == "n" * 255
+    assert span.service_name == "s" * 255
+
+
+@pytest.mark.parametrize("gzipped", [False, True])
+def test_an_export_over_the_size_limit_is_refused_before_parsing(gzipped):
+    import gzip
+
+    from overbae.api.otlp import MAX_EXPORT_BYTES
+
+    owner = make_user()
+    project = make_project(member=owner)
+    body = b"\0" * (MAX_EXPORT_BYTES + 1)
+    headers = {}
+    if gzipped:
+        body = gzip.compress(body)
+        assert len(body) < MAX_EXPORT_BYTES
+        headers["HTTP_CONTENT_ENCODING"] = "gzip"
+    response = api_key_client(owner, project).post(
+        "/api/v1/traces", data=body, content_type="application/x-protobuf", **headers
+    )
+    assert response.status_code == 413
+    assert not Span.objects.filter(project=project).exists()

@@ -12,6 +12,7 @@ from django.db.models import Exists, F, OuterRef, Subquery
 from django.utils import timezone
 
 from overbae.models import Dataset, DatasetImport, DatasetLandingWork, Project
+from overbae.services.datasets.imports import MAX_ATTEMPTS, validate_sources
 from overbae.services.datasets.lifecycle import DatasetError
 
 logger = logging.getLogger(__name__)
@@ -255,6 +256,10 @@ def finish(task_id, owner, outcome=None):
         return
     outcome = outcome or {}
     status = outcome.get("status")
+    if status == "retry":
+        # The lease lapses and reconcile retries the import under a new owner.
+        wake()
+        return
     source = (
         DatasetImport.objects.filter(pk=task_id).values("state", "failure_code", "error").first()
     )
@@ -346,12 +351,17 @@ def reconcile(publish):
                     updated_at=now,
                 )
                 continue
-            error = (
-                "The landing worker stopped; retry explicitly from the retained source."
-                if work.state == "running"
-                else "The import exceeded its configured queue-wait limit."
-            )
-            code = "worker_timeout" if work.state == "running" else "queue_timeout"
+            if work.state == "running" and _retry(work, source, targets, now):
+                continue
+            if work.state == "running" and source and source.attempts >= MAX_ATTEMPTS:
+                error = f"The import stopped {source.attempts} times. Its source is retained."
+                code = "attempts_exhausted"
+            elif work.state == "running":
+                error = "The landing worker stopped; retry explicitly from the retained source."
+                code = "worker_timeout"
+            else:
+                error = "The import exceeded its configured queue-wait limit."
+                code = "queue_timeout"
             DatasetLandingWork.objects.filter(pk=task_id).update(
                 failure_code=code,
                 state="failed",
@@ -380,10 +390,60 @@ def reconcile(publish):
                 lease_until=None,
                 updated_at=now,
             )
+            # Lazy: the assistant reaches the MCP catalog, which imports this module.
+            from overbae.services.assistant.turn import wake_dataset
+
+            # A message sent with the upload waited for its source; landing has ended.
+            for target in targets:
+                transaction.on_commit(
+                    lambda dataset_id=target.pk: wake_dataset(dataset_id), robust=True
+                )
     DatasetLandingWork.objects.filter(state="waiting").exclude(dataset__state="landing").update(
         state="cancelled", finished_at=now, updated_at=now
     )
     return dispatch(publish)
+
+
+def _retry(work, source, targets, now):
+    """Puts lost work back in line while its import has attempts left. The new owner
+    fences the old message, and a file that keeps stopping its worker hits the limit.
+    The caller holds the source, dataset and work locks."""
+    if source is None or source.state not in ("queued", "running"):
+        return False
+    if source.attempts >= MAX_ATTEMPTS:
+        return False
+    try:
+        validate_sources(source)
+    except DatasetError:
+        return False
+    DatasetLandingWork.objects.filter(pk=work.pk).update(
+        state="waiting",
+        owner=None,
+        queued_at=now,
+        started_at=None,
+        lease_until=None,
+        published_at=None,
+        error="",
+        failure_code="",
+        updated_at=now,
+    )
+    # Admission publishes it; the receipt's own publisher stays idle.
+    DatasetImport.objects.filter(pk=source.pk).update(
+        state="queued",
+        owner=None,
+        lease_until=None,
+        started_at=None,
+        queued_at=now,
+        published_at=now,
+        next_publish_at=None,
+        publish_owner=None,
+        updated_at=now,
+    )
+    for target in targets:
+        Dataset.objects.filter(pk=target.pk, state="landing").update(
+            operation={"state": "queued", "task_id": str(work.pk), "queued_at": now.isoformat()}
+        )
+    return True
 
 
 def status(dataset):

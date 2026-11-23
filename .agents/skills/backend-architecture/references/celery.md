@@ -22,22 +22,22 @@ Each worker consumes only its own queue. Beat runs as its own `celery-beat` serv
 - `run_eval_run` routes to `io` because Modal warm-up blocks for minutes.
 - `io_traces` is separate from `io` so trace scoring cannot occupy preparation or serving slots.
 
-Every prefork lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved late-ack message is redelivered after the broker `visibility_timeout` (2 h), which must stay above every late-ack time limit.
+Every worker lane runs `--prefetch-multiplier=1 --disable-prefetch`. A reserved late-ack message is redelivered after the broker `visibility_timeout` (2 h), which must stay above every late-ack time limit.
 
 ## Routing must agree in four places
 
-`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` checks that compose and `make worker` drain every routed queue, rejects a time-limited task on a compose thread pool, checks the prefork prefetch flags and the `io`/`io_traces` split in `worker-topology.json`, and imports `overbae.tasks` in a fresh worker. Nothing checks that `worker-topology.json` drains every queue; keep it in step by hand. Workers hot-restart via watchmedo on `.py` changes.
+`CELERY_TASK_ROUTES`, `make worker` (one local process, so its `-Q` lists every queue), docker-compose and `docker/worker-topology.json`. `tests/test_celery_topology.py` checks that compose and `make worker` drain every routed queue, rejects a time-limited task on a compose thread pool, checks every lane's prefetch flags and the `io`/`io_traces` split in `worker-topology.json`, and imports `overbae.tasks` in a fresh worker. Nothing checks that `worker-topology.json` drains every queue; keep it in step by hand. Workers hot-restart via watchmedo on `.py` changes.
 
 ## Durable admission
 
 Waiting work is a PostgreSQL row, admitted by a row-locked dispatcher in least-recent-project order:
 
 - `LiveScoringWork` — spans, trajectories and signals; global and per-project caps; fenced running lease longer than the five-minute hard limit.
-- `DatasetLandingWork` — one import per project, global admission follows observed landing capacity up to eight. Waiting never expires unless `DATASET_IMPORT_MAX_QUEUE_SECONDS` is nonzero. A lost started import needs explicit recovery.
+- `DatasetLandingWork` — one import per project, global admission follows observed landing capacity up to eight. Waiting never expires unless `DATASET_IMPORT_MAX_QUEUE_SECONDS` is nonzero. A started import whose worker or document parser stopped goes back to waiting under a new owner until `imports.MAX_ATTEMPTS`; the claim counts each attempt, so a file that keeps killing its worker stops.
 - `EvalGenerationScheduler` — `EVAL_MAX_IN_FLIGHT`, `EVAL_MAX_IN_FLIGHT_PER_PROJECT` and `EVAL_MAX_IN_FLIGHT_PER_RUN`; completion and a 30-second control tick refill slots.
 - `DatasetPipelineRun` is the exception: a queued run takes a per-project Redis slot or retries through the broker every 2 s, and fails after 15 minutes without capacity. The default project limit stays below the minimum interactive worker size.
 
-A lost started attempt becomes an explicit unknown outcome. It is never repeated automatically. Queue metrics report durable backlog and oldest waiting age.
+A lost started attempt is repeated only where a repeat has no outside effect: an upload until `imports.MAX_ATTEMPTS`, and an eval row's generation once (`generation.GENERATION_ATTEMPTS`), since it replays recorded tools. Anything else becomes an explicit unknown outcome and is never repeated automatically. Queue metrics report durable backlog and oldest waiting age.
 
 ## Leases and reconcilers
 
@@ -45,7 +45,7 @@ Frequent beat tasks (live-scoring admission, import and evaluation dispatch, Wor
 
 ## Deployment
 
-Hosted commands come from `docker/worker-topology.json`. A rollout runs migrations, verifies a healthy landing-only consumer on the new image (`overbae.worker_health <queue>`), then updates workers, beat and API. Drain old consumers before stopping them; never discard reserved tasks or revoke acknowledged provider work. Scale-in needs an explicit idle drain.
+Hosted commands come from `docker/worker-topology.json`. A release (`scripts/deploy_ecs.py`) changes only each task definition's image, command and entrypoint; Terraform in cloud-platform owns everything else, including health checks, stop timeouts, scratch volumes and environment. A rollout checks the consumer services exist, runs migrations as a one-off task (waiting up to `MIGRATION_SECONDS`), then updates every service at once; each waits until its tasks run the new revision, healthy where the task definition has a health check (`overbae.worker_health <queue>` on queue lanes). Drain old consumers before stopping them; never discard reserved tasks or revoke acknowledged provider work. A worker stopped by scale-in or a release loses its running tasks; its lease lapses and a reconciler recovers it (durable admission above; the evaluation and assistant references; data-workshop).
 
 ## HTTP clients
 

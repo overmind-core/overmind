@@ -138,9 +138,10 @@ completed landing. Dataset-run `progress.admission` and dataset-operation
 `landing_admission` show fair-queue waiting, admission, execution and terminal
 state with measured timestamps. A waiting import consumes no execution attempt;
 follow polling guidance rather than resubmitting. One project's imports execute
-serially so another project can use available workers. Failed or lost started
-attempts retain their source and require explicit recovery through
-`resume_dataset_import`; no automatic replay is implied. For a JSON wrapper use `--json-rows-field FIELD` after inspecting
+serially so another project can use available workers. A started import whose
+worker or document parser stopped is retried automatically, up to 3 attempts in
+total, and keeps its source. Other failures, and imports at the limit, stop;
+`resume_dataset_import` retries a stopped import that has attempts left. For a JSON wrapper use `--json-rows-field FIELD` after inspecting
 the file's structure. Original wrapper bytes remain retained; the selected field
 is recorded as extraction provenance.
 The CLI marks a saved upload state as `state_scope=at_publication`; it is not

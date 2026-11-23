@@ -412,3 +412,45 @@ def test_workshop_surfaces_omit_retired_checks_but_keep_execution_receipts():
     assert "preparation_status" not in process
     assert len(process["preparation"]["nodes"]) == 2
     assert process["current_pipeline"] == recipe["id"]
+
+
+@pytest.mark.covers("recovery")
+def test_a_running_script_holds_a_lease_a_lost_worker_lets_lapse_within_minutes():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from overbae.services.datasets import heartbeat
+
+    project, client, context = workspace()
+    dataset = source(client, project, "Leased source", [{"value": 1}])
+    recipe = call(
+        context,
+        "save_dataset_pipeline",
+        name="Leased decisions",
+        request_key="leased-recipe",
+        package=retained_package(project, context.user, [decision_step()]),
+    )["pipeline"]
+    receipt = call(
+        context,
+        "run_dataset_pipeline",
+        dataset=str(dataset.pk),
+        pipeline=recipe["id"],
+        source_cell=str(dataset.active_cell.pk),
+        source_fingerprint=dataset.active_cell.fingerprint,
+        request_key="leased-run",
+    )
+    DatasetPipelineRun.objects.filter(pk=receipt["run"]["id"], state="running").update(
+        state="queued"
+    )
+    left = []
+
+    def observing(run, *args, **kwargs):
+        lease = DatasetPipelineRun.objects.get(pk=run.pk).lease_until
+        left.append(lease - timezone.now())
+        return execute_fixture(run, *args, **kwargs)
+
+    workbench.execute(receipt["run"]["id"], script_executor=observing)
+    assert left
+    assert all(timedelta(0) < lease <= timedelta(seconds=heartbeat.STALE_SECONDS) for lease in left)
+    assert DatasetPipelineRun.objects.get(pk=receipt["run"]["id"]).state == "completed"

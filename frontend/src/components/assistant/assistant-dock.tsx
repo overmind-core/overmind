@@ -68,9 +68,12 @@ function statusOf(
     return runningLabel(assistant.events) ?? assistant.draft?.steps.at(-1) ?? "Working";
   }
   if (last?.kind === "status")
-    return { failed: "Run failed", interrupted: "Interrupted", stopped: "Stopped" }[
-      last.payload.state
-    ];
+    return {
+      failed: "Run failed",
+      interrupted: "Interrupted",
+      resumed: "Complete",
+      stopped: "Stopped",
+    }[last.payload.state];
   return last ? "Complete" : "Ask about this data";
 }
 

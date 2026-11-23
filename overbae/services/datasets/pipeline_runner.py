@@ -21,6 +21,8 @@ from sandbox.protocol import FramingError, HeaderReader, header_bytes
 
 QUEUE_SECONDS = 15 * 60
 TASK_SECONDS = 1560
+# A slot renewed by the run's heartbeat; a dead worker's slot frees within this.
+SLOT_SECONDS = 5 * 60
 _TAKE_SLOT = """
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
 if redis.call('ZCARD', KEYS[1]) < tonumber(ARGV[4]) then
@@ -71,12 +73,19 @@ def take_slot(project_id, owner):
             1,
             f"workshop:project:{project_id}:slots",
             now,
-            now + TASK_SECONDS + 60,
+            now + SLOT_SECONDS,
             owner,
             settings.WORKSHOP_PROJECT_CONCURRENCY,
             TASK_SECONDS + 120,
         )
     )
+
+
+def renew_slot(project_id, owner):
+    if settings.CELERY_BROKER_URL != "memory://":
+        _client(settings.CELERY_BROKER_URL).zadd(
+            f"workshop:project:{project_id}:slots", {owner: time.time() + SLOT_SECONDS}, xx=True
+        )
 
 
 def release_slot(project_id, owner):

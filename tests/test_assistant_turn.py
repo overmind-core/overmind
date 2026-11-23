@@ -176,6 +176,93 @@ def test_a_turn_that_stopped_moving_is_interrupted_and_writes_nothing_more(
         log.append(thread, "assistant", {"text": "late", "calls": [], "usage": {}}, turn=4)
 
 
+def lost_midway(thread, user, *, calls):
+    """The record a worker leaves when it is lost while its reply is under way."""
+    threads.send(thread, user, request_key="lost", text="Count.")
+    message = thread.inputs.get()
+    AssistantThread.objects.filter(pk=thread.pk).update(state="running", turn=4)
+    AssistantInput.objects.filter(pk=message.pk).update(state=AssistantInput.State.DELIVERED)
+    log.append(
+        thread,
+        "user",
+        {
+            "input": str(message.pk),
+            "user": user.pk,
+            "text": "Count.",
+            "cells": [],
+            "interaction": None,
+        },
+        turn=4,
+    )
+    log.append(
+        thread, "assistant", {"text": "", "calls": calls, "reasoning": None, "usage": {}}, turn=4
+    )
+    AssistantThread.objects.filter(pk=thread.pk).update(
+        updated_at=timezone.now() - turn.LEASE - timedelta(seconds=1)
+    )
+
+
+def test_a_turn_whose_worker_was_lost_is_taken_over_and_continues_its_reply(
+    fake_llm, user, thread, woken
+):
+    query = {"summary": "Counting", "dataset": "x", "sql": "select 1"}
+    lost_midway(
+        thread, user, calls=[{"id": "c1", "name": "query_dataset", "raw": json.dumps(query)}]
+    )
+
+    assert turn.resume_lost() == 1 and woken == [str(thread.pk)]
+    fake_llm.stream_rounds([([], "It has 2 rows.")])
+    turn.run(thread.pk)
+    thread.refresh_from_db()
+
+    assert kinds(thread) == ["user", "assistant", "status", "assistant"]
+    assert thread.events.get(kind="status").payload["state"] == "resumed"
+    # The call that may have run is answered as abandoned, never run again.
+    assert not results(thread)
+    (request,) = fake_llm.streamed()
+    answered = [m for m in request.body["messages"] if m.get("tool_call_id") == "c1"]
+    assert json.loads(answered[0]["content"]) == turn.ABANDONED
+    assert thread.state == AssistantThread.State.IDLE and thread.turn == 5
+    with pytest.raises(log.LostTurnError):
+        log.append(thread, "assistant", {"text": "late", "calls": [], "usage": {}}, turn=4)
+
+
+@pytest.mark.parametrize("ended", ["reply", "failure", "question"])
+def test_a_reply_that_ended_is_not_written_again_when_its_turn_is_taken_over(
+    fake_llm, user, thread, ended
+):
+    calls = [
+        {"id": "ask", "name": "present", "raw": "{}"},
+        {"id": "q", "name": "query_dataset", "raw": "{}"},
+    ]
+    lost_midway(thread, user, calls=calls if ended == "question" else [])
+    if ended == "failure":
+        log.append(thread, "status", {"state": "failed", "detail": "The model did not answer."})
+    if ended == "question":
+        # The question came first; the reply's last call was an ordinary one.
+        question = {"root": {"type": "Question", "id": "task", "prompt": "Which task?"}}
+        for call, shown in (("ask", question), ("q", None)):
+            result = {"call": call, "name": "x", "ok": True, "content": {}}
+            log.append(thread, "tool_result", result, presentation=shown)
+    turn.run(thread.pk)
+    thread.refresh_from_db()
+    assert thread.events.last().payload["state"] == "resumed"
+    assert fake_llm.streamed() == []
+    assert thread.state == AssistantThread.State.IDLE
+
+
+def test_an_answered_question_is_replied_to_when_its_turn_is_taken_over(fake_llm, user, thread):
+    lost_midway(thread, user, calls=[{"id": "ask", "name": "present", "raw": "{}"}])
+    question = {"root": {"type": "Question", "id": "task", "prompt": "Which task?"}}
+    result = {"call": "ask", "name": "present", "ok": True, "content": {}}
+    log.append(thread, "tool_result", result, presentation=question)
+    answer = {"input": "x", "user": user.pk, "text": "Chat", "cells": [], "interaction": None}
+    log.append(thread, "user", answer)
+    fake_llm.stream_rounds([([], "Chat it is.")])
+    turn.run(thread.pk)
+    assert len(fake_llm.streamed()) == 1
+
+
 def test_a_sender_who_left_the_project_runs_nothing(fake_llm, user, thread):
     threads.send(thread, user, request_key="k", text="Prepare it.")
     ProjectMembership.objects.filter(user=user).delete()

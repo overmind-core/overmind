@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 IN_FLIGHT = (EvalRunRow.State.QUEUED, EvalRunRow.State.RUNNING)
 UNFINISHED = (EvalRunRow.State.WAITING, *IN_FLIGHT)
 QUEUED_LEASE = timedelta(minutes=30)
-# The worker's hard time limit is 22 minutes; never replay an attempt whose outcome is unknown.
+# The worker's hard time limit is 22 minutes.
 RUNNING_LEASE = timedelta(minutes=23)
+# Generation replays recorded tools and has no outside effect, so a lost attempt runs once
+# more at the cost of one duplicate model call; a second loss is recorded unknown.
+GENERATION_ATTEMPTS = 2
 SCHEDULER_HEALTHY = timedelta(minutes=2)
 
 
@@ -64,15 +67,17 @@ def dispatch(publish, publish_scoring) -> dict[str, int]:
 
     expired = list(rows.filter(state__in=IN_FLIGHT, expires_at__lt=now))
     for row in expired:
-        saved = row.output is not None or bool(row.error)
-        changed = rows.filter(pk=row.pk, state=row.state, task_id=row.task_id).update(
-            state=EvalRunRow.State.DONE if saved else EvalRunRow.State.UNKNOWN, finished_at=now
-        )
-        if changed and not saved:
+        current = rows.filter(pk=row.pk, state=row.state, task_id=row.task_id)
+        if row.output is not None or row.error:
+            current.update(state=EvalRunRow.State.DONE, finished_at=now)
+        elif row.state == EvalRunRow.State.QUEUED or row.attempts < GENERATION_ATTEMPTS:
+            # The new token fences the old message; a never-claimed row costs no attempt.
+            current.update(
+                state=EvalRunRow.State.WAITING, task_id="", queued_at=None, expires_at=None
+            )
+        elif current.update(state=EvalRunRow.State.UNKNOWN, finished_at=now):
             rows.filter(pk=row.pk, error="").update(
-                error="generation outcome unknown after worker deadline; not replayed"
-                if row.state == EvalRunRow.State.RUNNING
-                else "generation outcome unknown: dispatch expired before worker claim"
+                error=f"generation outcome unknown after {row.attempts} lost attempts"
             )
 
     running = EvalRun.objects.filter(status=EvalRun.Status.RUNNING)
@@ -159,7 +164,10 @@ def claim(row_id, task_id) -> bool:
     if row.expires_at is not None and row.expires_at <= now:
         return False
     EvalRunRow.objects.filter(pk=row.pk).update(
-        state=EvalRunRow.State.RUNNING, started_at=now, expires_at=now + RUNNING_LEASE
+        state=EvalRunRow.State.RUNNING,
+        started_at=now,
+        expires_at=now + RUNNING_LEASE,
+        attempts=F("attempts") + 1,
     )
     return True
 
@@ -177,7 +185,11 @@ def begin_scoring(run_id, task_id) -> bool:
         return False
     if run.scoring_task_id != task_id or run.scoring_started_at is not None:
         return False
-    EvalRun.objects.filter(pk=run.pk).update(scoring_started_at=timezone.now())
+    # A hand-off that waited in the queue starts with a fresh heartbeat.
+    now = timezone.now()
+    EvalRun.objects.filter(pk=run.pk).update(
+        scoring_started_at=now, scoring_attempts=F("scoring_attempts") + 1, updated_at=now
+    )
     return True
 
 

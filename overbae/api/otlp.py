@@ -711,6 +711,11 @@ def process_span(span_id: str, project_id: str | None = None):
     )
 
 
+def _fit(field: str, value: str) -> str:
+    """OTLP sets no length on names; one long name must not reject its whole batch."""
+    return value[: Span._meta.get_field(field).max_length]
+
+
 def _build_span(
     span_proto,
     project: Project,
@@ -730,18 +735,18 @@ def _build_span(
         parent_span_id=_parent_hex_or_none(span_proto),
         project=project,
         span_type=_classify_span_type(span_proto.name, attrs),
-        operation=_operation_from(span_proto, attrs),
-        name=span_proto.name or "",
+        operation=_fit("operation", _operation_from(span_proto, attrs)),
+        name=_fit("name", span_proto.name or ""),
         kind=int(span_proto.kind),
         start_time_ns=start,
         end_time_ns=end,
         duration_ns=duration,
         status_code=int(span_proto.status.code),
         status_message=span_proto.status.message or "",
-        service_name=str(resource_attrs.get("service.name") or ""),
+        service_name=_fit("service_name", str(resource_attrs.get("service.name") or "")),
         resource_attrs=resource_attrs,
-        scope_name=_normalize_scope_name(scope_name),
-        scope_version=scope_version or "",
+        scope_name=_fit("scope_name", _normalize_scope_name(scope_name)),
+        scope_version=_fit("scope_version", scope_version or ""),
         attributes=attrs,
         usage=usage_slice(attrs),
         events=[_span_event_to_dict(e) for e in span_proto.events],
@@ -802,17 +807,36 @@ _SPAN_UPSERT_FIELDS = [
 _EVAL_FIELDS = frozenset({"eval_attributes", "eval_claimed_at"})
 
 
+# The OpenTelemetry Collector's default request limit. Parsed spans take several times
+# their wire size in memory, so the limit holds after decompression too.
+MAX_EXPORT_BYTES = 20 * 1024 * 1024
+
+
 def _decoded_request_body(request) -> bytes:
-    raw = request.body
-    if "gzip" in request.headers.get("Content-Encoding", ""):
-        try:
-            return zlib.decompress(raw, 16 + zlib.MAX_WBITS)
-        except zlib.error as exc:
-            raise _MalformedBodyError(f"Invalid gzip body: {exc}") from exc
-    return raw
+    if safe_int(request.headers.get("Content-Length")) > MAX_EXPORT_BYTES:
+        raise _TooLargeError
+    raw = request.read(MAX_EXPORT_BYTES + 1)
+    if len(raw) > MAX_EXPORT_BYTES:
+        raise _TooLargeError
+    if "gzip" not in request.headers.get("Content-Encoding", ""):
+        return raw
+    stream = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        body = stream.decompress(raw, MAX_EXPORT_BYTES + 1)
+    except zlib.error as exc:
+        raise _MalformedBodyError(f"Invalid gzip body: {exc}") from exc
+    if len(body) > MAX_EXPORT_BYTES:
+        raise _TooLargeError
+    if not stream.eof:
+        raise _MalformedBodyError("Invalid gzip body: incomplete or truncated stream")
+    return body
 
 
 class _MalformedBodyError(Exception):
+    pass
+
+
+class _TooLargeError(Exception):
     pass
 
 
@@ -853,6 +877,11 @@ def otlp_traces(request):
         body = _decoded_request_body(request)
     except _MalformedBodyError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+    except _TooLargeError:
+        return JsonResponse(
+            {"error": f"OTLP export exceeds {MAX_EXPORT_BYTES} bytes; send smaller batches."},
+            status=413,
+        )
 
     try:
         export_request = _parse_export(request, body)
