@@ -273,3 +273,17 @@ def test_landing_metrics_distinguish_user_data_failures_and_current_retry_age():
     measured = read_workloads()["landing"]
     assert measured["blocked"] == 0
     assert measured["oldest"] == now
+
+
+@pytest.mark.django_db
+def test_a_recycled_scoring_row_waits_from_its_recycle_not_its_creation():
+    from overbae.innermind import admission
+    from overbae.models import LiveScoringWork, Project
+
+    project = Project.objects.create(name="recycled", slug="recycled-age")
+    admission.enqueue(project.pk, "span", ["a"])
+    month_ago = timezone.now() - timedelta(days=30)
+    LiveScoringWork.objects.update(state="done", created_at=month_ago, waiting_since=month_ago)
+    admission.enqueue(project.pk, "span", ["a"])
+    oldest = read_workloads()["io_traces"]["oldest"]
+    assert timezone.now() - oldest < timedelta(minutes=1)

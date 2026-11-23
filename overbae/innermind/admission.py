@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F
+from django.db.models.functions import Now
 from django.utils import timezone
 
 from overbae.models import LiveScoringProject, LiveScoringScheduler, LiveScoringWork
@@ -24,7 +25,7 @@ def enqueue(project_id, kind: str, keys: list[str]) -> None:
     # Completed failed passes may retry after the existing span/trajectory claim grace.
     LiveScoringWork.objects.filter(
         project_id=project_id, kind=kind, key__in=keys, state="done"
-    ).update(state="waiting", task_id="", expires_at=None)
+    ).update(state="waiting", task_id="", expires_at=None, waiting_since=Now())
 
 
 @transaction.atomic

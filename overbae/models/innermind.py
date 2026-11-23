@@ -11,6 +11,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Now
 
 
 class ModelRef(models.Model):
@@ -508,6 +509,8 @@ class LiveScoringWork(models.Model):
     state = models.CharField(max_length=16, default="waiting")
     task_id = models.CharField(max_length=36, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    # A finished row is recycled to waiting; its wait starts again then.
+    waiting_since = models.DateTimeField(db_default=Now())
     queued_at = models.DateTimeField(null=True)
     started_at = models.DateTimeField(null=True)
     expires_at = models.DateTimeField(null=True)

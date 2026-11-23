@@ -98,7 +98,7 @@ def read_workloads():
         waiting=Count("pk", filter=Q(state__in=["waiting", "queued"])),
         running=Count("pk", filter=Q(state="running")),
         blocked=Count("pk", filter=recent_expiry),
-        oldest=Min("created_at", filter=Q(state__in=["waiting", "queued"])),
+        oldest=Min("waiting_since", filter=Q(state__in=["waiting", "queued"])),
     )
     project_demand = (
         LiveScoringWork.objects.filter(state__in=["waiting", "queued", "running"])
