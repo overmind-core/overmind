@@ -164,7 +164,11 @@ class GptOssHooks(DefaultHooks):
         _require_kernels()
         out: dict[str, str] = {}
         if use_lora:
-            out["LOAD_IN_4BIT"] = "1"
+            from catalog import resolve
+
+            model_id = os.environ.get("MODEL_ID") or "gpt-oss"
+            if resolve(model_id).lora_load_in_4bit:
+                out["LOAD_IN_4BIT"] = "1"
             # Keep Unsloth's default reshaped-2D GptOssExperts (matches the
             # BF16 repo's fused tensors) instead of the ModuleList class that
             # expects a pre-split checkpoint — see module docstring.

@@ -72,17 +72,6 @@ def _remote_call_failed(call_id: str) -> bool:
     return any(node.function_call_id == call_id and node.status in terminal for node in graph)
 
 
-def clamp_gemma4_training_gpu(model_id: str, gpu_type: str, gpu_count: int) -> tuple[str, int]:
-    """Gemma4 Unsloth cannot pipeline-split: device_map=balanced crashes with
-    ``indices should be either on cpu or on the same device as the indexed
-    tensor``. Keep a single GPU; upgrade to H200 when the table asked for >1.
-    Catalog already disables Full on 26B/31B (would OOM on 1× anyway)."""
-    mid = (model_id or "").lower()
-    if gpu_count <= 1 or ("gemma-4" not in mid and "gemma4" not in mid):
-        return gpu_type, gpu_count
-    return "H200", 1
-
-
 @dataclass
 class SubmissionResult:
     remote_id: str
@@ -685,6 +674,8 @@ class ModalRunner(BaseFinetuningRunner):
         return config
 
     def _select_training_gpu(self, job, *, context_length: int = 0) -> tuple[str, int]:
+        from modal_shared.modelfam import clamp_training_gpus  # noqa: PLC0415
+
         try:
             cfg = self.model_config(job.base_model)
             params_b = (
@@ -699,8 +690,8 @@ class ModalRunner(BaseFinetuningRunner):
             if params_b <= max_b:
                 if context_length > self._LONG_CONTEXT_H200 and count == 1 and gpu == "H100":
                     gpu = "H200"
-                return clamp_gemma4_training_gpu(job.base_model, gpu, count)
-        return clamp_gemma4_training_gpu(job.base_model, "H200", 4)
+                return clamp_training_gpus(job.base_model, gpu, count)
+        return clamp_training_gpus(job.base_model, "H200", 4)
 
     @staticmethod
     def _gpu_string(gpu_type: str, gpu_count: int) -> str:
@@ -747,18 +738,14 @@ class ModalRunner(BaseFinetuningRunner):
             "DECISION_PRE_TRAINING_BASELINE": "1" if plan.pre_training_baseline else "0",
             "PACK_ROWS": "1" if plan.packing else "0",
         }
-        from overbae.modal.model_registry import get_unsloth_image  # noqa: PLC0415
+        from modal_shared.modelfam import resolve  # noqa: PLC0415
 
-        env["UNSLOTH_IMAGE"] = get_unsloth_image(model_id)
-        from modal_shared.modelfam import family_key  # noqa: PLC0415
-
-        is_gpt_oss = family_key(str(model_id)) == "gpt_oss"
-        if plan.training_type == "Lora" and (plan.load_in_4bit or is_gpt_oss):
+        # Family compile flags are hooks.env_overrides, applied before unsloth.
+        # 4-bit is also recorded here so the saved job parameters match the run.
+        if plan.training_type == "Lora" and (
+            plan.load_in_4bit or resolve(model_id).lora_load_in_4bit
+        ):
             env["LOAD_IN_4BIT"] = "1"
-        if is_gpt_oss:
-            env["UNSLOTH_COMPILE_DISABLE"] = "1"
-        if family_key(str(model_id)) in {"qwen35", "qwen38"}:
-            env["UNSLOTH_BLOCK_COMPILE"] = "0"
         if max_steps > 0:
             # Probe-run cap only: the wizard and recommender never set max_steps.
             env["MAX_STEPS"] = str(max_steps)
@@ -788,10 +775,6 @@ class ModalRunner(BaseFinetuningRunner):
         model_cfg = self.model_config(job.base_model)
         ft_cfg = model_cfg.get("finetuning") or {}
         stats = dict((job.cell.stats if job.cell_id else None) or {})
-        try:
-            max_row_tokens = int(stats.get("max_token_length") or 0)
-        except (TypeError, ValueError):
-            max_row_tokens = 0
         hp = dict(job.hyperparameters or {})
         training_kind = "full" if str(hp.get("training_type", {}).get("type")) == "Full" else "lora"
         # Exact preprocessing, not the character estimate, owns the chosen context.

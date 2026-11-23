@@ -38,6 +38,17 @@ from modal_shared.serving.artifacts import BASE_MANIFEST, read_base_manifest
 from modal_shared.serving.sglang import select_sglang_adapter
 
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
+
+
+def _serve_process_env(engine: str, spec) -> dict | None:
+    name = spec.sglang_process_env if str(engine).startswith("sglang") else spec.vllm_process_env
+    if not name:
+        return None
+    import importlib
+
+    return importlib.import_module(name).process_env()
+
+
 IS_DEV = MODAL_ENVIRONMENT == "overmind-dev"
 
 MINUTES = 60  # seconds
@@ -509,9 +520,7 @@ class _BaseVLLMWorker:
             from modal_shared.serving.sglang import build_sglang_args
 
             # gpt-oss has no thinking-off switch. The parser keeps analysis out of content.
-            # The LFM3 image's --lora-target-modules allowlist has no conv or MLP
-            # names. "all" admits them; the hidden-dim patch supplies their shapes.
-            lora_targets = "all" if engine == "sglang_lfm3" else (spec.lora_target_modules or "")
+            lora_targets = spec.sglang_serve_lora_targets or spec.lora_target_modules or ""
             cmd = build_sglang_args(
                 model_path=full_path,
                 served_name=self.model_name,
@@ -587,15 +596,7 @@ class _BaseVLLMWorker:
         # List form (no shell) so JSON kwargs like --default-chat-template-kwargs
         # are not mangled by the shell.
         self._journal.emit("starting_engine_process")
-        launch_env = None
-        if engine == "sglang_lfm3":
-            from modal_shared.serving.lfm3_lora import process_env
-
-            launch_env = process_env()
-        elif spec.key == "nemotron35" and engine == "vllm":
-            from modal_shared.serving.nemotron_lora import process_env as nemotron_env
-
-            launch_env = nemotron_env()
+        launch_env = _serve_process_env(engine, spec)
         self._proc = subprocess.Popen(cmd, env=launch_env)  # noqa: S603
         _wait_for_vllm(proc=self._proc, journal=self._journal)
         if getattr(self, "snapshot_engine", False):
@@ -680,12 +681,7 @@ class _BaseVLLMWorker:
                 from modal_shared.serving.sglang import normalize_sglang_adapter
 
                 spec = resolve(getattr(self, "base_identity", "") or "")
-                if engine == "sglang_lfm3":
-                    from modal_shared.serving.lfm3_lora import SGLANG_TARGETS
-
-                    keep_targets = SGLANG_TARGETS
-                else:
-                    keep_targets = spec.lora_target_modules or ""
+                keep_targets = spec.sglang_adapter_targets or spec.lora_target_modules or ""
                 normalize_sglang_adapter(staged, keep_targets=keep_targets)
                 load_url = f"http://localhost:{VLLM_PORT}/load_lora_adapter"
                 payload = {"lora_name": name, "lora_path": str(staged)}
@@ -1698,9 +1694,8 @@ def inference_request(request_id: str, payload: dict) -> dict:
         model_name=base_pool_name(rel_path) if adapter_path else payload["model_id"],
         max_model_len=payload["max_model_len"],
         serve_image=_serve_image_for(
-            hinted=serve_image_key(
-                payload.get("base_model_id") or "", payload["model_id"], rel_path
-            )
+            hinted=payload.get("serve_image")
+            or serve_image_key(payload.get("base_model_id") or "", payload["model_id"])
         ),
         enable_lora=bool(adapter_path),
         max_lora_rank=payload.get("lora_rank") or 16,
@@ -1774,7 +1769,7 @@ def pre_warm(
     journal = Journal("call:" + modal.current_function_call_id())
     journal.emit("resolving_worker")
     rel_path = rel_weights_path(weights_path)
-    serve_image = _serve_image_for(hinted=serve_image_key(base_model_id, model_id, rel_path))
+    serve_image = _serve_image_for(hinted=serve_image_key(base_model_id, model_id))
     worker, _cls_name = _make_worker(
         gpu_type=gpu_type,
         model_path=rel_path,

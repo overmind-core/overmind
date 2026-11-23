@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from modal_shared.modelfam import resolve
 from modal_shared.serving.args import (
     CUDAGRAPH_CAPTURE_SIZES,
     MAX_LORA_SLOTS,
@@ -133,6 +134,7 @@ def test_base_keeps_its_name_without_adapters(tmp_path: Path) -> None:
 
 def test_sglang_dflash_argv_and_engine_choice() -> None:
     from modal_shared.serving.engine import engine_for, serverless_engine
+    from modal_shared.serving.lfm3_lora import SGLANG_TARGETS
     from modal_shared.serving.sglang import build_sglang_args, sglang_tool_parser
 
     cmd = build_sglang_args(
@@ -202,6 +204,9 @@ def test_sglang_dflash_argv_and_engine_choice() -> None:
     assert serverless_engine("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
     assert serverless_engine("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
     assert serverless_engine("openai/gpt-oss-20b") == "vllm"
+    lfm = resolve("LiquidAI/LFM3-1.7B")
+    assert lfm.sglang_adapter_targets == SGLANG_TARGETS
+    assert lfm.sglang_serve_lora_targets == "all"
     gemma = build_sglang_args(
         model_path="/tmp/folded",
         served_name="dedicated/ft",

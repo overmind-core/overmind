@@ -51,6 +51,22 @@ def test_canaries_cover_unsloth_stacks() -> None:
     assert not missing, f"unsloth stacks with no canary: {missing}"
 
 
+def test_catalog_engines_are_known_stacks() -> None:
+    from modal_shared.images import CATALOG_REMOTE
+    from modal_shared.serving.engine import _CATALOG_CANDIDATES
+
+    assert Path(CATALOG_REMOTE) in _CATALOG_CANDIDATES
+    data = json.loads(_MODELS_JSON.read_text())
+    bad = []
+    for entry in data["models"]:
+        inference = entry.get("inference") or {}
+        for key in ("dedicated_engine", "serverless_engine"):
+            engine = inference.get(key)
+            if engine and engine not in SERVE_STACKS:
+                bad.append((entry["id"], key, engine))
+    assert not bad, bad
+
+
 def test_catalog_unsloth_image_matches_family() -> None:
     data = json.loads(_MODELS_JSON.read_text())
     mismatches = []

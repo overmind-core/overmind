@@ -107,9 +107,11 @@ def collect(run, *, environment, call_id="", deployed=None):
         and deployed.weights_path
         and deployed.gpu_type
     ):
+        from overbae.services.deployment import serving_gpu
+
         lora = bool(deployed.adapter_path)
         cls_name = worker_cls_name(
-            deployed.gpu_type,
+            serving_gpu(deployed),
             serve_image_key(deployed.base_model_id, deployed.model_id),
             enable_lora=lora,
         )

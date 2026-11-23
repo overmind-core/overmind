@@ -76,8 +76,8 @@ def resolve(model_id: str) -> FamilySpec:
 def serve_image_key(*blobs: str) -> str:
     """Shared-pool image for these ids.
 
-    A bake-off winner is matched by model id before the family default, because
-    one family contains both SGLang and vLLM winners.
+    serverless_engine reads the catalog measurement, then this family's serve image.
+    One family can contain both SGLang and vLLM winners, so the catalog wins.
     """
     from modal_shared.serving.engine import serverless_engine
 
@@ -87,10 +87,15 @@ def serve_image_key(*blobs: str) -> str:
         engine = serverless_engine(blob)
         if engine != "vllm":
             return engine
-        key = resolve(blob).serve_image
-        if key != "vllm":
-            return key
     return "vllm"
+
+
+def clamp_training_gpus(model_id: str, gpu_type: str, gpu_count: int) -> tuple[str, int]:
+    """Honor FamilySpec.max_train_gpus. Gemma4's balanced device_map crashes."""
+    spec = resolve(model_id)
+    if spec.max_train_gpus and gpu_count > spec.max_train_gpus:
+        return spec.clamped_train_gpu, spec.max_train_gpus
+    return gpu_type, gpu_count
 
 
 def serve_image_from_checkpoint(

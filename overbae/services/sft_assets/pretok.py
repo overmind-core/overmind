@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from catalog import family_key
+from catalog import resolve
+from families import load_hooks
 from training_chat_template import patch_known_training_template
 
 # Optional TRL>=1.4 training-template helpers.
@@ -164,59 +165,18 @@ def normalize_messages_for_model(
     """Family-specific message/tool shaping before apply_chat_template."""
     tools = ensure_tool_param_descriptions(tools)
     messages = normalize_openai_wire(messages)
-    fam = family_key(model_id)
-
-    if fam == "phi4" and tools is not None:
-        # The Phi-4 template ignores tool_calls and instead expects
-        # system.tools = JSON string, assistant.content = JSON {name, arguments},
-        # and a tool role whose content is the result JSON.
-        msgs: list[dict] = []
-        tools_json = json.dumps(tools)
-        has_system = False
-        for m in messages:
-            m = dict(m)
-            role = m.get("role")
-            if role == "system":
-                has_system = True
-                m["tools"] = tools_json
-                msgs.append(m)
-                continue
-            if role == "assistant" and m.get("tool_calls"):
-                tc = m["tool_calls"][0]
-                fn = tc.get("function") or tc
-                args = fn.get("arguments", {})
-                msgs.append(
-                    {
-                        "role": "assistant",
-                        "content": json.dumps({"name": fn.get("name"), "arguments": args}),
-                    }
-                )
-                continue
-            if role == "tool":
-                msgs.append({"role": "tool", "content": m.get("content", "")})
-                continue
-            msgs.append({k: v for k, v in m.items() if k != "tool_calls"})
-        if not has_system:
-            msgs.insert(
-                0,
-                {"role": "system", "content": "You are a helpful assistant.", "tools": tools_json},
-            )
-        # Phi embeds tools on the system message — don't also pass tools= kwarg.
-        return msgs, None
-
-    if fam in ("qwen_mm", "qwen35", "qwen38"):
-        # The template's bare-string `content` branch runs everything through the
-        # vision image loader; typed text parts take the branch that only
-        # image-loads dict parts tagged "image"/"video".
-        msgs = []
-        for m in messages:
-            content = m.get("content")
-            if isinstance(content, str):
-                m = {**m, "content": [{"type": "text", "text": content}]}
-            msgs.append(m)
-        return msgs, tools
-
-    return messages, tools
+    spec = resolve(model_id)
+    messages, tools = load_hooks(spec.hooks_module).normalize_messages(messages, tools)
+    if not spec.string_content_as_parts:
+        return messages, tools
+    # Bare string content runs through the vision image loader.
+    wrapped = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            message = {**message, "content": [{"type": "text", "text": content}]}
+        wrapped.append(message)
+    return wrapped, tools
 
 
 def _unwrap_tokenizer(tok):
