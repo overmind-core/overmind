@@ -519,10 +519,13 @@ def execute_pipeline(self, run_id):
     # Celery never replays a claimed run; a lost one comes back queued under a new attempt.
     if run is None or run.state != "queued":
         return
-    if run.lease_until is not None and run.lease_until < timezone.now():
+    cutoff = timezone.now()
+    if run.lease_until is not None and run.lease_until < cutoff:
         workbench.fail(
             run.pk,
             "The run waited 15 minutes for interactive capacity. Submit a new request key to retry.",
+            expired_before=cutoff,
+            attempt=run.attempt,
         )
         return
     owner = uuid.uuid4().hex

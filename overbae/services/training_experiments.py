@@ -347,7 +347,7 @@ def prepare(experiment):
         if taken == "held":
             return experiment
         if taken == "exhausted":
-            experiment.state, experiment.lease_until = "preparation_failed", None
+            experiment.state = "preparation_failed"
             experiment.protocol = {**experiment.protocol, "preparation_error": heartbeat.STOPPED}
             experiment.save()
             return experiment

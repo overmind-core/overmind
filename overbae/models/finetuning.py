@@ -22,6 +22,8 @@ class TrainingPreparation(models.Model):
     config = models.JSONField(default=dict)
     state = models.CharField(max_length=16, default="queued")
     remote_id = models.CharField(max_length=255, blank=True, default="")
+    # Names the worker that started the preparation; its writes and its spawn check it.
+    attempt = models.UUIDField(null=True, blank=True)
     report = models.JSONField(default=dict)
     error = models.TextField(blank=True, default="")
     deadline = models.DateTimeField()

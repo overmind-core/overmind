@@ -229,7 +229,13 @@ def generate_row(self, *, row_id: str) -> str:
         generation.owned(row_id, task_id), owner=f"eval row {row_id}", field="expires_at"
     )
     try:
-        row = EvalRunRow.objects.select_related("run__cell", "run__model_ref").get(pk=row_id)
+        row = (
+            EvalRunRow.objects.select_related("run__cell", "run__model_ref")
+            .filter(pk=row_id, task_id=task_id)
+            .first()
+        )
+        if row is None:
+            return row_id
         generation.generate(row)
     except generation.GenerationStoppedError:
         pass

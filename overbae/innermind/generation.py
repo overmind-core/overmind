@@ -66,7 +66,8 @@ def dispatch(publish, publish_scoring) -> dict[str, int]:
 
     expired = list(rows.filter(state__in=IN_FLIGHT, expires_at__lt=now))
     for row in expired:
-        current = rows.filter(pk=row.pk, state=row.state, task_id=row.task_id)
+        # A heartbeat may have renewed the lease since the selection.
+        current = rows.filter(pk=row.pk, state=row.state, task_id=row.task_id, expires_at__lt=now)
         if row.output is not None or row.error:
             current.update(state=EvalRunRow.State.DONE, finished_at=now)
         elif row.state == EvalRunRow.State.QUEUED or row.attempts < GENERATION_ATTEMPTS:

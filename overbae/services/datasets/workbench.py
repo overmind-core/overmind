@@ -345,16 +345,29 @@ def execute(run_id, *, script_executor=None):
     # A heartbeat renews the lease while the worker lives, so a lost run goes back in the
     # queue within minutes; the worker's hard time limit bounds the whole run.
     seconds = heartbeat.STALE_SECONDS
-    claimed = DatasetPipelineRun.objects.filter(pk=run_id, state="queued").update(
+    claimed = DatasetPipelineRun.objects.filter(
+        pk=run_id, state="queued", attempt=candidate.attempt
+    ).update(
         state="running",
         updated_at=timezone.now(),
         lease_until=timezone.now() + timedelta(seconds=seconds),
     )
     if not claimed:
         return
-    run = DatasetPipelineRun.objects.select_related(
-        "dataset__capability", "pipeline__package", "source", "artifact", "created_by", "binding"
-    ).get(pk=run_id)
+    run = (
+        DatasetPipelineRun.objects.select_related(
+            "dataset__capability",
+            "pipeline__package",
+            "source",
+            "artifact",
+            "created_by",
+            "binding",
+        )
+        .filter(pk=run_id, attempt=candidate.attempt)
+        .first()
+    )
+    if run is None:
+        return
     # Open pages read the run's start from the stream, as its queueing and its end.
     dataset_id = run.dataset_id
     transaction.on_commit(lambda: events.publish(dataset_id, {"type": "dataset_changed"}))

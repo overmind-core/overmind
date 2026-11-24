@@ -81,7 +81,7 @@ def advance(identifier):
             return
         if taken == "exhausted":
             op.state, op.error = "failed", heartbeat.STOPPED
-            op.save(update_fields=["state", "error", "updated_at"])
+            op.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         op.state, op.error = "running", ""
         op.save()

@@ -433,7 +433,6 @@ def sync_connector_chunk(credential_id: str) -> dict:
         ):
             lease["until"] = until
 
-    beat = heartbeat.start(renew, owner=f"connector sync {credential.pk}")
     credential.refresh_from_db()
     prepare_connector_sync(credential)
 
@@ -441,6 +440,7 @@ def sync_connector_chunk(credential_id: str) -> dict:
     if "mode" not in cursor:
         cursor["mode"] = "live" if cursor.get("watermark") else "backfill"
 
+    beat = heartbeat.start(renew, owner=f"connector sync {credential.pk}")
     try:
         return _run_adapter_chunk(credential, cursor)
     except SoftTimeLimitExceeded:

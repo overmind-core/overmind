@@ -279,7 +279,7 @@ def advance(run_id):
             return
         if taken == "exhausted":
             run.state, run.error = "failed", heartbeat.STOPPED
-            run.save(update_fields=["state", "error", "updated_at"])
+            run.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         run.state = "running"
         run.save()

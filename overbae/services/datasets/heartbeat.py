@@ -49,12 +49,15 @@ def lapsed() -> Q:
 
 def take(job, *, running: bool) -> str:
     """On a ``Leased`` row locked FOR UPDATE: ``"held"`` while a live worker renews it,
-    ``"exhausted"`` once its worker was lost too often, else ``"taken"`` under a new
-    attempt (unsaved). ``running`` says whether some worker started it before."""
+    ``"exhausted"`` once its worker was lost too often (the caller saves it failed), else
+    ``"taken"`` under a new attempt (unsaved). ``running`` says whether some worker started
+    it before."""
     if running:
         if job.lease_until is not None and job.lease_until > timezone.now():
             return "held"
         if job.attempts >= MAX_ATTEMPTS - 1:
+            # The last holder may still be running; it must find no row it owns.
+            job.attempt, job.lease_until = None, None
             return "exhausted"
         job.attempts += 1
     else:

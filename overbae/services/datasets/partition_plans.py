@@ -280,7 +280,7 @@ def build(plan_id):
             return
         if taken == "exhausted":
             plan.state, plan.error = "failed", heartbeat.STOPPED
-            plan.save(update_fields=["state", "error", "updated_at"])
+            plan.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         plan.state, plan.error = "running", ""
         plan.save()
@@ -334,6 +334,9 @@ def build(plan_id):
                     stream.close()
             for role in plan.recipe["fractions"]:
                 progress("preparing_member", 0, report["counts"][role], role=role)
+                # A worker whose plan was taken over stops before it lands anything.
+                if not owned.filter(state="running").exists():
+                    return
                 existing = plan.members.select_related("cell__dataset").filter(role=role).first()
                 if existing:
                     rows.verify(existing.cell)
