@@ -4,6 +4,8 @@ from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
+from .leases import Leased
+
 
 class Dataset(models.Model):
     """A source and a linear chain of cells. Every cell is a version of the
@@ -135,7 +137,7 @@ class Dataset(models.Model):
         return out
 
 
-class DataExploration(models.Model):
+class DataExploration(Leased):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
@@ -163,7 +165,7 @@ class DataExploration(models.Model):
         ]
 
 
-class DataPartitionPlan(models.Model):
+class DataPartitionPlan(Leased):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)

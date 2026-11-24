@@ -319,7 +319,7 @@ def _post(deployment, body: bytes, *, stream: bool, payload: bytes | None = None
     if not base:
         raise InputValidationError(WORKER_UNAVAILABLE)
     if payload is None:
-        payload = _served_body(deployment, body, stream=stream)
+        payload = served_body(deployment, body, stream=stream)
     return _http().send(
         _http().build_request(
             "POST",
@@ -452,7 +452,7 @@ def shape_chat_payload(payload: dict, *, base_model_id: str) -> None:
         payload["structured_outputs"] = {"regex": _forced_tool_regex(spec.forced_tool_regex, names)}
 
 
-def _served_body(deployment, body: bytes, *, stream: bool) -> bytes:
+def served_body(deployment, body: bytes, *, stream: bool) -> bytes:
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
@@ -560,7 +560,7 @@ def repair_forced_calls(raw: bytes, shaped: bytes) -> bytes:
 
 
 def chat(deployment, body: bytes) -> tuple[int, bytes, str]:
-    shaped = _served_body(deployment, body, stream=False)
+    shaped = served_body(deployment, body, stream=False)
     response = _post(deployment, body, stream=False, payload=shaped)
     try:
         content_type = response.headers.get("content-type") or "application/json"

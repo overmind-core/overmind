@@ -11,6 +11,8 @@ from django.db.models import Count, Exists, Min, OuterRef, Q
 from django.utils import timezone
 
 from overbae.models import (
+    AssistantInput,
+    AssistantThread,
     DatasetImport,
     DatasetLandingWork,
     DatasetPipelineRun,
@@ -25,6 +27,7 @@ WORKER_SERVICES = {
     "landing": "celery-landing-worker",
     "batch": "celery-batch-worker",
     "interactive": "celery-interactive-worker",
+    "assistant": "celery-assistant-worker",
 }
 SYSTEM_BLOCKS = ("queue_timeout", "worker_timeout", "dispatch_failed", "attempts_exhausted")
 NEWLY_BLOCKED_SECONDS = 5 * 60
@@ -134,11 +137,26 @@ def read_workloads():
             for row in project_demand
         ),
     )
+    # A reply holds a thread while it waits on a model, so CPU cannot show a full worker.
+    asked = AssistantInput.objects.filter(state=AssistantInput.State.QUEUED)
+    assistant = (
+        AssistantThread.objects.annotate(asked=Exists(asked.filter(thread=OuterRef("pk"))))
+        .filter(Q(state=AssistantThread.State.RUNNING) | Q(asked=True))
+        .aggregate(
+            waiting=Count("pk", filter=Q(state=AssistantThread.State.IDLE)),
+            running=Count("pk", filter=Q(state=AssistantThread.State.RUNNING)),
+        )
+    )
+    assistant["oldest"] = asked.filter(thread__state=AssistantThread.State.IDLE).aggregate(
+        oldest=Min("created_at")
+    )["oldest"]
+    assistant["blocked"] = 0
     return {
         "io_traces": scoring,
         "landing": imports,
         "batch": evaluation,
         "interactive": workshop,
+        "assistant": assistant,
     }
 
 

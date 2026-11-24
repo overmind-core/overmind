@@ -381,8 +381,7 @@ def serve_systemone(row: DedicatedDeployment, body: dict) -> dict:
     return dedicated_runtime.post_systemone(row, payload)
 
 
-def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
-    _online_decision(row)
+def _decision_body(row: DedicatedDeployment, decisions: list) -> dict:
     questions = {}
     for index, item in enumerate(decisions):
         kind = item.get("kind") or "choice"
@@ -393,56 +392,67 @@ def serve_decision(row: DedicatedDeployment, decisions: list) -> dict:
             "instructions": item["question"],
             "criteria": {option: option for option in item["options"]},
         }
-    result = dedicated_runtime.post_systemone(
-        row,
-        {
-            "model": row.served_model_id,
-            "state": decisions[0]["state"],
-            "questions": questions,
-        },
-    )
-    answers = result.get("answers") or {}
-    predictions = []
-    for index, item in enumerate(decisions):
-        answer = answers.get(str(index)) or {}
-        probabilities = answer.get("probabilities") or {}
-        predictions.append(
-            {
-                "options": item["options"],
-                "probabilities": [
-                    float(probabilities.get(option) or 0) for option in item["options"]
-                ],
-            }
-        )
-    result["predictions"] = predictions
-    return result
+    return {"model": row.served_model_id, "state": decisions[0]["state"], "questions": questions}
 
 
-def complete_request(payload: dict) -> dict:
+def request_call(payload: dict):
+    """The dedicated container and the ``infer`` arguments for a queued request. The caller
+    spawns it and saves the call ID first, so a new worker reads the result from that ID
+    instead of sending the request again."""
     row = DedicatedDeployment.objects.select_related("deployed_model").get(
         pk=payload["dedicated_id"]
     )
-    started = timezone.now()
     if row.deployed_model.inference_contract == "decision":
-        result = serve_decision(row, payload["decisions"])
-        result["latency_ms"] = result.get("latency_ms") or 0
-        return result
-    body = {
-        "model": row.public_model_id,
-        "messages": payload["messages"],
-        "temperature": payload.get("temperature", 1),
+        _online_decision(row)
+        path = "/v1/systemone"
+        body = json.dumps(_decision_body(row, payload["decisions"])).encode()
+    else:
+        _require_chat(row)
+        chat = {
+            "model": row.public_model_id,
+            "messages": payload["messages"],
+            "temperature": payload.get("temperature", 1),
+        }
+        if payload.get("max_tokens"):
+            chat["max_tokens"] = payload["max_tokens"]
+        path = "/v1/chat/completions"
+        body = dedicated_runtime.served_body(row, json.dumps(chat).encode(), stream=False)
+    arguments = {
+        "method": "POST",
+        "path": path,
+        "body": body,
+        "headers": {"content-type": "application/json"},
     }
-    if payload.get("max_tokens"):
-        body["max_tokens"] = payload["max_tokens"]
-    status, raw, _content_type = serve_chat(row, json.dumps(body).encode())
+    return dedicated_runtime.connect(row), arguments
+
+
+def request_result(payload: dict, reply: dict) -> dict:
+    """The request's result from the ``infer`` reply ``{"status", "headers", "body"}``."""
+    status = reply.get("status")
+    if not isinstance(status, int) or status >= 500:
+        return {"error_code": "provider_failed"}
     if status >= 400:
-        raise InputValidationError(dedicated_runtime.WORKER_UNAVAILABLE)
-    value = json.loads(raw)
+        return {"error_code": "inference_rejected"}
+    value = json.loads(reply.get("body") or b"{}")
+    if "decisions" in payload:
+        answers = value.get("answers") or {}
+        value["predictions"] = [
+            {
+                "options": item["options"],
+                "probabilities": [
+                    float(
+                        ((answers.get(str(index)) or {}).get("probabilities") or {}).get(option)
+                        or 0
+                    )
+                    for option in item["options"]
+                ],
+            }
+            for index, item in enumerate(payload["decisions"])
+        ]
+        return value
     choice = (value.get("choices") or [{}])[0]
-    message = choice.get("message") or {}
     return {
-        "content": message.get("content") or "",
+        "content": (choice.get("message") or {}).get("content") or "",
         "usage": value.get("usage"),
         "finish_reason": choice.get("finish_reason"),
-        "latency_ms": (timezone.now() - started).total_seconds() * 1000,
     }

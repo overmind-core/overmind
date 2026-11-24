@@ -123,14 +123,15 @@ def test_worker_redelivery_never_replays_claimed_work_and_expiry_preserves_sourc
 
     from overbae.tasks.datasets import execute_pipeline
 
-    DatasetPipelineRun.objects.filter(pk=run.pk).update(
-        state="running", lease_until=timezone.now() - timedelta(seconds=1)
-    )
-    execute_pipeline(str(run.pk))
-    run.refresh_from_db()
-    assert run.state == "running"
-    workbench.expire_runs()
-    run.refresh_from_db()
+    # A claimed run is never run by a redelivered message, and a run lost three times fails.
+    for handoffs in (1, 2, 2):
+        DatasetPipelineRun.objects.filter(pk=run.pk).update(
+            state="running", lease_until=timezone.now() - timedelta(seconds=1)
+        )
+        execute_pipeline(str(run.pk))
+        workbench.expire_runs()
+        run.refresh_from_db()
+        assert run.handoffs == handoffs
     assert run.state == "failed"
     assert run.output_id is None
     dataset.refresh_from_db()

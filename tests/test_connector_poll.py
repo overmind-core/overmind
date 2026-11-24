@@ -21,6 +21,7 @@ from overbae.services.connectors.sync import (
     enqueue_connector_sync,
     reset_connector_import,
 )
+from overbae.services.datasets import heartbeat
 from overbae.services.mcp.resources import connector_resource_payload
 from overbae.tasks import connector_sync
 
@@ -192,13 +193,13 @@ def test_the_poller_queues_only_due_active_auto_syncing_connectors(credential, c
     assert continuations == [str(credential.id)]
 
 
-def test_the_poller_leaves_a_running_chunk_alone_until_its_time_limit_has_passed(
+def test_the_poller_leaves_a_running_chunk_alone_while_its_lease_lasts(
     credential, langfuse, continuations, monkeypatch
 ):
     _traces(langfuse, 1)
     ConnectorCredential.objects.filter(id=credential.id).update(auto_sync_enabled=True)
     langfuse.status = 429
-    still_running = timedelta(seconds=connector_sync.sync_connector_chunk.time_limit - 60)
+    still_running = timedelta(seconds=heartbeat.STALE_SECONDS - 60)
     polled: list[int] = []
 
     def vendor_backoff(_seconds):

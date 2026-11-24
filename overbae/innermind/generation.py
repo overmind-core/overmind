@@ -19,6 +19,7 @@ from django.utils import timezone
 from overbae.core.llms import ModelSpec, call_llm
 from overbae.innermind import replay
 from overbae.models import EvalGenerationScheduler, EvalRun, EvalRunRow, Span
+from overbae.services.datasets import heartbeat
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets.examples import matches_reference
 from overbae.services.datasets.profiler import bind_eval_reference
@@ -29,8 +30,6 @@ logger = logging.getLogger(__name__)
 IN_FLIGHT = (EvalRunRow.State.QUEUED, EvalRunRow.State.RUNNING)
 UNFINISHED = (EvalRunRow.State.WAITING, *IN_FLIGHT)
 QUEUED_LEASE = timedelta(minutes=30)
-# The worker's hard time limit is 22 minutes.
-RUNNING_LEASE = timedelta(minutes=23)
 # Generation replays recorded tools and has no outside effect, so a lost attempt runs once
 # more at the cost of one duplicate model call; a second loss is recorded unknown.
 GENERATION_ATTEMPTS = 2
@@ -166,16 +165,19 @@ def claim(row_id, task_id) -> bool:
     EvalRunRow.objects.filter(pk=row.pk).update(
         state=EvalRunRow.State.RUNNING,
         started_at=now,
-        expires_at=now + RUNNING_LEASE,
+        expires_at=heartbeat.lease_end(),
         attempts=F("attempts") + 1,
     )
     return True
 
 
+def owned(row_id, task_id):
+    """The row while ``task_id`` still runs it; a row the dispatcher expired is not."""
+    return EvalRunRow.objects.filter(pk=row_id, task_id=task_id, state=EvalRunRow.State.RUNNING)
+
+
 def finish(row_id, task_id) -> int:
-    return EvalRunRow.objects.filter(
-        pk=row_id, task_id=task_id, state=EvalRunRow.State.RUNNING
-    ).update(state=EvalRunRow.State.DONE, finished_at=timezone.now())
+    return owned(row_id, task_id).update(state=EvalRunRow.State.DONE, finished_at=timezone.now())
 
 
 @transaction.atomic
@@ -489,7 +491,7 @@ def generate(run_row: EvalRunRow) -> None:
 
     output = output_of(result.output_messages)
     reason = degradation(result, output)
-    EvalRunRow.objects.filter(pk=run_row.pk).exclude(run__status__in=EvalRun.TERMINAL).update(
+    owned(run_row.pk, run_row.task_id).exclude(run__status__in=EvalRun.TERMINAL).update(
         output=output,
         degraded=bool(reason),
         degraded_reason=reason,

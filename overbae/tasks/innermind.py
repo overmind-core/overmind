@@ -17,6 +17,7 @@ from django.db.models import Q
 from overbae.core import async_loop
 from overbae.innermind import admission, generation, runs, signals, span_processor, trajectory
 from overbae.models import EvalRun, EvalRunRow, Span
+from overbae.services.datasets import heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +211,8 @@ def dispatch_generation() -> dict:
         return generation.dispatch(publish, publish_scoring)
 
 
-# A claimed admission is never replayed after a worker loss; the dispatcher records an
-# unknown outcome once the running lease expires. Prefork enforces the time limit.
+# A claimed admission is never replayed by Celery; a heartbeat renews the row's lease, and
+# the dispatcher retries or records the row once it lapses. Prefork enforces the time limit.
 @shared_task(
     name="overbae.tasks.innermind.generate_row",
     bind=True,
@@ -221,28 +222,31 @@ def dispatch_generation() -> dict:
     time_limit=1320,
 )
 def generate_row(self, *, row_id: str) -> str:
-    if not generation.claim(row_id, self.request.id):
+    task_id = self.request.id
+    if not generation.claim(row_id, task_id):
         return row_id
+    beat = heartbeat.hold(
+        generation.owned(row_id, task_id), owner=f"eval row {row_id}", field="expires_at"
+    )
     try:
         row = EvalRunRow.objects.select_related("run__cell", "run__model_ref").get(pk=row_id)
         generation.generate(row)
     except generation.GenerationStoppedError:
         pass
     except SoftTimeLimitExceeded:
-        record_row_error(row_id, "generation timed out (exceeded soft_time_limit)")
+        record_row_error(row_id, task_id, "generation timed out (exceeded soft_time_limit)")
     except Exception as exc:  # noqa: BLE001 — the row records the failure; the run carries on
         logger.exception("generation failed for row %s", row_id)
-        record_row_error(row_id, str(exc))
+        record_row_error(row_id, task_id, str(exc))
     finally:
-        generation.finish(row_id, self.request.id)
+        beat.set()
+        generation.finish(row_id, task_id)
         wake_generation_dispatcher()
     return row_id
 
 
-def record_row_error(row_id: str, error: str) -> None:
-    EvalRunRow.objects.filter(pk=row_id).exclude(run__status__in=EvalRun.TERMINAL).update(
-        error=error
-    )
+def record_row_error(row_id: str, task_id: str, error: str) -> None:
+    generation.owned(row_id, task_id).exclude(run__status__in=EvalRun.TERMINAL).update(error=error)
 
 
 @shared_task(

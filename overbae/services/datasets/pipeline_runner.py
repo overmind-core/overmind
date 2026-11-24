@@ -38,6 +38,10 @@ class RuntimeUnavailableError(ValueError):
     pass
 
 
+class SandboxLostError(RuntimeUnavailableError):
+    """The sandbox stopped mid-step; the run goes back in the queue."""
+
+
 @contextmanager
 def scratch():
     root = Path(tempfile.gettempdir())
@@ -270,9 +274,7 @@ def _submit(header, parts, output, phase, receipt) -> dict:
                     stream.write(pending)
                 return reader.finish()
         except (httpx.TransportError, FramingError) as exc:
-            raise RuntimeUnavailableError(
-                "The sandbox result is unconfirmed. No script was replayed."
-            ) from exc
+            raise SandboxLostError("The sandbox stopped during the step.") from exc
 
 
 def _checked(row):

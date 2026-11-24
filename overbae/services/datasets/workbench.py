@@ -44,6 +44,8 @@ from overbae.services.datasets.pipeline_execution import Parents
 logger = logging.getLogger(__name__)
 # Seconds between row counts while a step's output is written and measured.
 ROW_REPORT_SECONDS = 2.0
+# A queued run waits this long for interactive capacity before it fails.
+QUEUE_LEASE = timedelta(minutes=15)
 SCRATCH_BYTES = 8 * 1024**3
 SCRATCH_FREE_BYTES = 512 * 1024**2
 
@@ -293,7 +295,7 @@ def submit(
             created_by=user,
             mode=mode,
             binding=binding,
-            lease_until=timezone.now() + timedelta(minutes=15),
+            lease_until=timezone.now() + QUEUE_LEASE,
             result={
                 "stage": "queued",
                 "source_rows": source.rows,
@@ -338,10 +340,10 @@ def execute(run_id, *, script_executor=None):
             return
         if script_executor is None:
             return
-    from overbae.services.datasets.pipeline_runner import scratch
+    from overbae.services.datasets.pipeline_runner import SandboxLostError, scratch
 
-    # A heartbeat renews the lease while the worker lives, so a lost run fails within
-    # minutes; the worker's hard time limit bounds the whole run.
+    # A heartbeat renews the lease while the worker lives, so a lost run goes back in the
+    # queue within minutes; the worker's hard time limit bounds the whole run.
     seconds = heartbeat.STALE_SECONDS
     claimed = DatasetPipelineRun.objects.filter(pk=run_id, state="queued").update(
         state="running",
@@ -826,13 +828,16 @@ def execute(run_id, *, script_executor=None):
                     lambda: events.publish(dataset.pk, {"type": "dataset_changed"})
                 )
             placed.clear()
+    except SandboxLostError:
+        hand_off(run_id, attempt=run.attempt)
     except (ValueError, rows.RowStoreError, DatasetError) as exc:
-        fail(run_id, str(exc)[:1000])
+        fail(run_id, str(exc)[:1000], attempt=run.attempt)
     except Exception:
         logger.exception("Pipeline run failed: %s", run_id)
         fail(
             run_id,
             "Transformation failed. Inspect the recipe and source columns; no version was published.",
+            attempt=run.attempt,
         )
     finally:
         for path in placed:
@@ -924,13 +929,16 @@ def cancel_run(project, run_id):
     return run
 
 
-def fail(run_id, error, *, expired_before=None):
+def fail(run_id, error, *, expired_before=None, attempt=None):
+    """``attempt`` fences a worker's own failure: a run handed to a new attempt stays."""
     with transaction.atomic():
         run = DatasetPipelineRun.objects.select_related("dataset").get(pk=run_id)
         Dataset.objects.select_for_update().get(pk=run.dataset_id)
         eligible = DatasetPipelineRun.objects.filter(pk=run_id, state__in=["queued", "running"])
         if expired_before is not None:
             eligible = eligible.filter(lease_until__lt=expired_before)
+        if attempt is not None:
+            eligible = eligible.filter(attempt=attempt)
         result = {**run.result, "stage": "failed"}
         for step in result.get("steps", []):
             if step.get("state") == "running":
@@ -945,13 +953,8 @@ def fail(run_id, error, *, expired_before=None):
                 run.attempt,
                 stage="failed",
                 status="failed",
-                facts={
-                    "retry_safe": not run.container_id
-                    and not any(
-                        step.get("submission_started_at") and step.get("exit_code") is None
-                        for step in result.get("steps", [])
-                    )
-                },
+                # Scripts change nothing outside the run (see expire_runs).
+                facts={"retry_safe": True},
             )
             Dataset.objects.filter(pk=run.dataset_id).update(
                 state=Dataset.State.IDLE, error="", updated_at=timezone.now()
@@ -963,14 +966,58 @@ def fail(run_id, error, *, expired_before=None):
 
 def expire_runs():
     expired_before = timezone.now()
-    for run_id in DatasetPipelineRun.objects.filter(
+    for run_id, state in DatasetPipelineRun.objects.filter(
         state__in=["queued", "running"], lease_until__lt=expired_before
-    ).values_list("pk", flat=True):
-        fail(
-            run_id,
-            "Execution timed out. No output was published. Submit a new request key to retry.",
-            expired_before=expired_before,
-        )
+    ).values_list("pk", "state"):
+        if state == "running":
+            hand_off(run_id, expired_before=expired_before)
+        else:
+            fail(
+                run_id,
+                "Execution timed out. No output was published. Submit a new request key to retry.",
+                expired_before=expired_before,
+            )
+
+
+def hand_off(run_id, *, attempt=None, expired_before=None):
+    """Put a run whose worker or sandbox stopped back in the queue under a new attempt.
+    Scripts run in a sandbox with no network, credentials or shared disk, and only the
+    attempt that holds the run publishes, so running one again changes nothing outside
+    the run. A run stopped too often fails."""
+    from overbae.tasks.datasets import execute_pipeline
+
+    with transaction.atomic():
+        run = DatasetPipelineRun.objects.select_for_update().get(pk=run_id)
+        if run.state != "running":
+            return
+        if attempt is not None and run.attempt != attempt:
+            return
+        if attempt is None and (run.lease_until is None or run.lease_until >= expired_before):
+            return
+        if run.handoffs < heartbeat.MAX_ATTEMPTS - 1:
+            run.state, run.attempt, run.handoffs = "queued", uuid.uuid4(), run.handoffs + 1
+            run.lease_until = timezone.now() + QUEUE_LEASE
+            run.result = {**run.result, "stage": "queued"}
+            run.save(
+                update_fields=[
+                    "state",
+                    "attempt",
+                    "handoffs",
+                    "lease_until",
+                    "result",
+                    "updated_at",
+                ]
+            )
+            transaction.on_commit(lambda: _enqueue(run, execute_pipeline))
+            transaction.on_commit(
+                lambda: events.publish(run.dataset_id, {"type": "dataset_changed"})
+            )
+            return
+    fail(
+        run_id,
+        f"{heartbeat.STOPPED} No output was published. Submit a new request key to retry.",
+        attempt=run.attempt,
+    )
 
 
 @transaction.atomic

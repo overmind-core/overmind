@@ -376,8 +376,7 @@ def test_workbench_pages_every_immutable_recipe_without_losing_older_records():
     assert set(found) == saved
 
 
-@pytest.mark.parametrize("interruption", ["cancel", "expire"])
-def test_interrupted_worker_cannot_publish_over_a_newer_queued_run(interruption):
+def test_cancelled_worker_cannot_publish_over_a_newer_queued_run():
     project, client, context = workspace()
     response = client.post(
         "/api/datasets/",
@@ -408,16 +407,9 @@ def test_interrupted_worker_cannot_publish_over_a_newer_queued_run(interruption)
     impact = workbench.measure.describe_frame
 
     def interrupt(*positional, **keyword):
-        if interruption == "cancel":
-            assert (
-                client.post(f"/api/datasets/{dataset.pk}/cancel/", {}, format="json").status_code
-                == 202
-            )
-        else:
-            DatasetPipelineRun.objects.filter(pk=first["run"]["id"]).update(
-                lease_until=timezone.now() - timedelta(seconds=1)
-            )
-            workbench.expire_runs()
+        assert (
+            client.post(f"/api/datasets/{dataset.pk}/cancel/", {}, format="json").status_code == 202
+        )
         replacement.append(
             call(context, "run_dataset_pipeline", {**args, "request_key": "replacement"})
         )
@@ -439,9 +431,59 @@ def test_interrupted_worker_cannot_publish_over_a_newer_queued_run(interruption)
     assert paths.cell_path(dataset.pk, source.pk).read_bytes() == original
     states = dict(dataset.pipeline_runs.values_list("request_key", "state"))
     assert states == {
-        "interrupted": "cancelled" if interruption == "cancel" else "failed",
+        "interrupted": "cancelled",
         "replacement": "completed",
     }
+
+
+def test_a_run_whose_worker_stopped_runs_again_and_only_its_new_attempt_publishes():
+    project, client, context = workspace()
+    response = client.post(
+        "/api/datasets/",
+        {"project": str(project.pk), "source": {"rows": [{"text": "preserved"}]}},
+        format="json",
+    )
+    dataset = Dataset.objects.get(pk=response.data["id"])
+    source = dataset.active_cell
+    recipe = call(
+        context,
+        "save_dataset_pipeline",
+        {
+            "dataset": str(dataset.pk),
+            "name": "Select",
+            "request_key": "select",
+            "package": retained_package(context.project, context.user, [select_script(["text"])]),
+        },
+    )
+    impact = workbench.measure.describe_frame
+
+    def stop_worker(*positional, **keyword):
+        DatasetPipelineRun.objects.filter(pk=run["run"]["id"]).update(
+            lease_until=timezone.now() - timedelta(seconds=1)
+        )
+        workbench.expire_runs()
+        return impact(*positional, **keyword)
+
+    with patch("overbae.tasks.datasets.execute_pipeline.delay"):
+        run = call(
+            context,
+            "run_dataset_pipeline",
+            {
+                "dataset": str(dataset.pk),
+                "pipeline": recipe["pipeline"]["id"],
+                "source_cell": str(source.pk),
+                "source_fingerprint": source.fingerprint,
+                "request_key": "handed-off",
+            },
+        )
+        with patch.object(workbench.measure, "describe_frame", side_effect=stop_worker):
+            workbench.execute(run["run"]["id"], script_executor=execute_fixture)
+    handed = DatasetPipelineRun.objects.get(pk=run["run"]["id"])
+    assert (handed.state, handed.handoffs, dataset.cells.count()) == ("queued", 1, 1)
+    workbench.execute(handed.pk, script_executor=execute_fixture)
+    handed.refresh_from_db()
+    dataset.refresh_from_db()
+    assert handed.state == "completed" and dataset.cells.count() == 2
 
 
 def test_workbench_run_history_and_rest_pagination_remain_complete():
