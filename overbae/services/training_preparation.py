@@ -415,10 +415,15 @@ def advance(preparation_id):
                     },
                     touched_at=timezone.now(),
                 )
-                operational_progress.preparation(
-                    prep,
-                    {"stage": stage, "completed_rows": completed_rows, "total_rows": total_rows},
-                )
+                if held:
+                    operational_progress.preparation(
+                        prep,
+                        {
+                            "stage": stage,
+                            "completed_rows": completed_rows,
+                            "total_rows": total_rows,
+                        },
+                    )
                 return held
 
             completed_rows = 0

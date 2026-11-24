@@ -433,22 +433,24 @@ def sync_connector_chunk(credential_id: str) -> dict:
         ):
             lease["until"] = until
 
-    credential.refresh_from_db()
-    prepare_connector_sync(credential)
-
-    cursor = dict(credential.sync_cursor or {})
-    if "mode" not in cursor:
-        cursor["mode"] = "live" if cursor.get("watermark") else "backfill"
-
+    # Preparation can delete every imported span on a recarve, so it runs under the lease.
     beat = heartbeat.start(renew, owner=f"connector sync {credential.pk}")
     try:
-        return _run_adapter_chunk(credential, cursor)
-    except SoftTimeLimitExceeded:
-        ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
-        _schedule_next_chunk(credential)
-        return {"status": "soft_timeout_resumed"}
-    except Exception as exc:
-        return _apply_backoff(credential, exc)
+        credential.refresh_from_db()
+        prepare_connector_sync(credential)
+
+        cursor = dict(credential.sync_cursor or {})
+        if "mode" not in cursor:
+            cursor["mode"] = "live" if cursor.get("watermark") else "backfill"
+
+        try:
+            return _run_adapter_chunk(credential, cursor)
+        except SoftTimeLimitExceeded:
+            ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
+            _schedule_next_chunk(credential)
+            return {"status": "soft_timeout_resumed"}
+        except Exception as exc:
+            return _apply_backoff(credential, exc)
     finally:
         beat.set()
 
