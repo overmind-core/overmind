@@ -47,8 +47,9 @@ def connector_imported_spans(credential):
     return Span.objects.filter(span_id__in=ids)
 
 
-def reset_connector_import(credential) -> int:
-    """Delete this credential's imported spans and rewind its sync cursor."""
+def reset_connector_import(credential, *, release=True) -> int:
+    """Delete this credential's imported spans and rewind its sync cursor. A running
+    chunk passes ``release=False`` to keep holding ``next_poll_at``, its lease."""
     from overbae.models import ConnectorCredential
 
     spans = connector_imported_spans(credential)
@@ -61,8 +62,8 @@ def reset_connector_import(credential) -> int:
         total_traces_imported=0,
         backfill_imported=0,
         backfill_total=None,
-        next_poll_at=None,
         sync_error="",
+        **({"next_poll_at": None} if release else {}),
     )
     credential.refresh_from_db()
     return count
@@ -81,7 +82,7 @@ def prepare_connector_sync(credential) -> bool:
     stored = credential.imported_boundary_key or ""
     recarving = bool(stored) and stored != current
     if recarving:
-        reset_connector_import(credential)
+        reset_connector_import(credential, release=False)
     if stored != current:
         ConnectorCredential.objects.filter(pk=credential.pk).update(imported_boundary_key=current)
         credential.imported_boundary_key = current
