@@ -509,7 +509,6 @@ def refresh_pipeline_bindings():
 )
 def execute_pipeline(self, run_id):
     import uuid
-    from datetime import timedelta
 
     from billiard.exceptions import SoftTimeLimitExceeded
 
@@ -517,13 +516,16 @@ def execute_pipeline(self, run_id):
     from overbae.services.datasets import heartbeat, pipeline_runner, workbench
 
     run = DatasetPipelineRun.objects.select_related("dataset").filter(pk=run_id).first()
-    # A lost worker can be redelivered, but a claimed script is never replayed.
+    # Celery never replays a claimed run; a lost one comes back queued under a new attempt.
     if run is None or run.state != "queued":
         return
-    if run.created_at < timezone.now() - timedelta(seconds=pipeline_runner.QUEUE_SECONDS):
+    cutoff = timezone.now()
+    if run.lease_until is not None and run.lease_until < cutoff:
         workbench.fail(
             run.pk,
             "The run waited 15 minutes for interactive capacity. Submit a new request key to retry.",
+            expired_before=cutoff,
+            attempt=run.attempt,
         )
         return
     owner = uuid.uuid4().hex
@@ -543,7 +545,9 @@ def execute_pipeline(self, run_id):
         workbench.execute(run_id, script_executor=pipeline_runner.execute_script)
     except SoftTimeLimitExceeded:
         workbench.fail(
-            run_id, "The interactive task exceeded its 25 minute deadline. No script was replayed."
+            run_id,
+            "The interactive task exceeded its 25 minute deadline. No output was published.",
+            attempt=run.attempt,
         )
         raise
     finally:

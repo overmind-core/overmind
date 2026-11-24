@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import math
-from datetime import datetime
 from types import SimpleNamespace
 
 from django.conf import settings
@@ -23,7 +22,7 @@ from overbae.models import (
     TrainingExperiment,
 )
 from overbae.services import native_evaluation, training_plans, training_release
-from overbae.services.datasets import rows, use
+from overbae.services.datasets import heartbeat, rows, use
 from overbae.services.recommendation.candidates import dataset_total_tokens
 from overbae.services.training_contract import dataset_objective
 from overbae.services.training_forecast import forecast
@@ -343,15 +342,21 @@ def prepare(experiment):
         )
         if experiment.state not in {"draft", "preparing", "preparation_failed"}:
             return experiment
-        previous = experiment.protocol.get("preparation_started_at")
-        if previous and (timezone.now() - datetime.fromisoformat(previous)).total_seconds() < 1260:
+        started = experiment.state == "preparing" and experiment.lease_until is not None
+        taken = heartbeat.take(experiment, running=started)
+        if taken == "held":
+            return experiment
+        if taken == "exhausted":
+            experiment.state = "preparation_failed"
+            experiment.protocol = {**experiment.protocol, "preparation_error": heartbeat.STOPPED}
+            experiment.save()
             return experiment
         experiment.state = "preparing"
-        experiment.protocol = {
-            **experiment.protocol,
-            "preparation_started_at": timezone.now().isoformat(),
-        }
         experiment.save()
+    owned = TrainingExperiment.objects.filter(
+        pk=experiment.pk, state="preparing", attempt=experiment.attempt
+    )
+    beat = heartbeat.hold(owned, owner=f"experiment preparation {experiment.pk}")
     try:
         forecasts, boundaries, cells = [], {}, {}
         evaluation = (
@@ -407,9 +412,8 @@ def prepare(experiment):
             "scope": "planning_estimate_not_provider_spend_cap",
         }
         protocol = {**experiment.protocol, "forecast": quote, "boundaries": boundaries}
-        protocol.pop("preparation_started_at", None)
-        TrainingExperiment.objects.filter(pk=experiment.pk, state="preparing").update(
-            state="prepared", protocol=protocol, updated_at=timezone.now()
+        owned.update(
+            state="prepared", protocol=protocol, lease_until=None, updated_at=timezone.now()
         )
     except Exception:
         logger.exception("Experiment preparation failed: %s", experiment.pk)
@@ -417,10 +421,14 @@ def prepare(experiment):
             **experiment.protocol,
             "preparation_error": "Preparation failed; inspect source versions and recipe diagnostics before retrying",
         }
-        protocol.pop("preparation_started_at", None)
-        TrainingExperiment.objects.filter(pk=experiment.pk, state="preparing").update(
-            state="preparation_failed", protocol=protocol, updated_at=timezone.now()
+        owned.update(
+            state="preparation_failed",
+            protocol=protocol,
+            lease_until=None,
+            updated_at=timezone.now(),
         )
+    finally:
+        beat.set()
     experiment.refresh_from_db()
     return experiment
 

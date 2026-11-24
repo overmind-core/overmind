@@ -31,7 +31,7 @@ from overbae.models import (
     TrainingExperiment,
 )
 from overbae.services.compute_costs import estimate_usage
-from overbae.services.datasets import paths, rows, use
+from overbae.services.datasets import heartbeat, paths, rows, use
 from overbae.services.decision_benchmark_scoring import compare_suite, records
 from overbae.services.decision_calibration import fit_decision_calibration
 from overbae.services.decision_providers import (
@@ -927,7 +927,7 @@ def resume(plan, *, stage=None, call_id=None):
         requests.filter(state="failed", response__isnull=False).update(state="received", error="")
     call.pop("observe_started_at", None)
     call.pop("lease", None)
-    call.pop("lease_started_at", None)
+    call.pop("lease_until", None)
     if local or external:
         plan.calls = {k: v for k, v in plan.calls.items() if k != pending}
     else:
@@ -1256,9 +1256,8 @@ def advance(plan_id, *, stage=None):
             )
         call = dict(plan.calls.get(stage, {}))
         call.pop("retry_at", None)
-        since = call.get("lease_started_at") or call.get("intent_at")
         if call.get("lease") or call.get("state") == "submitting":
-            if since and (timezone.now() - datetime.fromisoformat(since)).total_seconds() < 1260:
+            if stage_held(call):
                 return
             if not local and not external and not reused and not call.get("id"):
                 plan.calls = {**plan.calls, stage: {**call, "state": "submission_unknown"}}
@@ -1277,7 +1276,7 @@ def advance(plan_id, *, stage=None):
             **call,
             "state": "submitting" if starting else "running",
             "lease": lease,
-            "lease_started_at": timezone.now().isoformat(),
+            "lease_until": heartbeat.lease_end().isoformat(),
             "last_queue_wait_seconds": queue_wait,
         }
         plan.calls = {**plan.calls, stage: call}
@@ -1285,114 +1284,142 @@ def advance(plan_id, *, stage=None):
         if not preparing_only:
             plan.state = "running"
         plan.save()
-    observed_at = time.perf_counter()
-    receipt = None
+    beat = heartbeat.start(
+        lambda: renew_stage(plan.pk, stage, lease), owner=f"native evaluation {plan.pk} {stage}"
+    )
     try:
-        if stage == "verify_inputs":
-            receipt = verify_inputs(plan)
-        elif stage == "fit_calibration":
-            receipt = fit_calibration(plan)
-        elif stage == "score":
-            receipt = score(plan)
-        elif reused:
-            role, participant, _, _ = provider_stage(plan, stage)
-            receipt = collect_reused(plan, role, participant)
-        elif external:
-            role, participant, _, _ = provider_stage(plan, stage)
-            receipt = external_step(plan, role, participant)
-        elif preparation_unavailable:
-            receipt = retain_partial(plan, stage)
-            receipt["issues"] = [{"error": "Required input preparation could not be collected."}]
-        elif starting:
-            call["id"] = submit(plan, stage)
-            receipt = None
-        else:
-            receipt = modal.FunctionCall.from_id(call["id"]).get(timeout=0)
-            collect(plan, stage, receipt)
-            call.pop("progress_error", None)
-        call.update(
-            state="completed"
-            if receipt is not None and (not external or reused or receipt["completed"])
-            else "running",
-            receipt=receipt["report"] if stage == "score" and receipt is not None else receipt,
-        )
-        call.pop("error", None)
-        call.pop("consecutive_failures", None)
-    except TimeoutError as exc:
-        if local or external or reused or starting or receipt is not None:
-            record_failure(call, exc, can_retry=local or external or reused or bool(call.get("id")))
-        else:
-            call["state"] = "running"
+        observed_at = time.perf_counter()
+        receipt = None
+        try:
+            if stage == "verify_inputs":
+                receipt = verify_inputs(plan)
+            elif stage == "fit_calibration":
+                receipt = fit_calibration(plan)
+            elif stage == "score":
+                receipt = score(plan)
+            elif reused:
+                role, participant, _, _ = provider_stage(plan, stage)
+                receipt = collect_reused(plan, role, participant)
+            elif external:
+                role, participant, _, _ = provider_stage(plan, stage)
+                receipt = external_step(plan, role, participant)
+            elif preparation_unavailable:
+                receipt = retain_partial(plan, stage)
+                receipt["issues"] = [
+                    {"error": "Required input preparation could not be collected."}
+                ]
+            elif starting:
+                call["id"] = submit(plan, stage)
+                receipt = None
+            else:
+                receipt = modal.FunctionCall.from_id(call["id"]).get(timeout=0)
+                collect(plan, stage, receipt)
+                call.pop("progress_error", None)
+            call.update(
+                state="completed"
+                if receipt is not None and (not external or reused or receipt["completed"])
+                else "running",
+                receipt=receipt["report"] if stage == "score" and receipt is not None else receipt,
+            )
             call.pop("error", None)
             call.pop("consecutive_failures", None)
-        if not starting and not local and not external and not reused:
-            try:
-                collect_progress(plan, stage, call)
-            except Exception:
-                logger.warning("Native progress unavailable: %s %s", plan_id, stage, exc_info=True)
-                call["progress_error"] = (
-                    "Live worker progress is unavailable; retained results remain available."
+        except TimeoutError as exc:
+            if local or external or reused or starting or receipt is not None:
+                record_failure(
+                    call, exc, can_retry=local or external or reused or bool(call.get("id"))
                 )
-    except Exception as exc:
-        logger.exception("Native evaluation stage failed: %s %s", plan_id, stage)
-        record_failure(call, exc, can_retry=local or external or reused or bool(call.get("id")))
-    if call["state"] == "failed" and not local:
-        if not external and not reused and call.get("id"):
+            else:
+                call["state"] = "running"
+                call.pop("error", None)
+                call.pop("consecutive_failures", None)
+            if not starting and not local and not external and not reused:
+                try:
+                    collect_progress(plan, stage, call)
+                except Exception:
+                    logger.warning(
+                        "Native progress unavailable: %s %s", plan_id, stage, exc_info=True
+                    )
+                    call["progress_error"] = (
+                        "Live worker progress is unavailable; retained results remain available."
+                    )
+        except Exception as exc:
+            logger.exception("Native evaluation stage failed: %s %s", plan_id, stage)
+            record_failure(call, exc, can_retry=local or external or reused or bool(call.get("id")))
+        if call["state"] == "failed" and not local:
+            if not external and not reused and call.get("id"):
+                try:
+                    collect_progress(plan, stage, call)
+                except Exception:
+                    logger.warning(
+                        "Final progress unavailable; retaining verified local results: %s %s",
+                        plan_id,
+                        stage,
+                        exc_info=True,
+                    )
             try:
-                collect_progress(plan, stage, call)
+                call["receipt"] = retain_partial(plan, stage)
+                call["state"] = "completed"
             except Exception:
-                logger.warning(
-                    "Final progress unavailable; retaining verified local results: %s %s",
-                    plan_id,
-                    stage,
-                    exc_info=True,
+                logger.exception(
+                    "Partial evaluation results could not be retained: %s %s", plan_id, stage
                 )
-        try:
-            call["receipt"] = retain_partial(plan, stage)
-            call["state"] = "completed"
-        except Exception:
-            logger.exception(
-                "Partial evaluation results could not be retained: %s %s", plan_id, stage
+        elif call["state"] == "failed" and stage == "fit_calibration":
+            calibration = {
+                "arms": {},
+                "unavailable": {p["key"]: call["error"] for p in participants(plan)},
+                "fitted_on": "calibration",
+                "decisions": 0,
+            }
+            NativeEvaluationPlan.objects.filter(pk=plan.pk, calibration={}).update(
+                calibration=calibration
             )
-    elif call["state"] == "failed" and stage == "fit_calibration":
-        calibration = {
-            "arms": {},
-            "unavailable": {p["key"]: call["error"] for p in participants(plan)},
-            "fitted_on": "calibration",
-            "decisions": 0,
-        }
-        NativeEvaluationPlan.objects.filter(pk=plan.pk, calibration={}).update(
-            calibration=calibration
-        )
-        call.update(state="completed", receipt={"partial": True})
-    with transaction.atomic():
-        locked = NativeEvaluationPlan.objects.select_for_update().get(pk=plan.pk)
-        if locked.calls.get(stage, {}).get("lease") != lease:
-            return
-        call["observation_active_seconds"] = (
-            call.get("observation_active_seconds", 0) + time.perf_counter() - observed_at
-        )
-        call["observed_at"] = timezone.now().isoformat()
-        call["timing_scope"] = (
-            "local stage execution and provider observation; native provider compute duration is separate"
-        )
-        call.pop("enqueued_at", None)
-        call.pop("lease", None)
-        call.pop("lease_started_at", None)
-        locked.calls = {**locked.calls, stage: call}
-        if (
-            stage == "verify_inputs"
-            and preparing_only
-            and call["state"] == "completed"
-            and locked.state != "paused"
-        ):
-            locked.state = "prepared"
-        elif stage == "score" and call["state"] == "completed":
-            locked.state, locked.results = "completed", receipt
-        else:
-            settle(locked)
-        locked.save()
+            call.update(state="completed", receipt={"partial": True})
+        with transaction.atomic():
+            locked = NativeEvaluationPlan.objects.select_for_update().get(pk=plan.pk)
+            if locked.calls.get(stage, {}).get("lease") != lease:
+                return
+            call["observation_active_seconds"] = (
+                call.get("observation_active_seconds", 0) + time.perf_counter() - observed_at
+            )
+            call["observed_at"] = timezone.now().isoformat()
+            call["timing_scope"] = (
+                "local stage execution and provider observation; native provider compute duration is separate"
+            )
+            call.pop("enqueued_at", None)
+            call.pop("lease", None)
+            call.pop("lease_until", None)
+            locked.calls = {**locked.calls, stage: call}
+            if (
+                stage == "verify_inputs"
+                and preparing_only
+                and call["state"] == "completed"
+                and locked.state != "paused"
+            ):
+                locked.state = "prepared"
+            elif stage == "score" and call["state"] == "completed":
+                locked.state, locked.results = "completed", receipt
+            else:
+                settle(locked)
+            locked.save()
+    finally:
+        beat.set()
     refresh_safely(locked)
+
+
+def stage_held(call):
+    lease_until = call.get("lease_until")
+    return bool(lease_until) and datetime.fromisoformat(lease_until) > timezone.now()
+
+
+def renew_stage(plan_id, stage, lease):
+    with transaction.atomic():
+        plan = NativeEvaluationPlan.objects.select_for_update().get(pk=plan_id)
+        call = plan.calls.get(stage) or {}
+        if call.get("lease") != lease:
+            return
+        call = {**call, "lease_until": heartbeat.lease_end().isoformat()}
+        plan.calls = {**plan.calls, stage: call}
+        plan.save(update_fields=["calls"])
 
 
 def describe(plan):

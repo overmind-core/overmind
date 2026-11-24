@@ -6,6 +6,7 @@ import io
 import json
 import math
 import tempfile
+import uuid
 from datetime import timedelta
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from overbae.modal.model_registry import (
 from overbae.modal.training_type import training_context_length, training_enabled
 from overbae.models import DecisionJob, FinetuningJob, Project, TrainingPreparation
 from overbae.services import operational_progress, training_release
+from overbae.services.datasets import heartbeat
 from overbae.services.datasets import rows as row_store
 from overbae.services.datasets import use as dataset_use
 from overbae.services.finetuning_policy import (
@@ -362,17 +364,28 @@ def advance(preparation_id):
             prep.save(update_fields=["state", "error", "report", "touched_at"])
             return
         if prep.state == "starting":
-            if prep.touched_at < now - timedelta(minutes=30):
+            if prep.touched_at >= now - timedelta(seconds=heartbeat.STALE_SECONDS):
+                return
+            if prep.report.get("submitting"):
                 prep.state, prep.error = (
                     "failed",
                     "Preprocessing submission was interrupted before acknowledgement.",
                 )
                 prep.save(update_fields=["state", "error", "touched_at"])
-            return
+                return
+            # The worker stopped before it asked Modal for anything, so it starts again.
+            prep.state = "queued"
         starting = prep.state == "queued"
         if starting:
-            prep.state = "starting"
-            prep.save(update_fields=["state", "touched_at"])
+            prep.state, prep.attempt = "starting", uuid.uuid4()
+            prep.save(update_fields=["state", "attempt", "touched_at"])
+    # The export, the volume slot and the upload can each take minutes.
+    beat = heartbeat.start(
+        lambda: TrainingPreparation.objects.filter(
+            pk=prep.pk, state="starting", attempt=prep.attempt
+        ).update(touched_at=timezone.now()),
+        owner=f"training preparation {prep.pk}",
+    )
     try:
         if starting:
             training_release.verify(prep.config["runtime"])
@@ -388,23 +401,30 @@ def advance(preparation_id):
             total_rows = prep.cell.rows + (prep.validation_cell.rows if prep.validation_cell else 0)
             report_interval = max(1, min(1000, total_rows // 10))
 
-            def report_export(stage, completed_rows):
-                TrainingPreparation.objects.filter(
-                    pk=prep.pk, state="starting", deadline=prep.deadline
+            def report_export(stage, completed_rows, **marks):
+                held = TrainingPreparation.objects.filter(
+                    pk=prep.pk, state="starting", attempt=prep.attempt
                 ).update(
                     report={
                         "progress": {
                             "stage": stage,
                             "completed_rows": completed_rows,
                             "total_rows": total_rows,
-                        }
+                        },
+                        **marks,
                     },
                     touched_at=timezone.now(),
                 )
-                operational_progress.preparation(
-                    prep,
-                    {"stage": stage, "completed_rows": completed_rows, "total_rows": total_rows},
-                )
+                if held:
+                    operational_progress.preparation(
+                        prep,
+                        {
+                            "stage": stage,
+                            "completed_rows": completed_rows,
+                            "total_rows": total_rows,
+                        },
+                    )
+                return held
 
             completed_rows = 0
             report_export("exporting", completed_rows)
@@ -458,11 +478,15 @@ def advance(preparation_id):
                 "prepare_" + train_function_name(prep.config["stack"]),
                 environment_name=prep.config["runtime"]["environment"],
             )
+            # From here a lost worker may have started a paid call it never recorded. A worker
+            # whose start was handed to another attempt stops before it calls Modal.
+            if not report_export("uploading", completed_rows, submitting=True):
+                return
             call = function.spawn(
                 str(prep.id), {**prep.config, "rows_path": "/data" + remote, "rows_sha256": digest}
             )
             TrainingPreparation.objects.filter(
-                pk=prep.pk, state="starting", deadline=prep.deadline
+                pk=prep.pk, state="starting", attempt=prep.attempt
             ).update(state="running", remote_id=call.object_id, touched_at=timezone.now())
         else:
             report = validate_preparation_report(
@@ -491,7 +515,7 @@ def advance(preparation_id):
         # Leaving the shared preparation failed makes every later job for this signature fail too.
         volume_busy = starting and "too many layers" in str(exc).lower()
         TrainingPreparation.objects.filter(
-            pk=prep.pk, state__in=["starting", "running"], deadline=prep.deadline
+            pk=prep.pk, state__in=["starting", "running"], attempt=prep.attempt
         ).update(
             state="queued" if volume_busy else "failed",
             error="" if volume_busy else str(exc)[:1000],
@@ -500,6 +524,8 @@ def advance(preparation_id):
             else {"retryable": not starting or isinstance(exc, NotFoundError)},
             touched_at=timezone.now(),
         )
+    finally:
+        beat.set()
 
 
 def ready_for_job(job, context_length):

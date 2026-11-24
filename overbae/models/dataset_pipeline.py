@@ -86,6 +86,8 @@ class DatasetPipelineRun(models.Model):
     error = models.TextField(blank=True, default="")
     result = models.JSONField(default=dict)
     lease_until = models.DateTimeField(null=True)
+    # Times a run whose worker stopped went back in the queue.
+    handoffs = models.SmallIntegerField(db_default=0)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

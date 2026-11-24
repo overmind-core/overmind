@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from overbae.models import FinetuningJob, NativeEvaluationPlan, TrainingExperiment
-from overbae.services.native_evaluation import advance, ready_stages
+from overbae.services.native_evaluation import advance, ready_stages, stage_held
 from overbae.services.native_evaluation_monitor import refresh_safely
 
 
@@ -65,12 +65,7 @@ def advance_plan(plan_id, stage=None):
             locked = NativeEvaluationPlan.objects.select_for_update().get(pk=plan.pk)
             call = dict(locked.calls.get(ready, {}))
             queued = call.get("enqueued_at")
-            leased = call.get("lease_started_at")
-            if (
-                call.get("lease")
-                and leased
-                and (timezone.now() - datetime.fromisoformat(leased)).total_seconds() < 1260
-            ) or (
+            if (call.get("lease") and stage_held(call)) or (
                 queued and (timezone.now() - datetime.fromisoformat(queued)).total_seconds() < 60
             ):
                 continue

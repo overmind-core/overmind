@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from .leases import Leased
+
 
 class TrainingPreparation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -20,6 +22,8 @@ class TrainingPreparation(models.Model):
     config = models.JSONField(default=dict)
     state = models.CharField(max_length=16, default="queued")
     remote_id = models.CharField(max_length=255, blank=True, default="")
+    # Names the worker that started the preparation; its writes and its spawn check it.
+    attempt = models.UUIDField(null=True, blank=True)
     report = models.JSONField(default=dict)
     error = models.TextField(blank=True, default="")
     deadline = models.DateTimeField()
@@ -27,7 +31,7 @@ class TrainingPreparation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class TrainingExperiment(models.Model):
+class TrainingExperiment(Leased):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
@@ -446,7 +450,7 @@ class DecisionProviderRequest(models.Model):
         ]
 
 
-class DecisionPerformanceRun(models.Model):
+class DecisionPerformanceRun(Leased):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey("overbae.Project", on_delete=models.CASCADE)
     evaluation = models.ForeignKey(NativeEvaluationPlan, on_delete=models.PROTECT)

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import json
-import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
-import httpx
 import pytest
 from conftest import drain_stream
-from django.db import close_old_connections
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -346,9 +342,8 @@ def test_failed_warmup_releases_the_remote_floor_before_becoming_terminal(fake_m
     assert row.stopped_at is not None
 
 
-@pytest.mark.django_db(transaction=True)
 @pytest.mark.covers("work-once")
-def test_dedicated_request_holds_its_claim_while_the_provider_runs(fake_modal, scripted):
+def test_a_dedicated_request_is_read_back_from_its_saved_call(fake_modal):
     user = _user()
     project = Project.objects.create(name="Dedicated request")
     model = _ready(project)
@@ -356,20 +351,7 @@ def test_dedicated_request_holds_its_claim_while_the_provider_runs(fake_modal, s
     row = dedicated.start(model, user, gpu_type="H100")
     row.status = "online"
     row.save(update_fields=["status"])
-    fake_modal.deploy(
-        "overmind-dedicated",
-        "H100_vllm_dedicated.direct_url",
-        lambda **kwargs: "https://audit-dedicated.test",
-    )
-    started, release = threading.Event(), threading.Event()
-
-    def respond(call):
-        started.set()
-        assert release.wait(10)
-        result = _ok()
-        return result["status"], result["headers"], result["body"]
-
-    provider = scripted("https://audit-dedicated.test").then(respond)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok, held=True)
     request = inference_requests.submit(
         model,
         user,
@@ -377,32 +359,18 @@ def test_dedicated_request_holds_its_claim_while_the_provider_runs(fake_modal, s
         {"messages": [{"role": "user", "content": "Hi"}], "max_tokens": 32},
         dedicated=row,
     )
-
-    def advance():
-        try:
-            inference_requests.advance(request.pk)
-        finally:
-            close_old_connections()
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(advance)
-        try:
-            assert started.wait(10)
-            request.refresh_from_db()
-            assert request.state == "submitting"
-            assert request.claim_until >= timezone.now() + timedelta(seconds=300)
-            inference_requests.advance(request.pk)
-            assert len(provider.calls) == 1
-        finally:
-            release.set()
-        future.result(timeout=10)
+    inference_requests.advance(request.pk)
+    # A worker that takes over reads the saved call instead of sending the request again.
+    inference_requests.advance(request.pk)
+    fake_modal.release("H100_vllm_dedicated.infer")
+    inference_requests.advance(request.pk)
     request.refresh_from_db()
-    assert request.state == "succeeded"
-    assert request.result["content"] == "hi"
+    assert request.state == "succeeded" and request.result["content"] == "hi"
+    assert fake_modal.spawns() == ["H100_vllm_dedicated.infer"]
 
 
 @pytest.mark.covers("work-once")
-def test_dedicated_unknown_acknowledgement_is_never_replayed(fake_modal, scripted):
+def test_dedicated_unknown_acknowledgement_is_never_replayed(fake_modal):
     user = _user()
     project = Project.objects.create(name="Unknown dedicated acknowledgement")
     model = _ready(project)
@@ -410,14 +378,6 @@ def test_dedicated_unknown_acknowledgement_is_never_replayed(fake_modal, scripte
     row = dedicated.start(model, user, gpu_type="H100")
     row.status = "online"
     row.save(update_fields=["status"])
-    fake_modal.deploy(
-        "overmind-dedicated",
-        "H100_vllm_dedicated.direct_url",
-        lambda **kwargs: "https://audit-dedicated.test",
-    )
-    provider = scripted("https://audit-dedicated.test").fail(
-        httpx.ReadTimeout("acknowledgement lost")
-    )
     request = inference_requests.submit(
         model,
         user,
@@ -426,7 +386,8 @@ def test_dedicated_unknown_acknowledgement_is_never_replayed(fake_modal, scripte
         dedicated=row,
     )
     inference_requests.advance(request.pk)
+    fake_modal.deploy("overmind-dedicated", "H100_vllm_dedicated.infer", _ok)
     inference_requests.advance(request.pk)
     request.refresh_from_db()
     assert request.state == "submission_unknown"
-    assert len(provider.calls) == 1
+    assert fake_modal.spawns() == []

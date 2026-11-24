@@ -114,7 +114,7 @@ def test_many_question_report_stays_in_artifact_and_paused_scoring_recovers_with
     plan.calls["score"] = {
         "state": "submitting",
         "lease": "stopped-worker",
-        "lease_started_at": native_evaluation.timezone.now().isoformat(),
+        "lease_until": native_evaluation.timezone.now().isoformat(),
     }
     plan.state = "paused"
     plan.save()
@@ -289,7 +289,7 @@ def test_paused_provider_collection_recovers_only_its_recorded_call(tmp_path, se
         "state": "running",
         "id": "fc-existing",
         "lease": "interrupted-collector",
-        "lease_started_at": native_evaluation.timezone.now().isoformat(),
+        "lease_until": native_evaluation.timezone.now().isoformat(),
     }
     plan.save()
     for call_id in (None, "fc-different"):

@@ -182,7 +182,7 @@ def test_publisher_uses_refreshing_task_role_instead_of_archive_keys(settings, m
     settings.QUEUE_METRICS_CLUSTER = "test-cluster"
     settings.AWS_REGION = "eu-west-1"
     try:
-        assert publish() == {"metrics": 33}
+        assert publish() == {"metrics": 41}
         assert len(credential_reads) >= 2
         assert len(requests) == 2
         for _, headers in requests:
@@ -320,3 +320,25 @@ def test_eval_demand_counts_only_rows_admission_can_start(settings):
     workload = read_workloads()["batch"]
     assert workload["waiting"] == 15001
     assert workload["scaling_demand"] == 4 + 1 + 1
+
+
+@pytest.mark.django_db
+def test_assistant_demand_counts_replies_waiting_and_running():
+    from overbae.models import AssistantInput, AssistantThread, Dataset, Project, User
+
+    project = Project.objects.create(name="Assistant queues", slug="assistant-queues")
+    user = User.objects.create_user(email="assistant-queues@example.test")
+    asked, replying, quiet = (
+        AssistantThread.objects.create(
+            project=project, dataset=Dataset.objects.create(project=project, name=name), state=state
+        )
+        for name, state in (("asked", "idle"), ("replying", "running"), ("quiet", "idle"))
+    )
+    for thread in (asked, replying):
+        AssistantInput.objects.create(
+            thread=thread, created_by=user, request_key="k", text="hi", position=0
+        )
+
+    demand = read_workloads()["assistant"]
+    assert (demand["waiting"], demand["running"]) == (1, 1)
+    assert demand["oldest"] is not None

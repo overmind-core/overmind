@@ -36,7 +36,13 @@ def _probes(span) -> list[str]:
     return [str(v) for v in raw if v and str(v) not in _GENERIC_NAMES]
 
 
-@shared_task(name="overbae.tasks.capability_rebind.rebind_unbound_spans")
+# Idempotent, so a run lost with its worker is delivered again once the broker's
+# visibility timeout passes.
+@shared_task(
+    name="overbae.tasks.capability_rebind.rebind_unbound_spans",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def rebind_unbound_spans(*, project_id: str) -> dict:
     from overbae.models import Span  # noqa: PLC0415
 

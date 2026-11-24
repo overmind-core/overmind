@@ -16,6 +16,7 @@ from overbae.api.otlp import enqueue_scoring
 from overbae.services.connectors.progress import checkpoint_progress
 from overbae.services.connectors.schema import CONNECTOR_VERSION_ATTR
 from overbae.services.connectors.sync import connector_imported_spans
+from overbae.services.datasets import heartbeat
 from overbae.services.span_pricing import stamp_span_cost
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,6 @@ _BACKOFF_CAP_SECONDS = 3600
 _MAX_SYNC_RETRIES = 12
 _CHUNK_HARD_TIME_LIMIT = 60 * 20
 _CHUNK_SOFT_TIME_LIMIT = 60 * 18
-# A lease that ends before the hard limit lets the poller start a second chunk on
-# the same cursor while the first still runs.
-_LEASE_SECONDS = _CHUNK_HARD_TIME_LIMIT + 120
 
 
 def _match_capabilities_by_name(project, spans: list) -> None:
@@ -417,29 +415,44 @@ def sync_connector_chunk(credential_id: str) -> dict:
     if credential.connector_type not in registered_sources():
         return {"status": "skipped", "reason": "unsupported_connector_type"}
 
-    now = timezone.now()
+    # next_poll_at doubles as the chunk's lease. The heartbeat renews it only while it
+    # still holds the value this chunk last wrote, so the chunk's own reschedule ends it.
+    lease = {"until": heartbeat.lease_end()}
     claimed = (
         ConnectorCredential.objects.filter(pk=credential.pk)
-        .filter(Q(next_poll_at__isnull=True) | Q(next_poll_at__lte=now))
-        .update(next_poll_at=now + timedelta(seconds=_LEASE_SECONDS))
+        .filter(Q(next_poll_at__isnull=True) | Q(next_poll_at__lte=timezone.now()))
+        .update(next_poll_at=lease["until"])
     )
     if not claimed:
         return {"status": "skipped", "reason": "leased"}
-    credential.refresh_from_db()
-    prepare_connector_sync(credential)
 
-    cursor = dict(credential.sync_cursor or {})
-    if "mode" not in cursor:
-        cursor["mode"] = "live" if cursor.get("watermark") else "backfill"
+    def renew():
+        until = heartbeat.lease_end()
+        if ConnectorCredential.objects.filter(pk=credential.pk, next_poll_at=lease["until"]).update(
+            next_poll_at=until
+        ):
+            lease["until"] = until
 
+    # Preparation can delete every imported span on a recarve, so it runs under the lease.
+    beat = heartbeat.start(renew, owner=f"connector sync {credential.pk}")
     try:
-        return _run_adapter_chunk(credential, cursor)
-    except SoftTimeLimitExceeded:
-        ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
-        _schedule_next_chunk(credential)
-        return {"status": "soft_timeout_resumed"}
-    except Exception as exc:
-        return _apply_backoff(credential, exc)
+        credential.refresh_from_db()
+        prepare_connector_sync(credential)
+
+        cursor = dict(credential.sync_cursor or {})
+        if "mode" not in cursor:
+            cursor["mode"] = "live" if cursor.get("watermark") else "backfill"
+
+        try:
+            return _run_adapter_chunk(credential, cursor)
+        except SoftTimeLimitExceeded:
+            ConnectorCredential.objects.filter(pk=credential.pk).update(next_poll_at=None)
+            _schedule_next_chunk(credential)
+            return {"status": "soft_timeout_resumed"}
+        except Exception as exc:
+            return _apply_backoff(credential, exc)
+    finally:
+        beat.set()
 
 
 @shared_task(name="overbae.tasks.connector_sync.sweep_abandoned_drafts")

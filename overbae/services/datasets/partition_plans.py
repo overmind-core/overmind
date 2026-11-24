@@ -6,7 +6,6 @@ import tempfile
 import uuid
 from collections import Counter, defaultdict
 from contextlib import closing
-from datetime import timedelta
 from pathlib import Path
 
 from django.db import transaction
@@ -14,7 +13,7 @@ from django.utils import timezone
 
 from overbae.core.errors import InputValidationError
 from overbae.models import DataPartitionMember, DataPartitionPlan, Dataset, Project
-from overbae.services.datasets import land, lineage, paths, rows, store, use
+from overbae.services.datasets import heartbeat, land, lineage, paths, rows, store, use
 from overbae.services.datasets.examples import field_value, native_decision, prepare_native_record
 from overbae.services.datasets.partition import GROUP_ALIASES
 
@@ -274,12 +273,19 @@ def build(plan_id):
             .select_related("source_cell__dataset", "project")
             .get(pk=plan_id)
         )
-        if plan.state == "completed" or (
-            plan.state == "running" and plan.updated_at > timezone.now() - timedelta(seconds=1260)
-        ):
+        if plan.state == "completed":
+            return
+        taken = heartbeat.take(plan, running=plan.state == "running")
+        if taken == "held":
+            return
+        if taken == "exhausted":
+            plan.state, plan.error = "failed", heartbeat.STOPPED
+            plan.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         plan.state, plan.error = "running", ""
         plan.save()
+    owned = DataPartitionPlan.objects.filter(pk=plan.pk, attempt=plan.attempt)
+    beat = heartbeat.hold(owned, owner=f"partition plan {plan.pk}")
 
     def progress(stage, completed, total, **extra):
         value = {
@@ -289,9 +295,7 @@ def build(plan_id):
             **extra,
             "updated_at": timezone.now().isoformat(),
         }
-        DataPartitionPlan.objects.filter(pk=plan.pk, state="running").update(
-            report={"progress": value}, updated_at=timezone.now()
-        )
+        owned.filter(state="running").update(report={"progress": value}, updated_at=timezone.now())
         return value
 
     try:
@@ -330,6 +334,9 @@ def build(plan_id):
                     stream.close()
             for role in plan.recipe["fractions"]:
                 progress("preparing_member", 0, report["counts"][role], role=role)
+                # A worker whose plan was taken over stops before it lands anything.
+                if not owned.filter(state="running").exists():
+                    return
                 existing = plan.members.select_related("cell__dataset").filter(role=role).first()
                 if existing:
                     rows.verify(existing.cell)
@@ -374,13 +381,11 @@ def build(plan_id):
                 "total": plan.source_cell.rows,
                 "updated_at": timezone.now().isoformat(),
             }
-        DataPartitionPlan.objects.filter(pk=plan.pk).update(
-            state="completed", report=report, error="", updated_at=timezone.now()
-        )
+        owned.update(state="completed", report=report, error="", updated_at=timezone.now())
     except Exception as exc:
-        DataPartitionPlan.objects.filter(pk=plan.pk).update(
-            state="failed", error=str(exc)[:1000], updated_at=timezone.now()
-        )
+        owned.update(state="failed", error=str(exc)[:1000], updated_at=timezone.now())
+    finally:
+        beat.set()
 
 
 def describe(plan):

@@ -21,7 +21,7 @@ from modal_shared.operational_events import STORE
 from overbae.core.errors import InputValidationError
 from overbae.modal.model_registry import get_hf_base
 from overbae.models import InferenceCall, InferenceRequest, Project
-from overbae.services import operational_progress
+from overbae.services import dedicated, operational_progress
 from overbae.services.decision_serving import validate_requests
 from overbae.services.deployed_chat import is_cold_start, record_inference_call
 from overbae.services.deployment import modal_environment, poll_operation, serving_gpu
@@ -125,11 +125,14 @@ def submit(deployment, user, request_key, payload, *, source="mcp", dedicated=No
         return request
 
 
-async def bounded_call(method, *args, **kwargs):
+async def bounded_call(method, /, *args, **kwargs):
     return await asyncio.wait_for(method(*args, **kwargs), timeout=10)
 
 
 def spawn(request):
+    if request.payload.get("dedicated_id"):
+        instance, arguments = dedicated.request_call(request.payload)
+        return async_to_sync(bounded_call)(instance.infer.spawn.aio, **arguments).object_id
     function = modal.Function.from_name(
         request.payload.get("serving_app", "overmind-inference"),
         "inference_request",
@@ -198,41 +201,11 @@ def advance(request_id):
                 "state": "unresolved",
                 "error_code": "observation_deadline",
             }
-        elif request.state == "queued" and request.payload.get("dedicated_id"):
-            from overbae.services.dedicated import complete_request
-
-            # Persist the intent before HTTP. Its acknowledgement cannot be recovered
-            # from the Modal request store, so an expired owner must never replay it.
-            owned.update(state="submitting", claim_until=request.deadline, updated_at=now)
-            try:
-                result = complete_request(request.payload)
-                result = {
-                    key: result.get(key)
-                    for key in (
-                        "content",
-                        "usage",
-                        "finish_reason",
-                        "latency_ms",
-                        "predictions",
-                        "model_identity",
-                    )
-                }
-                changes = {
-                    "state": "succeeded",
-                    "result": result,
-                    "completed_at": now,
-                    "error_code": "",
-                }
-            except Exception:
-                logger.warning("Dedicated inference failed for %s", request.pk, exc_info=False)
-                changes = {
-                    "state": "submission_unknown",
-                    "error_code": "acknowledgement_unknown",
-                }
         elif request.state == "queued":
             owned.update(state="submitting", updated_at=now)
-            request.is_cold = is_cold_start(request.deployment)
-            owned.update(is_cold=request.is_cold)
+            if not request.payload.get("dedicated_id"):
+                request.is_cold = is_cold_start(request.deployment)
+                owned.update(is_cold=request.is_cold)
             try:
                 handle = spawn(request)
                 changes = {"remote_id": handle, "state": "running"}
@@ -249,6 +222,12 @@ def advance(request_id):
             )
         else:
             state, result = poll(request.remote_id)
+            if (
+                state == "complete"
+                and request.payload.get("dedicated_id")
+                and isinstance(result, dict)
+            ):
+                result = dedicated.request_result(request.payload, result)
             if state == "complete":
                 if not isinstance(result, dict):
                     changes = {

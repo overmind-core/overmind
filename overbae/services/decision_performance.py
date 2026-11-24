@@ -3,7 +3,6 @@ import json
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
 
 import modal
 from django.db import transaction
@@ -23,6 +22,7 @@ from overbae.models import (
 from overbae.services import native_evaluation
 from overbae.services.billing_ledger import charge_llm_usage
 from overbae.services.compute_costs import estimate_usage
+from overbae.services.datasets import heartbeat
 from overbae.services.decision_benchmark_scoring import records
 from overbae.services.decision_providers import interpret_response, question
 
@@ -272,12 +272,19 @@ def advance(run_id):
             .select_related("evaluation__triggered_by", "evaluation__final_cell__dataset")
             .get(pk=run_id)
         )
-        if run.state == "completed" or (
-            run.state == "running" and run.updated_at > timezone.now() - timedelta(seconds=1260)
-        ):
+        if run.state == "completed":
+            return
+        taken = heartbeat.take(run, running=run.state == "running")
+        if taken == "held":
+            return
+        if taken == "exhausted":
+            run.state, run.error = "failed", heartbeat.STOPPED
+            run.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         run.state = "running"
         run.save()
+    owned = DecisionPerformanceRun.objects.filter(pk=run.pk, attempt=run.attempt)
+    beat = heartbeat.hold(owned, owner=f"decision performance {run.pk}")
     settings = run.workload["settings"]
     totals = dict(run.results.get("active_seconds", {}))
     try:
@@ -421,11 +428,9 @@ def advance(run_id):
                     totals[participant["key"]] = (
                         totals.get(participant["key"], 0) + time.perf_counter() - started_window
                     )
-                    DecisionPerformanceRun.objects.filter(pk=run.pk).update(
-                        results={"active_seconds": totals}, updated_at=timezone.now()
-                    )
+                    owned.update(results={"active_seconds": totals}, updated_at=timezone.now())
         if run.requests.filter(state="submission_unknown").exclude(call_id="").exists():
-            DecisionPerformanceRun.objects.filter(pk=run.pk).update(
+            owned.update(
                 state="queued", results={"active_seconds": totals}, updated_at=timezone.now()
             )
             return
@@ -521,14 +526,12 @@ def advance(run_id):
                     "shared_state_questions": settings["questions_per_request"],
                 },
             }
-        DecisionPerformanceRun.objects.filter(pk=run.pk).update(
-            state="completed", results=result, error="", updated_at=timezone.now()
-        )
+        owned.update(state="completed", results=result, error="", updated_at=timezone.now())
     except Exception as exc:
-        DecisionPerformanceRun.objects.filter(pk=run.pk).update(
-            state="failed", error=type(exc).__name__, updated_at=timezone.now()
-        )
+        owned.update(state="failed", error=type(exc).__name__, updated_at=timezone.now())
         raise
+    finally:
+        beat.set()
 
 
 def describe(run):

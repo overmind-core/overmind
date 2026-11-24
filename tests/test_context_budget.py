@@ -152,7 +152,9 @@ def test_truncated_generation_stays_visible_but_cannot_be_a_quality_score(fake_l
         model_name="gpt-4.1",
         matrix=[{"name": "Report", "type": "llm", "source": "The output is the report."}],
     )
-    row = EvalRunRow.objects.create(run=run, row_index=0)
+    row = EvalRunRow.objects.create(
+        run=run, row_index=0, state=EvalRunRow.State.RUNNING, task_id="generation"
+    )
     train = frozen_dataset(project, TRAIN_ROWS, contract="train")
     job = FinetuningJob.objects.create(
         project=project, dataset=train, base_model="Qwen/Qwen3.5-27B", status="succeeded"

@@ -366,7 +366,7 @@ def test_expired_stage_lease_is_reconciled_after_worker_loss():
         "verify_inputs": {
             "state": "running",
             "lease": "lost",
-            "lease_started_at": (timezone.now() - timedelta(seconds=1300)).isoformat(),
+            "lease_until": (timezone.now() - timedelta(seconds=1)).isoformat(),
         }
     }
     plan.save()

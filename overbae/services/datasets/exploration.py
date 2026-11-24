@@ -3,7 +3,6 @@ import logging
 import sqlite3
 import time
 import uuid
-from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -12,6 +11,7 @@ from overbae.core.errors import InputValidationError
 from overbae.models import Cell, DataExploration, Dataset, Project
 from overbae.services.datasets import (
     events,
+    heartbeat,
     land,
     lineage,
     paths,
@@ -74,12 +74,19 @@ def advance(identifier):
             .select_related("source_cell__dataset", "project")
             .get(pk=identifier)
         )
-        if op.state == "completed" or (
-            op.state == "running" and op.updated_at > timezone.now() - timedelta(seconds=1260)
-        ):
+        if op.state == "completed":
+            return
+        taken = heartbeat.take(op, running=op.state == "running")
+        if taken == "held":
+            return
+        if taken == "exhausted":
+            op.state, op.error = "failed", heartbeat.STOPPED
+            op.save(update_fields=["state", "error", "attempt", "lease_until", "updated_at"])
             return
         op.state, op.error = "running", ""
         op.save()
+    owned = DataExploration.objects.filter(pk=op.pk, attempt=op.attempt)
+    beat = heartbeat.hold(owned, owner=f"exploration {op.pk}")
     started = time.perf_counter()
     try:
         rows.verify(op.source_cell)
@@ -185,7 +192,7 @@ def advance(identifier):
                 transaction.on_commit(
                     lambda: events.publish(cell.dataset_id, {"type": "dataset_changed"})
                 )
-        DataExploration.objects.filter(pk=op.pk).update(
+        owned.update(
             state="completed",
             report=report,
             output_dataset=op.output_dataset,
@@ -194,11 +201,13 @@ def advance(identifier):
         )
     except Exception:
         logger.exception("Data exploration failed: %s", identifier)
-        DataExploration.objects.filter(pk=op.pk).update(
+        owned.update(
             state="failed",
             error="Source exploration failed. Verify the selected version and sampling fields before retrying.",
             updated_at=timezone.now(),
         )
+    finally:
+        beat.set()
 
 
 def describe(op):

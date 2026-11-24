@@ -327,10 +327,26 @@ def test_layer_limit_on_a_running_call_keeps_the_remote_id(cell, monkeypatch):
     call.cancel.assert_called_once()
 
 
+def test_a_start_lost_before_submission_starts_again(cell, monkeypatch):
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep.__class__.objects.filter(pk=prep.pk).update(
+        state="starting", touched_at=timezone.now() - timedelta(minutes=6)
+    )
+    spawn = Mock(return_value=SimpleNamespace(object_id="fc-prep"))
+    monkeypatch.setattr(
+        preparation.modal.Function, "from_name", Mock(return_value=SimpleNamespace(spawn=spawn))
+    )
+    preparation.advance(prep.id)
+    prep.refresh_from_db()
+    assert spawn.call_count == 1 and prep.state == "running" and prep.remote_id == "fc-prep"
+
+
 def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(
-        state="starting", touched_at=timezone.now() - timedelta(minutes=31)
+        state="starting",
+        report={"submitting": True},
+        touched_at=timezone.now() - timedelta(minutes=6),
     )
     preparation.advance(prep.id)
     prep.refresh_from_db()
