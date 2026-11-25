@@ -112,7 +112,7 @@ def test_worker_prompt_reports_capability_mismatch(capability, frame_of):
 def test_unreviewed_data_can_start_model_preprocessing(capability, settings):
     settings.FINETUNING_BACKEND = "modal"
     ds = make_dataset(capability, intent="train")
-    prep = request_preparation(ds.active_cell, "Qwen/Qwen3-8B", 4096)
+    prep = request_preparation(ds.active_cell, "Qwen/Qwen3.5-9B", 4096)
     assert prep.state == "queued" and ds.active_cell.used_at is None
 
 

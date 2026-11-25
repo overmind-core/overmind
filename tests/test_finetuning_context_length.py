@@ -40,8 +40,8 @@ class TestCatalogContextPolicy:
             get_training_context_policy("no-such-backend")
 
     def test_modal_models_are_not_uniformly_capped(self):
-        assert get_sft_context_length("Qwen/Qwen3-8B", backend="modal") == 40960
-        assert get_sft_context_length("Qwen/Qwen2.5-7B-Instruct", backend="modal") == 32768
+        assert get_sft_context_length("Qwen/Qwen3-0.6B", backend="modal") == 40960
+        assert get_sft_context_length("LiquidAI/LFM2.5-350M", backend="modal") == 32768
         assert get_sft_context_length("meta-llama/Llama-3.1-8B-Instruct", backend="modal") == 131072
         assert get_sft_context_length("Qwen/Qwen3.5-9B", backend="modal") == 262144
         assert get_sft_context_length("fdtn-ai/antares-1b", backend="modal") == 131072

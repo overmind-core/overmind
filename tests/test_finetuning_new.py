@@ -1194,23 +1194,23 @@ class TestModelRegistryAnyBackend:
     def test_catalogued_model_is_found(self):
         from overbae.modal.model_registry import get_model_config_any_backend
 
-        cfg = get_model_config_any_backend("Qwen/Qwen3-8B")
+        cfg = get_model_config_any_backend("Qwen/Qwen3.5-4B")
         assert cfg is not None
-        assert cfg["id"] == "Qwen/Qwen3-8B"
+        assert cfg["id"] == "Qwen/Qwen3.5-4B"
 
     def test_modal_model_is_found(self):
         from overbae.modal.model_registry import get_model_config_any_backend
 
-        cfg = get_model_config_any_backend("Qwen/Qwen2.5-32B-Instruct")
+        cfg = get_model_config_any_backend("Qwen/Qwen3.5-9B")
         assert cfg is not None
         assert cfg["backend"] == "modal"
 
     def test_arch_constants_present_on_result(self):
         from overbae.modal.model_registry import get_model_config_any_backend
 
-        cfg = get_model_config_any_backend("Qwen/Qwen2.5-7B-Instruct")
+        cfg = get_model_config_any_backend("Qwen/Qwen3-0.6B")
         assert cfg["num_attn_layers"] == 28
-        assert cfg["num_kv_heads"] == 4
+        assert cfg["num_kv_heads"] == 8
         assert cfg["head_dim"] == 128
 
     def test_llama_70b_arch_constants(self):
@@ -1291,10 +1291,6 @@ class TestDeploymentGPUDerivation:
         max_model_len = training_ctx if training_ctx > 0 else static_max
         return select_gpu(model_cfg, max_model_len)
 
-    def test_qwen25_7b_at_32k_picks_l4(self):
-        gpu, _ = self._select("Qwen/Qwen2.5-7B-Instruct", 32768)
-        assert gpu == "L4"
-
     def test_llama_8b_at_131k_picks_l4(self):
         """8B FP8 weights plus an FP8 KV cache at 131k fit one sequence on an L4."""
         gpu, _ = self._select("meta-llama/Llama-3.1-8B-Instruct", 131072)
@@ -1305,27 +1301,15 @@ class TestDeploymentGPUDerivation:
         gpu, _ = self._select("meta-llama/Llama-3.3-70B-Instruct", 131072)
         assert gpu == "H200"
 
-    def test_qwen3_32b_at_40k_picks_l40s(self):
-        gpu, _ = self._select("Qwen/Qwen3-32B", 40960)
-        assert gpu == "L40S"
-
     def test_zero_training_ctx_falls_back_to_static_max_model_len(self):
         from overbae.modal.gpu_selector import select_gpu
         from overbae.modal.model_registry import get_model_config_any_backend
 
-        model_cfg = get_model_config_any_backend("Qwen/Qwen3-8B")
-        static_max = model_cfg["inference"]["max_model_len"]  # 16384
-        # Simulate: training_ctx = 0 → deployment uses static_max
+        model_cfg = get_model_config_any_backend("Qwen/Qwen3.5-4B")
+        static_max = model_cfg["inference"]["max_model_len"]
         max_model_len = 0 if 0 > 0 else static_max
         gpu, _ = select_gpu(model_cfg, max_model_len)
-        # At 16k context, 8B FP8 fits on L4
         assert gpu == "L4"
-
-    def test_qwen25_32b_selects_a_mid_range_gpu(self):
-        gpu, conc = self._select("Qwen/Qwen2.5-32B-Instruct", 32768)
-        # 32B dense model at 32k — mid-range GPU, not L4 or H200+.
-        assert gpu in ("L40S", "A100-80GB")
-        assert conc >= 1
 
 
 def _row(dataset, index):

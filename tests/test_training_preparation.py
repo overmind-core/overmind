@@ -79,14 +79,14 @@ def test_exact_preprocessing_reports_tokens_targets_and_incompatible_rows():
 
 
 def test_preparation_caches_exact_version_and_configuration(cell):
-    first = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
-    same = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
-    different = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 8192)
+    first = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
+    same = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
+    different = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 8192)
     assert first.id == same.id and first.id != different.id
     cell.fingerprint = "different"
     cell.save(update_fields=["fingerprint"])
     with pytest.raises(DatasetError, match="changed") as error:
-        preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+        preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     assert error.value.code == "workshop_validation"
 
 
@@ -96,7 +96,7 @@ def test_preparation_verifies_each_target_once_then_rechecks_in_worker(cell, mon
         preparation.row_store, "verify", wraps=preparation.row_store.verify
     ) as verify:
         prep = preparation.request_preparation(
-            cell, "Qwen/Qwen3-8B", 4096, validation_cell=validation
+            cell, "Qwen/Qwen3.5-9B", 4096, validation_cell=validation
         )
     assert [call.args[0].id for call in verify.call_args_list] == [cell.id, validation.id]
     validation.fingerprint = "tampered-after-request"
@@ -119,18 +119,18 @@ def test_preparation_keeps_validation_dataset_boundaries(cell, problem):
     validation = frozen_dataset(project, contract="eval" if problem == "intent" else "train")
     with pytest.raises(ValueError, match="needs train" if problem == "intent" else "same project"):
         preparation.request_preparation(
-            cell, "Qwen/Qwen3-8B", 4096, validation_cell=validation.active_cell
+            cell, "Qwen/Qwen3.5-9B", 4096, validation_cell=validation.active_cell
         )
 
 
 def test_export_format_changes_invalidate_cached_preprocessing(cell, monkeypatch):
-    first = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    first = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     monkeypatch.setattr(
         preparation.training_release,
         "current",
         lambda: {**first.config["runtime"], "data_format": "new-format"},
     )
-    changed = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    changed = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     assert changed.id != first.id
     assert changed.config["data_format"] == "new-format"
 
@@ -138,7 +138,7 @@ def test_export_format_changes_invalidate_cached_preprocessing(cell, monkeypatch
 def test_worker_reconnects_to_existing_call_without_spawning_again(
     cell, monkeypatch, preparation_volume
 ):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     spawn = Mock(return_value=SimpleNamespace(object_id="fc-prep"))
     monkeypatch.setattr(
         preparation.modal.Function, "from_name", Mock(return_value=SimpleNamespace(spawn=spawn))
@@ -166,7 +166,7 @@ def test_worker_reconnects_to_existing_call_without_spawning_again(
 
 
 def test_preparation_reports_exported_rows_before_upload(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     observed = []
 
     class Batch:
@@ -227,7 +227,7 @@ class _LayerBatch:
 
 
 def test_volume_layer_limit_is_retried_for_the_same_preparation(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     attempts = {"n": 0}
     spawn = Mock(return_value=SimpleNamespace(object_id="fc-prep"))
     monkeypatch.setattr(
@@ -245,18 +245,18 @@ def test_volume_layer_limit_is_retried_for_the_same_preparation(cell, monkeypatc
     prep.refresh_from_db()
     assert prep.state == "queued" and not prep.error and not prep.report
     assert spawn.call_count == 0
-    assert preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096).id == prep.id
+    assert preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096).id == prep.id
 
     preparation.advance(prep.id)
     prep.refresh_from_db()
-    same = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    same = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     assert same.id == prep.id and same.state == "running" and same.remote_id == "fc-prep"
     assert spawn.call_count == 1
 
 
 @pytest.mark.parametrize("where", ["enter", "put_file", "exit"])
 def test_volume_layer_limit_at_each_upload_step_stays_retriable(cell, monkeypatch, where):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
 
     class Batch:
         def __enter__(self):
@@ -284,7 +284,7 @@ def test_volume_layer_limit_at_each_upload_step_stays_retriable(cell, monkeypatc
 
 
 def test_other_upload_errors_still_fail_the_preparation(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
 
     class Batch:
         def __enter__(self):
@@ -307,7 +307,7 @@ def test_other_upload_errors_still_fail_the_preparation(cell, monkeypatch):
 
 
 def test_layer_limit_on_a_running_call_keeps_the_remote_id(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.state, prep.remote_id = "running", "fc-live"
     prep.save(update_fields=["state", "remote_id"])
     call = SimpleNamespace(
@@ -328,7 +328,7 @@ def test_layer_limit_on_a_running_call_keeps_the_remote_id(cell, monkeypatch):
 
 
 def test_a_start_lost_before_submission_starts_again(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(
         state="starting", touched_at=timezone.now() - timedelta(minutes=6)
     )
@@ -342,7 +342,7 @@ def test_a_start_lost_before_submission_starts_again(cell, monkeypatch):
 
 
 def test_uncertain_submission_and_expired_operations_fail_closed(cell):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.__class__.objects.filter(pk=prep.pk).update(
         state="starting",
         report={"submitting": True},
@@ -353,7 +353,7 @@ def test_uncertain_submission_and_expired_operations_fail_closed(cell):
     assert prep.state == "failed" and "acknowledgement" in prep.error
     with pytest.raises(ValueError, match="safely"):
         preparation.retry_preparation(prep)
-    other = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 8192)
+    other = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 8192)
     other.deadline = timezone.now() - timedelta(seconds=1)
     other.save(update_fields=["deadline"])
     preparation.advance(other.id)
@@ -374,7 +374,7 @@ def test_uncertain_submission_and_expired_operations_fail_closed(cell):
 def test_preparation_distinguishes_worker_failures_from_incompatible_data(
     cell, monkeypatch, report, state, error
 ):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.state, prep.remote_id = "running", "fc-prep"
     prep.save()
     monkeypatch.setattr(
@@ -390,7 +390,7 @@ def test_preparation_distinguishes_worker_failures_from_incompatible_data(
 
 
 def test_processor_update_does_not_reuse_failed_preparation(cell, monkeypatch):
-    previous = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    previous = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     previous.state, previous.report = "failed", preparation_failure("worker_out_of_date")
     previous.save()
     monkeypatch.setattr(
@@ -398,14 +398,14 @@ def test_processor_update_does_not_reuse_failed_preparation(cell, monkeypatch):
         "current",
         lambda: {**previous.config["runtime"], "processor": "updated-processor"},
     )
-    current = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    current = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     assert current.id != previous.id and current.state == "queued"
     previous.refresh_from_db()
     assert previous.state == "failed"
 
 
 def test_retry_cancels_confirmed_remote_attempt_and_preserves_uncertain_failures(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.state, prep.remote_id, prep.report = "failed", "fc-old", {"retryable": True}
     prep.save()
     cancel = Mock()
@@ -426,7 +426,7 @@ def test_preparation_api_is_project_scoped_and_does_not_start_training(cell, mon
     client.force_authenticate(user)
     queue = Mock()
     monkeypatch.setattr("overbae.api.training_preparation.inspect_preparation.delay", queue)
-    body = {"dataset": str(cell.dataset_id), "model": "Qwen/Qwen3-8B", "context_length": 4096}
+    body = {"dataset": str(cell.dataset_id), "model": "Qwen/Qwen3.5-9B", "context_length": 4096}
     response = client.post("/api/training-preparations/", body, format="json")
     assert response.status_code == 202, response.data
     job = FinetuningJob.objects.get(pk=response.data["training_job"])
@@ -506,7 +506,7 @@ def test_failed_setup_retry_and_cancel_cannot_dispatch_training(cell, monkeypatc
     submit, inspect = Mock(), Mock()
     monkeypatch.setattr(run_finetuning, "apply_async", submit)
     monkeypatch.setattr("overbae.tasks.training_preparation.inspect_preparation.delay", inspect)
-    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3.5-9B", 4096, user=user)
     job = prep.training_jobs.get()
     prep.state, prep.error, prep.report = "failed", "Worker unavailable", {"retryable": True}
     prep.save()
@@ -538,7 +538,7 @@ def test_preparation_api_rejects_settings_that_would_be_changed(cell, monkeypatc
         "/api/training-preparations/",
         {
             "dataset": str(cell.dataset_id),
-            "model": "Qwen/Qwen3-8B",
+            "model": "Qwen/Qwen3.5-9B",
             "context_length": context_length,
         },
         format="json",
@@ -561,7 +561,7 @@ def retry_job(cell, monkeypatch, settings):
         project=cell.dataset.project,
         dataset=cell.dataset,
         cell=cell,
-        base_model="Qwen/Qwen3-8B",
+        base_model="Qwen/Qwen3.5-9B",
         hyperparameters={"context_length": 4096},
         provider="modal",
         status="failed",
@@ -653,7 +653,7 @@ def test_preparation_retry_skips_submitted_training_or_other_backends(retry_job,
 
 
 @pytest.mark.parametrize(
-    "model", ["Qwen/Qwen3-8B", "Qwen/Qwen3.5-27B", "meta-llama/Llama-3.1-8B-Instruct"]
+    "model", ["Qwen/Qwen3.5-9B", "Qwen/Qwen3.6-27B", "meta-llama/Llama-3.1-8B-Instruct"]
 )
 def test_job_preparation_sizes_pinned_rows_despite_smaller_requested_context(retry_job, model):
     job, _, _, _ = retry_job
@@ -840,7 +840,7 @@ def test_overestimated_lengths_do_not_reject_data_before_exact_preparation(retry
 
 
 def test_preparation_timeout_exposes_committed_counters_without_restarting(cell, monkeypatch):
-    prep = preparation.request_preparation(cell, "Qwen/Qwen3-8B", 4096)
+    prep = preparation.request_preparation(cell, "Qwen/Qwen3.5-9B", 4096)
     prep.state, prep.remote_id = "running", "fc-existing"
     prep.save()
     monkeypatch.setattr(
@@ -896,7 +896,7 @@ def test_setup_job_follows_measured_context_when_preparation_used_the_estimate(c
     cell.stats = {**cell.stats, "max_token_length": 7145}
     cell.save(update_fields=["stats"])
     user = User.objects.create_user(email="measured-context@example.test", password="test")
-    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 8192, user=user)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3.5-9B", 8192, user=user)
     job = prep.training_jobs.get()
     prep.state = "incompatible"
     prep.report = {"max_tokens": 9925, "incompatible_rows": 4, "ready": False}
@@ -915,7 +915,7 @@ def test_setup_job_keeps_a_context_the_caller_chose_below_the_estimate(cell):
     cell.stats = {**cell.stats, "max_token_length": 7145}
     cell.save(update_fields=["stats"])
     user = User.objects.create_user(email="fixed-context@example.test", password="test")
-    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3.5-9B", 4096, user=user)
     job = prep.training_jobs.get()
     prep.state = "incompatible"
     prep.report = {"max_tokens": 7190, "incompatible_rows": 3, "ready": False}

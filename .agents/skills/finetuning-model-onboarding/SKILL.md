@@ -102,13 +102,11 @@ A catalog row that only trains is unfinished. Serving is measured on Modal `--en
 
 ## 9. Retiring a model
 
-A row leaves finetuning, serverless inference, and dedicated inference together. Set `disabled: true` and `disabled_reason` on the `models.json` entry. Leave the row: existing jobs and deployments still resolve it. `get_tier_models` (training, recommendations, new job create) and the public library skip disabled rows. The training picker does too.
+A row leaves finetuning, serverless inference, and dedicated inference together by deleting it from `models.json`. Do not leave it `disabled`. `disabled` is for a row that stays in the catalog but cannot be offered yet, such as a checkpoint whose thinking cannot be turned off.
 
 Retire a row when a newer model in a similar parameter range already scores higher on shared benchmark percentiles, and the older size is not worth keeping. A family with no in-family successor stays (Llama stays, even where a smaller Qwen scores higher). A near-tie on a short overlap stays (`Qwen3-0.6B`). A different serving shape stays (a MoE whose active-parameter cost is the point of the row).
 
-Do not turn training types off on the retired row. The `disabled` flag is the gate; the training block stays as the record of what was probed.
-
-Current successor retirements: every Qwen 2.5 row, Qwen 3 except `Qwen3-0.6B`, `Qwen3-Coder-30B-A3B-Instruct`, and `Qwen3.5-27B` (successor `Qwen3.6-27B`). Reason on each row: superseded by a newer model in a similar size range with stronger benchmarks.
+Current successor removals: every Qwen 2.5 row, Qwen 3 except `Qwen3-0.6B`, `Qwen3-Coder-30B-A3B-Instruct`, and `Qwen3.5-27B` (successor `Qwen3.6-27B`). Each had a newer model in a similar size range with stronger benchmarks.
 
 ## Checklist for onboarding a new model
 

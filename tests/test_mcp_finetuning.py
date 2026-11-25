@@ -62,7 +62,7 @@ def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool
         monkeypatch.setattr(tools_finetuning, "begin_preparation", Mock(side_effect=failure))
         arguments = {
             "dataset": str(train.id),
-            "base_model": "Qwen/Qwen3-8B",
+            "base_model": "Qwen/Qwen3.5-9B",
             "context_length": 4096,
         }
     else:
@@ -116,7 +116,7 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
     monkeypatch.setattr(tools_finetuning.inspect_preparation, "delay", lambda *a: None)
     result = _call(
         "prepare_training_data",
-        {"dataset": str(dataset.id), "base_model": "Qwen/Qwen3-8B", "context_length": 4096},
+        {"dataset": str(dataset.id), "base_model": "Qwen/Qwen3.5-9B", "context_length": 4096},
         context,
     )
     assert not result.isError, result.structuredContent
