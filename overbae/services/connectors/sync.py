@@ -47,9 +47,9 @@ def connector_imported_spans(credential):
     return Span.objects.filter(span_id__in=ids)
 
 
-def reset_connector_import(credential, *, release=True) -> int:
-    """Delete this credential's imported spans and rewind its sync cursor. A running
-    chunk passes ``release=False`` to keep holding ``next_poll_at``, its lease."""
+def reset_connector_import(credential) -> int:
+    """Delete this credential's imported spans and rewind its sync cursor. Only the running
+    chunk calls this, so ``next_poll_at``, its lease, stays as it is."""
     from overbae.models import ConnectorCredential
 
     spans = connector_imported_spans(credential)
@@ -63,18 +63,42 @@ def reset_connector_import(credential, *, release=True) -> int:
         backfill_imported=0,
         backfill_total=None,
         sync_error="",
-        **({"next_poll_at": None} if release else {}),
     )
     credential.refresh_from_db()
     return count
+
+
+# Any stored key other than the live one makes the next chunk recarve under its lease.
+SOURCE_CHANGED = "source-changed"
+
+
+def restart_connector_import(credential) -> None:
+    """After new settings, import the configured range again. Spans from the same source
+    project stay, since the import upserts them. Spans from a previous source project are
+    removed by the next chunk, so two sources never mix in one project."""
+    from overbae.models import ConnectorCredential
+
+    latest, previous = [*credential.configs.order_by("-version")[:2], None][:2]
+    source_changed = (
+        previous is not None
+        and latest.source_project_id != previous.source_project_id
+        and bool(credential.imported_boundary_key)
+    )
+    ConnectorCredential.objects.filter(pk=credential.pk).update(
+        sync_cursor={},
+        sync_status=ConnectorCredential.SyncStatus.IDLE,
+        sync_error="",
+        next_poll_at=None,
+        **({"imported_boundary_key": SOURCE_CHANGED} if source_changed else {}),
+    )
 
 
 def prepare_connector_sync(credential) -> bool:
     """Adopt or recarve so this sync uses the live mapping.names as trace roots.
 
     An empty stored key is first-seen: adopt without wiping. A changed source or
-    names set wipes imported spans because incremental upsert would keep the old
-    grouping. Assignments-only changes do not recarve.
+    names set, or a changed source project, wipes imported spans because incremental
+    upsert would keep the old grouping. Assignments-only changes do not recarve.
     """
     from overbae.models import ConnectorCredential
 
@@ -82,7 +106,7 @@ def prepare_connector_sync(credential) -> bool:
     stored = credential.imported_boundary_key or ""
     recarving = bool(stored) and stored != current
     if recarving:
-        reset_connector_import(credential, release=False)
+        reset_connector_import(credential)
     if stored != current:
         ConnectorCredential.objects.filter(pk=credential.pk).update(imported_boundary_key=current)
         credential.imported_boundary_key = current

@@ -8,8 +8,9 @@ import pytest
 import time_machine
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
-from factories import make_connector, make_project, sync_until_live
+from factories import make_connector, make_project, member_client, sync_until_live
 from fakes.vendors import LangfuseAPI, Step
 
 from overbae.api.serializers import ConnectorCredentialSerializer
@@ -280,6 +281,38 @@ def test_a_sync_request_restarts_the_backfill_when_the_boundaries_changed(creden
     credential.refresh_from_db()
     assert credential.sync_status == ConnectorCredential.SyncStatus.BACKFILLING
     assert credential.sync_cursor == {}
+
+
+def test_saving_settings_in_the_console_keeps_imported_traces(credential, langfuse):
+    _traces(langfuse, 2)
+    sync_until_live(credential)
+
+    response = member_client(credential.project).post(
+        reverse("connectorcredential-config", args=[credential.id]),
+        {"lookback_days": 7},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    credential.refresh_from_db()
+    assert _spans(credential) == 2
+    assert credential.sync_cursor == {}
+
+
+def test_switching_the_source_project_replaces_its_imported_traces(credential, langfuse):
+    _traces(langfuse, 2)
+    sync_until_live(credential)
+    langfuse.traces.clear()
+    _traces(langfuse, 1, first=10)
+
+    member_client(credential.project).post(
+        reverse("connectorcredential-config", args=[credential.id]),
+        {"source_project_id": "another-project"},
+        format="json",
+    )
+    sync_until_live(credential)
+
+    assert _spans(credential) == 1
 
 
 def test_split_trace_pages_and_retries_do_not_inflate_import_counts(credential, langfuse):
