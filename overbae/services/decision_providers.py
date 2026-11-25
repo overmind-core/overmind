@@ -451,8 +451,10 @@ def external_step(plan, role, participant):
         output_path = source.parent / f"{participant['key']}.jsonl"
         failures_path = output_path.with_suffix(".failures.jsonl")
         with (
-            output_path.with_suffix(".partial").open("w") as output,
-            failures_path.with_suffix(".partial").open("w") as failures,
+            evaluation_inputs.replacing(output_path) as written,
+            evaluation_inputs.replacing(failures_path) as failed,
+            written.open("w") as output,
+            failed.open("w") as failures,
         ):
             for batch in evaluation_inputs.batches(source):
                 saved = {
@@ -481,8 +483,6 @@ def external_step(plan, role, participant):
                         )
                     elif not record or record.state not in {"failed", "submission_unknown"}:
                         raise InputValidationError("Provider collection is incomplete")
-        output_path.with_suffix(".partial").replace(output_path)
-        failures_path.with_suffix(".partial").replace(failures_path)
     return {
         "completed": completed,
         "decisions": offset + len(chunk),

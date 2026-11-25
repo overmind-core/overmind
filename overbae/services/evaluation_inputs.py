@@ -1,6 +1,7 @@
 import fcntl
 import json
 import tempfile
+import uuid
 from contextlib import contextmanager
 from itertools import islice
 from pathlib import Path
@@ -16,6 +17,18 @@ def artifact_lock(directory):
     with (directory.parent / (directory.name + ".lock")).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+@contextmanager
+def replacing(path):
+    """Yield a file of this attempt's own beside ``path``, then swap it in whole. An older
+    attempt of the same stage may still be writing; it can never tear or mix the file."""
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        yield temporary
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def index(source):

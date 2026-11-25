@@ -1742,9 +1742,6 @@ class ConnectorCredentialViewSet(viewsets.ModelViewSet):
             credential,
             **config_kwargs,
         )
-        from overbae.services.connectors.sync import reset_connector_import
-
-        reset_connector_import(credential)
         return Response(
             {
                 "version": config.version,

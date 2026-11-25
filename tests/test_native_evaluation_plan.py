@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 from contextlib import closing
@@ -461,6 +462,32 @@ def test_overlapping_reconciliation_observes_provider_call_once(tmp_path, settin
     collect.assert_called_once()
     plan.refresh_from_db()
     assert plan.calls["calibration_prepare"]["state"] == "completed"
+
+
+def test_an_older_collection_never_tears_the_file_a_newer_attempt_published(
+    tmp_path, settings, fake_modal, monkeypatch
+):
+    settings.MEDIA_ROOT = tmp_path
+    plan = setup_plan()
+    payload = b"".join(json.dumps({"key": str(i)}).encode() + b"\n" for i in range(64))
+    receipt = {"failures_sha256": hashlib.sha256(payload).hexdigest()}
+    newer = []
+
+    def read_file(volume, path):
+        yield payload[:100]
+        if not newer:
+            newer.append(path)
+            native_evaluation.collect(plan, "calibration_prepare", receipt)
+        yield payload[100:]
+
+    monkeypatch.setattr(native_evaluation.modal.Volume, "_read_file", read_file)
+    native_evaluation.collect(plan, "calibration_prepare", receipt)
+
+    stage = native_evaluation.directory(plan, "calibration")
+    published = [stage / "prepare-failures.jsonl", *stage.glob("*.failures.jsonl")]
+    assert newer and len(published) > 1
+    assert all(path.read_bytes() == payload for path in published)
+    assert not list(stage.glob(".*.tmp"))
 
 
 def test_pending_provider_observation_can_be_polled_again(tmp_path, settings):

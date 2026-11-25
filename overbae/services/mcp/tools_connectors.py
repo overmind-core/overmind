@@ -647,12 +647,6 @@ def _configure_connector_sync(
             if creating_first and "lookback_days" not in payload.model_fields_set:
                 config_kwargs["lookback_days"] = _FIRST_CONFIG_LOOKBACK_DAYS
             save_sync_config(connector, **config_kwargs)
-            ConnectorCredential.objects.filter(pk=connector.pk).update(
-                sync_cursor={},
-                sync_status=ConnectorCredential.SyncStatus.IDLE,
-                sync_error="",
-                next_poll_at=None,
-            )
     connector.refresh_from_db()
     details = _details(context, connector)
     mapping_pending = _needs_mapping_approval(connector)
