@@ -101,8 +101,10 @@ def prepare_connector_sync(credential) -> bool:
     recarving = bool(stored) and stored != current
     if recarving:
         reset_connector_import(credential)
-    if stored != current:
-        ConnectorCredential.objects.filter(pk=credential.pk).update(imported_boundary_key=current)
+    # A source change saved since the read keeps its marker, so the next chunk recarves.
+    if stored != current and ConnectorCredential.objects.filter(
+        pk=credential.pk, imported_boundary_key=stored
+    ).update(imported_boundary_key=current):
         credential.imported_boundary_key = current
     return recarving
 
