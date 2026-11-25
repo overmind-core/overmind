@@ -41,7 +41,7 @@ from overbae.services.decision_providers import (
     qualify_participants,
     recover_request,
 )
-from overbae.services.evaluation_inputs import artifact_lock
+from overbae.services.evaluation_inputs import artifact_lock, replacing
 from overbae.services.training_release import current
 
 logger = logging.getLogger(__name__)
@@ -598,22 +598,20 @@ def collect(plan, stage, receipt):
     volume = modal.Volume.from_name(
         "overmind-sft", environment_name=plan.config["runtime"]["environment"]
     )
-    partial = target.with_suffix(".partial")
-    with partial.open("wb") as output:
-        for chunk in volume.read_file(f"/decision-evaluations/{evaluation_id}/{filename}"):
-            output.write(chunk)
-    if digest_file(partial) != checksum:
-        raise InputValidationError("Native prediction artifact checksum differs.")
-    partial.replace(target)
+    with replacing(target) as partial:
+        with partial.open("wb") as output:
+            for chunk in volume.read_file(f"/decision-evaluations/{evaluation_id}/{filename}"):
+                output.write(chunk)
+        if digest_file(partial) != checksum:
+            raise InputValidationError("Native prediction artifact checksum differs.")
     if preparing:
         for arm in participants(plan):
             if (
                 arm["kind"] != "external"
                 and preparation_groups(plan)[arm.get("job") or arm["key"]][0] == group
             ):
-                (directory(plan, role) / f"{arm['key']}.failures.jsonl").write_bytes(
-                    target.read_bytes()
-                )
+                with replacing(directory(plan, role) / f"{arm['key']}.failures.jsonl") as copy:
+                    shutil.copyfile(target, copy)
     else:
         expected_runtime = plan.config["runtime"].get("training")
         if expected_runtime and receipt.get("runtime_fingerprint") != expected_runtime:
@@ -625,7 +623,10 @@ def collect(plan, stage, receipt):
             "input_sha256"
         ) != prepared.get("input_sha256"):
             raise InputValidationError("Prepared and predicted native identities differ")
-        with (directory(plan, role) / f"{participant['key']}.jsonl").open("w") as output:
+        with (
+            replacing(directory(plan, role) / f"{participant['key']}.jsonl") as written,
+            written.open("w") as output,
+        ):
             for prediction in records(target):
                 output.write(
                     json.dumps(
@@ -653,14 +654,15 @@ def comparison(plan, role, arm, calibrated_output):
         path = source / f"{key}.jsonl"
         if calibrated_output:
             adjusted = source / f"{key}-calibrated.jsonl"
-            with adjusted.open("w") as output:
+            with replacing(adjusted) as written, written.open("w") as output:
                 for prediction in records(path):
                     output.write(
                         json.dumps(calibrated(prediction, plan.calibration["arms"][key])) + "\n"
                     )
             failures = path.with_suffix(".failures.jsonl")
             if failures.exists():
-                adjusted.with_suffix(".failures.jsonl").write_bytes(failures.read_bytes())
+                with replacing(adjusted.with_suffix(".failures.jsonl")) as copy:
+                    shutil.copyfile(failures, copy)
             path = adjusted
         prediction_paths[key] = path
     if (destination / "summary.json").exists():
@@ -863,7 +865,8 @@ def score(plan):
             "Calibration results in results.json are in-sample; fitted temperatures were frozen before final scoring.",
             "",
         ]
-    (directory(plan, "report") / "results.md").write_text("\n".join(report_lines))
+    with replacing(directory(plan, "report") / "results.md") as written:
+        written.write_text("\n".join(report_lines))
     summary = _report_metrics(result)
     summary.pop("calls", None)
     summary["report"] = {
@@ -1053,7 +1056,8 @@ def collect_reused(plan, role, participant):
         if checksum is not None:
             if digest_file(previous) != checksum:
                 raise InputValidationError("Saved prediction evidence changed")
-            shutil.copyfile(previous, destination)
+            with replacing(destination) as copy:
+                shutil.copyfile(previous, copy)
     return {
         **pinned["receipt"],
         "reused_from": str(source.pk),
