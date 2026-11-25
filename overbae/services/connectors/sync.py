@@ -72,18 +72,12 @@ def reset_connector_import(credential) -> int:
 SOURCE_CHANGED = "source-changed"
 
 
-def restart_connector_import(credential) -> None:
+def restart_connector_import(credential, *, source_changed: bool) -> None:
     """After new settings, import the configured range again. Spans from the same source
     project stay, since the import upserts them. Spans from a previous source project are
     removed by the next chunk, so two sources never mix in one project."""
     from overbae.models import ConnectorCredential
 
-    latest, previous = [*credential.configs.order_by("-version")[:2], None][:2]
-    source_changed = (
-        previous is not None
-        and latest.source_project_id != previous.source_project_id
-        and bool(credential.imported_boundary_key)
-    )
     ConnectorCredential.objects.filter(pk=credential.pk).update(
         sync_cursor={},
         sync_status=ConnectorCredential.SyncStatus.IDLE,

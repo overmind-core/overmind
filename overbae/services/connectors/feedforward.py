@@ -6,6 +6,8 @@ from typing import Any
 
 from django.utils import timezone
 
+from overbae.services.connectors.sync import restart_connector_import
+
 _UNSET = object()
 
 
@@ -18,7 +20,8 @@ def save_sync_config(
     backfill_from: Any = _UNSET,
     backfill_to: Any = _UNSET,
 ) -> Any:
-    """Create the next config version. Returns the new ConnectorSyncConfig."""
+    """Create the next config version and restart the import for it. Returns the new
+    ConnectorSyncConfig."""
     from overbae.models import ConnectorSyncConfig
 
     prev = credential.active_config()
@@ -40,7 +43,13 @@ def save_sync_config(
         effective_from=timezone.now(),
     )
 
-    if prev is None and credential.auto_sync_enabled:
+    if prev is not None:
+        # Each save compares with the version it replaced, so concurrent saves still see
+        # a source change.
+        restart_connector_import(
+            credential, source_changed=config.source_project_id != prev.source_project_id
+        )
+    elif credential.auto_sync_enabled:
         # First config + auto-sync: kick a normal backfill.
         from overbae.tasks.connector_sync import sync_connector_chunk
 

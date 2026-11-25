@@ -23,11 +23,7 @@ from overbae.services.connectors.capability_resolution import (
 )
 from overbae.services.connectors.feedforward import save_sync_config
 from overbae.services.connectors.profiling import profile_capability_candidates
-from overbae.services.connectors.sync import (
-    enqueue_connector_sync,
-    restart_connector_import,
-    will_recarve,
-)
+from overbae.services.connectors.sync import enqueue_connector_sync, will_recarve
 from overbae.services.mcp.context import MCPContext
 from overbae.services.mcp.contracts.connectors import (
     AvailableConnectorType,
@@ -651,7 +647,6 @@ def _configure_connector_sync(
             if creating_first and "lookback_days" not in payload.model_fields_set:
                 config_kwargs["lookback_days"] = _FIRST_CONFIG_LOOKBACK_DAYS
             save_sync_config(connector, **config_kwargs)
-            restart_connector_import(connector)
     connector.refresh_from_db()
     details = _details(context, connector)
     mapping_pending = _needs_mapping_approval(connector)
