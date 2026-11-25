@@ -92,6 +92,79 @@ _SECRET_KEY_MARKERS = (
 # Extra exact-match keys, extended via ``init(redact_keys=...)``.
 _extra_redact_keys: frozenset[str] = frozenset()
 
+# ``None`` means init() did not pass trace_content=; resolution then falls
+# through the env vars. A bool is an explicit init() choice and wins.
+_trace_content_override: bool | None = None
+
+_TRACE_CONTENT_ENV = "OVERMIND_TRACE_CONTENT"
+# Instrumentors read these at request time. The OTel one defaults to off
+# upstream; we set both so the SDK default (send content) is what runs.
+_INSTRUMENTOR_CONTENT_ENVS = (
+    "TRACELOOP_TRACE_CONTENT",
+    "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT",
+)
+# OpenInference snapshots these when the LangChain instrumentor starts.
+_OPENINFERENCE_HIDE_ENVS = (
+    "OPENINFERENCE_HIDE_INPUTS",
+    "OPENINFERENCE_HIDE_OUTPUTS",
+    "OPENINFERENCE_HIDE_INPUT_MESSAGES",
+    "OPENINFERENCE_HIDE_OUTPUT_MESSAGES",
+    "OPENINFERENCE_HIDE_INPUT_TEXT",
+    "OPENINFERENCE_HIDE_OUTPUT_TEXT",
+    "OPENINFERENCE_HIDE_PROMPTS",
+    "OPENINFERENCE_HIDE_CHOICES",
+)
+
+
+def _env_flag(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_trace_content(explicit: bool | None) -> bool:
+    """Whether provider spans include prompt and completion text.
+
+    An explicit ``init(trace_content=)`` wins, then ``OVERMIND_TRACE_CONTENT``,
+    then the OTel and Traceloop content env vars. Unset means send."""
+    if explicit is not None:
+        return bool(explicit)
+    for name in (_TRACE_CONTENT_ENV, *_INSTRUMENTOR_CONTENT_ENVS):
+        parsed = _env_flag(name)
+        if parsed is not None:
+            return parsed
+    return True
+
+
+def _apply_trace_content(enabled: bool) -> None:
+    value = "true" if enabled else "false"
+    for name in _INSTRUMENTOR_CONTENT_ENVS:
+        os.environ[name] = value
+    # LangChain reads its hide flags once, at instrument() time.
+    for name in _OPENINFERENCE_HIDE_ENVS:
+        os.environ[name] = "false" if enabled else "true"
+
+
+def _langchain_instrument_kwargs() -> dict[str, Any]:
+    if _resolve_trace_content(_trace_content_override):
+        return {}
+    from openinference.instrumentation import TraceConfig
+
+    return {
+        "config": TraceConfig(
+            hide_inputs=True,
+            hide_outputs=True,
+            hide_input_messages=True,
+            hide_output_messages=True,
+            hide_input_text=True,
+            hide_output_text=True,
+            hide_prompts=True,
+            hide_choices=True,
+        )
+    }
+
+
 # Bytes payloads longer than this (screenshots, audio) become a placeholder
 # instead of a hex dump.
 _MAX_BYTES_HEX = 256
@@ -269,7 +342,8 @@ def _enable_provider(name: str, module: str, instrumentation_module: str, class_
         return
 
     instrumentor_cls = getattr(importlib.import_module(instrumentation_module), class_name)
-    instrumentor_cls().instrument()
+    kwargs = _langchain_instrument_kwargs() if name == "langchain" else {}
+    instrumentor_cls().instrument(**kwargs)
     _providers.add(name)
     logger.info(f"{name} instrumentation enabled")
 
@@ -290,6 +364,7 @@ def enable_tracing(providers: list[str] | str | None = None) -> None:
     installed. For fan-out setups that skip ``init()`` and export through
     their own TracerProvider."""
     global _initialized, _tracer
+    _apply_trace_content(_resolve_trace_content(_trace_content_override))
     if providers is None:
         return
     if isinstance(providers, str):
@@ -642,7 +717,7 @@ def _log_debug_summary(
         else "pre-configured provider"
     )
     logger.info(
-        "Overmind debug: endpoint=%s | capability_id=%s capability=%s project_id=%s | providers=%s | export=%s | export_orphan_spans=%s",
+        "Overmind debug: endpoint=%s | capability_id=%s capability=%s project_id=%s | providers=%s | export=%s | export_orphan_spans=%s | trace_content=%s",
         endpoint,
         capability_id,
         capability_name,
@@ -650,6 +725,7 @@ def _log_debug_summary(
         ", ".join(sorted(_providers)) or "none",
         export,
         _export_orphan_spans,
+        _resolve_trace_content(_trace_content_override),
     )
 
 
@@ -697,6 +773,7 @@ def init(
     project_id: str | None = None,
     redact_keys: Iterable[str] | None = None,
     export_orphan_spans: bool = False,
+    trace_content: bool | None = None,
     debug: bool = False,
 ) -> bool:
     """Initialise the Overmind SDK for automatic monitoring.
@@ -704,8 +781,8 @@ def init(
     Returns True when tracing is active. Without an API key (and outside
     strict mode) it logs, leaves every helper a no-op, and returns False —
     safe to call unconditionally in apps where Overmind is optional.
-    Idempotent and thread-safe; re-init refreshes identity, providers, and
-    the orphan-export policy only.
+    Idempotent and thread-safe; re-init refreshes identity, providers, the
+    orphan-export policy, and whether provider spans include message content.
 
     Args:
         overmind_api_key: API key; defaults to OVERMIND_API_KEY, then the local synced credential.
@@ -727,14 +804,21 @@ def init(
             outside any run boundary. Off by default — the platform quarantines
             such single-fragment traces as noise (see
             ``docs/tracing-attributes.md`` §7).
+        trace_content: Include prompt and completion text on provider spans.
+            Defaults to on (``OVERMIND_TRACE_CONTENT``, then
+            ``OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT``, then
+            ``TRACELOOP_TRACE_CONTENT``). ``False`` keeps token counts and
+            model metadata and omits message content.
         debug: Log a one-line setup summary (endpoint, identity, enabled
             instrumentors, export mode) and raise the ``overmind`` logger to
             DEBUG with a stderr handler.
     """
-    global _initialized, _tracer, _extra_redact_keys, _keyless_logged, _export_orphan_spans
+    global _initialized, _tracer, _extra_redact_keys, _keyless_logged, _export_orphan_spans, _trace_content_override
 
     if debug:
         _enable_debug_logging()
+
+    _trace_content_override = trace_content
 
     if capability_id is None and capability is None:
         capability_id, capability_name = env_identity()
@@ -748,7 +832,7 @@ def init(
 
     with _init_lock:
         if _initialized:
-            # Re-init only refreshes identity + providers; exporters stay as-is.
+            # Re-init refreshes identity, providers, and the content policy; exporters stay.
             logger.debug(f"Overmind SDK already initialised, reinitialising with providers: {providers}")
             _seed_identity_context(capability_id, capability_name, project_id)
             enable_tracing(providers)
