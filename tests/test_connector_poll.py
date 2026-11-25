@@ -20,7 +20,9 @@ from overbae.services.connectors.progress import checkpoint_progress, sync_progr
 from overbae.services.connectors.sync import (
     boundary_import_key,
     enqueue_connector_sync,
+    prepare_connector_sync,
     reset_connector_import,
+    will_recarve,
 )
 from overbae.services.datasets import heartbeat
 from overbae.services.mcp.resources import connector_resource_payload
@@ -313,6 +315,19 @@ def test_switching_the_source_project_replaces_its_imported_traces(credential, l
     sync_until_live(credential)
 
     assert _spans(credential) == 1
+
+
+def test_a_source_change_saved_during_a_recarve_still_recarves(credential, langfuse):
+    _traces(langfuse, 1)
+    sync_until_live(credential)
+    save_sync_config(credential, source_project_id="second")
+    credential.refresh_from_db()
+    save_sync_config(credential, source_project_id="third")
+
+    prepare_connector_sync(credential)
+
+    credential.refresh_from_db()
+    assert will_recarve(credential)
 
 
 def test_split_trace_pages_and_retries_do_not_inflate_import_counts(credential, langfuse):

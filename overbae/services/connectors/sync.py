@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from django.db.models import Q
 
@@ -69,6 +70,7 @@ def reset_connector_import(credential) -> int:
 
 
 # Any stored key other than the live one makes the next chunk recarve under its lease.
+# Each save writes its own marker, so a chunk adopting the key cannot erase a later one.
 SOURCE_CHANGED = "source-changed"
 
 
@@ -83,7 +85,11 @@ def restart_connector_import(credential, *, source_changed: bool) -> None:
         sync_status=ConnectorCredential.SyncStatus.IDLE,
         sync_error="",
         next_poll_at=None,
-        **({"imported_boundary_key": SOURCE_CHANGED} if source_changed else {}),
+        **(
+            {"imported_boundary_key": f"{SOURCE_CHANGED}:{uuid.uuid4().hex}"}
+            if source_changed
+            else {}
+        ),
     )
 
 
