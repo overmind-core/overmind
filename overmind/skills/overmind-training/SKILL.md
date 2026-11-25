@@ -77,7 +77,7 @@ spans (one row per call, hash split) and starts one job per model. It prints the
 job ids and does not wait for training. The application is not run.
 
 ```bash
-overmind finetune --models Qwen/Qwen2.5-7B-Instruct,meta-llama/Llama-3.1-8B-Instruct --since 7d
+overmind finetune --models Qwen/Qwen3.5-9B,meta-llama/Llama-3.1-8B-Instruct --since 7d
 ```
 
 Pass 1–4 catalog ids. The jobs share one `group_id`, the capability's active eval

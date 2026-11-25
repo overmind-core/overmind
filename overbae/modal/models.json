@@ -70,7 +70,7 @@
       "marketing": {
         "pitch": "Top of the Qwen 3.5 compact band, trainable at 128K context.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "General-purpose agents that call tools",
           "Long-trace training on compact bases",
@@ -135,7 +135,7 @@
       "marketing": {
         "pitch": "Compact Qwen 3.5 with 128K training context and tool calling.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "General-purpose agents that call tools",
           "Long-trace training on compact bases",
@@ -200,7 +200,7 @@
       "marketing": {
         "pitch": "Smallest Qwen 3.5 with tool calling, trainable at 128K context.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "High-volume tool-calling loops at minimal serve cost",
           "Long-trace training on a compact base",
@@ -252,8 +252,8 @@
         },
         "real_max_context_length": 40960
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 36,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -316,8 +316,8 @@
         },
         "real_max_context_length": 40960
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 28,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -390,11 +390,10 @@
       },
       "marketing": {
         "pitch": "Smallest Qwen 3 base for non-tool agents where serve cost dominates.",
-        "description": "The widest size ladder in the catalogue, 0.6B through 32B, plus a code-specialised mixture-of-experts model. Useful when you want to hold the family constant and vary only size across parallel experiments.",
-        "overview": "Qwen 3 gives you the widest size ladder in the catalogue: 0.6B through 32B, plus a code-specialised mixture-of-experts model. Hold the family constant, vary only size across parallel experiments, and let the benchmark pick the winner against your production model.",
+        "description": "0.6B Qwen 3 base. No tool calling. 40K training context.",
+        "overview": "Qwen 3 0.6B is the Qwen 3 base still offered for training and serving. No tool calling. Training context is 40K and the inference window is 128K.",
         "good_for": [
           "Non-tool agents at the lowest serve footprint",
-          "Size-ladder floor in Qwen 3 experiments",
           "Narrow classification or routing jobs"
         ]
       },
@@ -440,8 +439,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 24,
       "num_kv_heads": 2,
       "head_dim": 64,
@@ -1072,7 +1071,7 @@
       "marketing": {
         "pitch": "Small-tier Qwen 3.5 default when compact quality is not enough.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "General-purpose agents that call tools",
           "Long-trace training on compact bases",
@@ -1124,8 +1123,8 @@
         },
         "real_max_context_length": 40960
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 36,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -1188,8 +1187,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 28,
       "num_kv_heads": 4,
       "head_dim": 128,
@@ -1581,7 +1580,7 @@
         "good_for": [
           "Coding and long-horizon agent loops",
           "Mid-tier quality before committing to a larger serve cost",
-          "Parallel experiments against Qwen 3.6 and 3.5 27B"
+          "Parallel experiments against Qwen 3.6 27B"
         ]
       },
       "use_cases": [
@@ -1694,8 +1693,8 @@
       "num_kv_heads": 4,
       "head_dim": 256,
       "backend": "modal",
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "group": "Qwen 3.5",
       "pricing": {
         "train_from_usd": 1.22,
@@ -1704,7 +1703,7 @@
       "marketing": {
         "pitch": "Mid-tier Qwen 3.5 for agents that need more headroom before an MoE jump.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "General-purpose agents that call tools",
           "Long-trace training on compact bases",
@@ -1759,8 +1758,8 @@
       "num_kv_heads": 4,
       "head_dim": 128,
       "backend": "modal",
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "group": "Qwen 3",
       "pricing": {
         "train_from_usd": 1.22,
@@ -1818,8 +1817,8 @@
         },
         "real_max_context_length": 40960
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 40,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -1882,8 +1881,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 48,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -2150,11 +2149,11 @@
       "marketing": {
         "pitch": "Large MoE Qwen 3.5: 35B total weights, 3B active per token at serve time.",
         "description": "The default recommendation for most agents. A 256K context window at every size, tool calling from 0.8B up, and compact models that train on up to 128K tokens.",
-        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 27B and 35B-A3B uses the full 256K.",
+        "overview": "Qwen 3.5 is the default recommendation for most agents on Overmind. Every size shares a 256K inference context, tool calling starts at 0.8B, and the compact models train on up to 128K tokens. LoRA on 35B-A3B uses the full 256K.",
         "good_for": [
           "Higher-quality Qwen 3.5 runs with MoE serve economics",
           "Tool-calling agents that outgrow dense mid-tier bases",
-          "Side-by-side experiments against Qwen 3.5 27B"
+          "Side-by-side experiments against Qwen 3.6 27B"
         ]
       },
       "use_cases": [
@@ -2200,8 +2199,8 @@
         },
         "real_max_context_length": 40960
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 64,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -2263,8 +2262,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 80,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -2324,8 +2323,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 64,
       "num_kv_heads": 8,
       "head_dim": 128,
@@ -2387,8 +2386,8 @@
         },
         "real_max_context_length": 32768
       },
-      "disabled": false,
-      "disabled_reason": null,
+      "disabled": true,
+      "disabled_reason": "Superseded by a newer model in a similar size range with stronger benchmarks.",
       "num_attn_layers": 64,
       "num_kv_heads": 8,
       "head_dim": 128,

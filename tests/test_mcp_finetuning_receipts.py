@@ -50,7 +50,7 @@ def test_start_rejects_invalid_training_method_without_creating_job(monkeypatch,
         {
             "dataset": str(train.id),
             "capability": str(capability.id),
-            "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "base_model": "Qwen/Qwen3.5-9B",
             "hyperparameters": {"training_type": training_type},
         },
         context,
@@ -90,7 +90,7 @@ def test_start_finetune_job_receipt_has_kind_and_preserves_reference(monkeypatch
         {
             "dataset": str(train.id),
             "capability": str(capability.id),
-            "base_model": "Qwen/Qwen2.5-7B-Instruct",
+            "base_model": "Qwen/Qwen3.5-9B",
             "eval_judge_model": judge_model,
         },
         context,
@@ -120,7 +120,7 @@ def test_retry_deployment_returns_named_deployment_job_receipt(monkeypatch):
     job = FinetuningJob.objects.create(
         project=context.project,
         dataset=train,
-        base_model="Qwen/Qwen2.5-7B-Instruct",
+        base_model="Qwen/Qwen3.5-9B",
         status=FinetuningJob.Status.SUCCEEDED,
         remote_job_id="remote",
     )
@@ -172,7 +172,7 @@ def test_recovering_a_launch_does_not_require_budget_for_another_job(monkeypatch
         "dataset": str(train.id),
         "cell": str(train.active_cell.id),
         "capability": str(capability.id),
-        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+        "base_model": "Qwen/Qwen3.5-9B",
         "hyperparameters": {"training_type": {"type": "Lora"}, "learning_rate": 0.0001},
         "request_key": "recover-same-training",
     }
@@ -218,7 +218,7 @@ def test_console_recovers_an_existing_job_after_credits_are_exhausted(monkeypatc
         "project": str(context.project.id),
         "dataset": str(train.id),
         "cell": str(train.active_cell.id),
-        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+        "base_model": "Qwen/Qwen3.5-9B",
         "hyperparameters": {"training_type": {"type": "Lora"}, "learning_rate": 0.0001},
         "eval_model_before": False,
         "eval_model_after": False,

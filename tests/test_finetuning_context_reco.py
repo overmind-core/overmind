@@ -361,7 +361,7 @@ def test_job_create_allows_evaluation_that_may_exceed_serving_context():
                 "eval_dataset": str(evaluation.pk),
                 "name": "Oversized evaluation",
                 "eval_set": str(eval_set.pk),
-                "base_model": "Qwen/Qwen3.5-27B",
+                "base_model": "Qwen/Qwen3.6-27B",
             },
             format="json",
         )
@@ -386,8 +386,8 @@ def test_recommendation_warns_without_excluding_models_for_evaluation_context():
     )
     assert response.status_code == 200, response.data
     exclusions = {row["model"]: row["reason"] for row in response.data["excluded"]}
-    assert "Qwen/Qwen3.5-27B" not in exclusions
-    qwen = next(c for c in response.data["candidates"] if c["model"] == "Qwen/Qwen3.5-27B")
+    assert "Qwen/Qwen3.6-27B" not in exclusions
+    qwen = next(c for c in response.data["candidates"] if c["model"] == "Qwen/Qwen3.6-27B")
     assert "reserved output" in qwen["serving_context"]["warnings"][0]
     for candidate in response.data["candidates"]:
         plan = candidate["serving_context"]

@@ -106,7 +106,7 @@ def test_estimate_uses_the_selected_split_and_external_validation(native, settin
     ]
     dataset = frozen_dataset(project, source, contract="train")
     common = {
-        "base_model": "Qwen/Qwen3-8B",
+        "base_model": "Qwen/Qwen3.5-9B",
         "n_epochs": 1,
         "use_lora": True,
         "cell": dataset.active_cell,

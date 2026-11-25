@@ -403,7 +403,7 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                     "prepare_training_data",
                     {
                         "dataset": dataset["id"],
-                        "base_model": "Qwen/Qwen3-1.7B",
+                        "base_model": "Qwen/Qwen3.5-2B",
                         "context_length": 4096,
                     },
                 )
@@ -423,7 +423,7 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
                     "start_finetune",
                     {
                         "dataset": dataset["id"],
-                        "base_model": "Qwen/Qwen3-1.7B",
+                        "base_model": "Qwen/Qwen3.5-2B",
                         "validation_enabled": False,
                         "eval_model_before": False,
                         "eval_model_after": False,

@@ -140,7 +140,7 @@ def test_training_create_allows_warnings_and_freezes_pair_atomically(capability)
         "capability": str(capability.id),
         "eval_dataset": str(evaluation.id),
         "eval_set": str(eval_set.id),
-        "base_model": "Qwen/Qwen3-8B",
+        "base_model": "Qwen/Qwen3.5-9B",
         "name": "Screening",
         "validation_enabled": False,
     }

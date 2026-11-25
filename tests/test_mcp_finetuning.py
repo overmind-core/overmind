@@ -519,7 +519,7 @@ def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypa
     arguments = {
         "dataset": str(train.id),
         "cell": str(train.active_cell.id),
-        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+        "base_model": "Qwen/Qwen3.5-9B",
         "request_key": "one-experiment",
         "hyperparameters": {"training_type": {"type": "Lora"}, "seed": 17},
         "eval_model_before": False,

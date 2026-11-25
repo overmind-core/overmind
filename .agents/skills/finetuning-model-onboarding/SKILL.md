@@ -1,6 +1,6 @@
 ---
 name: finetuning-model-onboarding
-description: Rules for adding a new model or model family to the finetuning pipeline, or changing finetuning behavior for an existing one — engine-agnostic customization via family hooks instead of if/else in the shared script, TRL-compatible chat templates ({% generation %} / pretok_trl), H100-before-H200 GPU probing, populating real_max_context_length/validated_context_length in models.json, setting finetuning cost/pricing, and measuring dedicated inference (thinking off, vLLM vs SGLang, MTP/DFlash, GPU tokens/s). Use when onboarding a model to Modal+Unsloth finetuning, adding a ModelFamily, pretok_trl falls back with a training-compatible chat template error, a model fails on its assigned GPU/context length, pricing a new model's training cost, or choosing a dedicated serving engine.
+description: Rules for adding a new model or model family to the finetuning pipeline, or changing finetuning behavior for an existing one — engine-agnostic customization via family hooks instead of if/else in the shared script, TRL-compatible chat templates ({% generation %} / pretok_trl), H100-before-H200 GPU probing, populating real_max_context_length/validated_context_length in models.json, setting finetuning cost/pricing, and measuring dedicated inference (thinking off, vLLM vs SGLang, MTP/DFlash, GPU tokens/s). Use when onboarding a model to Modal+Unsloth finetuning, adding a ModelFamily, pretok_trl falls back with a training-compatible chat template error, a model fails on its assigned GPU/context length, pricing a new model's training cost, choosing a dedicated serving engine, or retiring a catalog row from finetuning and inference because a successor in a similar size range scores higher.
 ---
 
 # Finetuning model onboarding
@@ -99,6 +99,16 @@ A catalog row that only trains is unfinished. Serving is measured on Modal `--en
 1. **Speculative decoding.** Native MTP only when the checkpoint config has the MTP head (`mtp_for`). DFlash or DFlash2 only when a draft repo exists (`draft_for`). EAGLE with no draft is a refusal. No draft means the server stays on the base.
 1. **GPUs.** After one engine loads, repeat on every dedicated GPU that fits: L4, L40S, A100-80GB, H100, H200. Record tokens/s. A missing cell in `serving_benchmarks.json` stays unmeasured in the Console.
 1. **Order.** Catalog row first. Then a `MAX_STEPS=2` LoRA through Docker Compose (the Training API, not a side Modal app), which also checks pretok Path A. Then serverless completions of the base and of that adapter. Then dedicated speed on that same adapter (`lora_bf16`, and `merged_fp8` only when `fp8_supported` is true), including H100 when the weights fit in 80 GB. A longer training run can overlap the serving sweep. Context-length probes still follow §4 and are what flips `validated_context_length`.
+
+## 9. Retiring a model
+
+A row leaves finetuning, serverless inference, and dedicated inference together. Set `disabled: true` and `disabled_reason` on the `models.json` entry. Leave the row: existing jobs and deployments still resolve it. `get_tier_models` (training, recommendations, new job create) and the public library skip disabled rows. The training picker does too.
+
+Retire a row when a newer model in a similar parameter range already scores higher on shared benchmark percentiles, and the older size is not worth keeping. A family with no in-family successor stays (Llama stays, even where a smaller Qwen scores higher). A near-tie on a short overlap stays (`Qwen3-0.6B`). A different serving shape stays (a MoE whose active-parameter cost is the point of the row).
+
+Do not turn training types off on the retired row. The `disabled` flag is the gate; the training block stays as the record of what was probed.
+
+Current successor retirements: every Qwen 2.5 row, Qwen 3 except `Qwen3-0.6B`, `Qwen3-Coder-30B-A3B-Instruct`, and `Qwen3.5-27B` (successor `Qwen3.6-27B`). Reason on each row: superseded by a newer model in a similar size range with stronger benchmarks.
 
 ## Checklist for onboarding a new model
 

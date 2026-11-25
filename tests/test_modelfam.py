@@ -469,6 +469,40 @@ def test_enabled_catalog_excludes_always_on_thinking() -> None:
     assert not enabled_hits, f"always-on thinking bases must be disabled: {enabled_hits}"
 
 
+_RETIRED_FOR_SUCCESSOR = (
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/Qwen2.5-Coder-32B-Instruct",
+    "Qwen/Qwen3-1.7B",
+    "Qwen/Qwen3-4B",
+    "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-14B",
+    "Qwen/Qwen3-32B",
+    "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "Qwen/Qwen3.5-27B",
+)
+
+
+def test_successor_retirements_stay_out_of_training_and_serving() -> None:
+    data = json.loads(_MODELS_JSON.read_text())
+    by_id = {entry["id"]: entry for entry in data["models"]}
+    for model_id in _RETIRED_FOR_SUCCESSOR:
+        row = by_id[model_id]
+        assert row["disabled"] is True, model_id
+        assert row["disabled_reason"]
+    for model_id in (
+        "Qwen/Qwen3-0.6B",
+        "Qwen/Qwen3.5-4B",
+        "Qwen/Qwen3.6-27B",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct",
+    ):
+        assert by_id[model_id]["disabled"] is False
+
+
 def test_lfm25_2_6b_is_disabled() -> None:
     data = json.loads(_MODELS_JSON.read_text())
     rows = [e for e in data["models"] if e.get("id") == "LiquidAI/LFM2.5-2.6B"]

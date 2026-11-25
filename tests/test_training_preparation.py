@@ -460,7 +460,7 @@ def test_preparation_job_waits_for_launch_and_promotes_once(cell, monkeypatch, s
     client.force_authenticate(user)
     submit = Mock(return_value=SimpleNamespace(id="training-task"))
     monkeypatch.setattr(run_finetuning, "apply_async", submit)
-    prep = preparation.begin_preparation(cell, "Qwen/Qwen3-8B", 4096, user=user)
+    prep = preparation.begin_preparation(cell, "Qwen/Qwen3.5-9B", 4096, user=user)
     job = prep.training_jobs.get()
     assert run_finetuning(job_id=str(job.pk)) == {"status": "preprocessing"}
     prep.state = "ready"
@@ -475,7 +475,7 @@ def test_preparation_job_waits_for_launch_and_promotes_once(cell, monkeypatch, s
         "project": str(cell.dataset.project_id),
         "dataset": str(cell.dataset_id),
         "cell": str(cell.pk),
-        "base_model": "Qwen/Qwen3-8B",
+        "base_model": "Qwen/Qwen3.5-9B",
         "hyperparameters": {"context_length": 4096},
         "eval_model_before": False,
         "eval_model_after": False,
