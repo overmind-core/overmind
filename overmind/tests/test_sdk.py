@@ -68,7 +68,6 @@ def test_sdk_init_only_once():
 @pytest.fixture
 def no_api_key(monkeypatch):
     monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
-    monkeypatch.delenv("OVERMIND_TRACE_FILE", raising=False)
 
 
 def test_init_without_key_returns_false(no_api_key):

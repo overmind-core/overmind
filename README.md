@@ -29,7 +29,6 @@ Available from the [Console](https://console.overmindlab.ai/?utm_source=github&u
 <tr><td><b><a href="https://docs.overmindlab.ai/how-to/investigate">Observability</a></b></td><td>OpenTelemetry traces, scored as they arrive and matched to the capability that produced them.</td></tr>
 <tr><td><b><a href="https://docs.overmindlab.ai/how-to/prepare-data">Datasets</a></b></td><td>Production traces or uploaded files become versioned eval and training datasets.</td></tr>
 <tr><td><b><a href="https://docs.overmindlab.ai/how-to/evaluate">Eval</a></b></td><td>What "good" means per capability, measured on live traces and in batch.</td></tr>
-<tr><td><b><a href="https://docs.overmindlab.ai/how-to/optimise">Optimisers</a></b></td><td>Prompt, tool, and control-flow experiments in your repo; the winner is a git diff.</td></tr>
 <tr><td><b><a href="https://docs.overmindlab.ai/how-to/train">Models</a></b></td><td>Fine-tunes you own, trained on your data and benchmarked against production.</td></tr>
 <tr><td><b><a href="https://docs.overmindlab.ai/how-to/serve">Inference</a></b></td><td>Trained and frontier models on one OpenAI-compatible API.</td></tr>
 </table>
@@ -46,13 +45,13 @@ Available from the [Console](https://console.overmindlab.ai/?utm_source=github&u
 
 Sign up at [console.overmindlab.ai](https://console.overmindlab.ai/?utm_source=github&utm_medium=readme&utm_campaign=always-on&utm_content=readme-get-started), copy the onboarding prompt from **Get started**, and paste it into your coding agent (Cursor, Claude Code, OpenCode or Codex) with your agent's repo root open. The **Data** tab starts from an uploaded dataset instead. It installs `overmind`, runs `overmind init` and `overmind sync`, and maps the agent's capabilities. From then on everything is a `/overmind` command in the same chat:
 
-| Command                    | What it does                                  |
-| -------------------------- | --------------------------------------------- |
-| `/overmind ensure-tracing` | Inspect traces and instrument the agent       |
-| `/overmind dataset`        | Build, clean, upload or export a dataset      |
-| `/overmind finetune`       | Fine-tune, deploy and smoke-test a model      |
-| `/overmind optimise`       | Run prompt and code optimisation              |
-| `/overmind backtest`       | Compare models against the agent's own traces |
+| Command                    | What it does                             |
+| -------------------------- | ---------------------------------------- |
+| `/overmind ensure-tracing` | Inspect traces and instrument the agent  |
+| `/overmind dataset`        | Build, clean, upload or export a dataset |
+| `/overmind finetune`       | Fine-tune, deploy and smoke-test a model |
+| `/overmind improve`        | Change a prompt or code and measure it   |
+| `/overmind compare-models` | Score other models on recorded calls     |
 
 ### Run it yourself
 
@@ -75,7 +74,7 @@ The API refuses to start until every required key is set, and the error names ea
 
 | Required                                                        | Used for                                                                                                    |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`                                            | Judges, evals, trace scoring, optimiser scoring. Frontier chat proxy only when `OPENROUTER_PROXY_ENABLED=1` |
+| `OPENROUTER_API_KEY`                                            | Judges, evals and trace scoring. Frontier chat proxy only when `OPENROUTER_PROXY_ENABLED=1`                 |
 | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`                          | Modal training and serving workers (set `MODAL_ENVIRONMENT` explicitly)                                     |
 | `INFERENCE_API_URL`, `INFERENCE_API_KEY`                        | Serving trained models — the endpoint printed by `modal deploy` and its shared secret                       |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` | The fine-tuning checkpoint archive                                                                          |
@@ -204,7 +203,6 @@ http_headers = { "X-Api-Key" = "ovr_…" }
 | Evaluations     | `check_evaluation_readiness`, `create_eval_set`, `create_eval_matrix_row`, `delete_eval_matrix_row`, `run_evaluation`, `compare_evaluations`                                                                                                                                             |
 | Training        | `check_finetune_readiness`, `prepare_training_data`, `estimate_finetune`, `start_finetune`, `inspect_training_progress`, `cancel_finetune`, `deploy_finetune`, `retry_deployment`, `set_active_model`, `run_inference`, `get_model_swap_prompt`                                          |
 | Decision models | `list_decision_models`, `start_decision_job`, `create_native_evaluation`, `inspect_native_evaluation`, `create_training_experiment`, `measure_decision_performance`                                                                                                                      |
-| Optimiser       | `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`                                                                                                                                                                                                               |
 | Connectors      | `inspect_connectors`, `configure_connector`, `sync_connector`                                                                                                                                                                                                                            |
 | Instrumentation | `get_instrumentation_plan`, `verify_instrumentation`                                                                                                                                                                                                                                     |
 | Catalog         | `get_model_catalog`, `list_model_workflows`                                                                                                                                                                                                                                              |

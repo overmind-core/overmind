@@ -30,8 +30,6 @@ export * from './InferenceRequestsApi';
 export * from './McpOauthApi';
 export * from './ModelsApi';
 export * from './NativeEvaluationsApi';
-export * from './OptimizerCandidatesApi';
-export * from './OptimizerExperimentsApi';
 export * from './ProjectsApi';
 export * from './PublicApi';
 export * from './SessionsApi';

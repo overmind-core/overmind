@@ -52,7 +52,7 @@ from overbae.services.inference_client import (
     InferenceClientError,
     get_inference_client,
 )
-from overbae.services.model_catalog import estimate_cost, resolve_bare_openrouter_slug
+from overbae.services.model_catalog import estimate_cost
 
 logger = logging.getLogger(__name__)
 
@@ -146,9 +146,6 @@ def _process_stream_chunk(raw: str, captured: dict[str, Any], include_usage: boo
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _OPENROUTER_TIMEOUT = 120
-
-# Model-comparison runs send this header to reach ANY OpenRouter-served slug;
-OPTIMISER_ROUTING_HEADER = "X-Overmind-Optimiser"
 
 
 def _openrouter_headers() -> dict:
@@ -446,27 +443,7 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
         # vLLM knows only the concrete served name, never the caller's alias.
         model_id = deployed.model_id
 
-    is_optimiser_run = (
-        isinstance(request.auth, APIToken)
-        and request.headers.get(OPTIMISER_ROUTING_HEADER, "") == "1"
-    )
-    routed = model_id
-    if deployed is None and is_optimiser_run and settings.OPENROUTER_PROXY_ENABLED:
-        if "/" not in routed:
-            # A patched capability may send the bare slug it had hardcoded; the routing
-            # branch below requires a ``provider/model`` form. Re-attach the provider
-            # so the request routes instead of 404ing. Unresolvable names keep the
-            # existing DeployedModel lookup / 404 path.
-            routed = resolve_bare_openrouter_slug(routed) or routed
-        # The ``openrouter/`` namespace is a platform-side alias, not an id
-        # OpenRouter serves — strip it so the slug routes upstream.
-        routed = routed.removeprefix("openrouter/")
-    if (
-        deployed is None
-        and settings.OPENROUTER_PROXY_ENABLED
-        and (is_inference_model(routed) or (is_optimiser_run and "/" in routed))
-    ):
-        model_id = routed
+    if deployed is None and settings.OPENROUTER_PROXY_ENABLED and is_inference_model(model_id):
         if not getattr(settings, "OPENROUTER_API_KEY", None):
             return Response(
                 {
@@ -574,9 +551,7 @@ def chat_completions(request: Request) -> Response | StreamingHttpResponse:
     request_id = uuid.uuid4()
     call_context = {
         "request_id": request_id,
-        "source": "application"
-        if isinstance(request.auth, APIToken) and not is_optimiser_run
-        else "internal",
+        "source": "application" if isinstance(request.auth, APIToken) else "internal",
         "requested_model": requested_model,
         "started_at": started_at,
     }

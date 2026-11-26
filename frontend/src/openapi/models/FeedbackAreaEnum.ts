@@ -18,7 +18,6 @@
  * * `observability` - Observability
  * * `datasets` - Datasets
  * * `evaluation` - Evaluation
- * * `optimizer` - Optimiser
  * * `training` - Training
  * * `serving` - Serving
  * * `billing` - Billing
@@ -30,7 +29,6 @@ export const FeedbackAreaEnum = {
     observability: 'observability',
     datasets: 'datasets',
     evaluation: 'evaluation',
-    optimizer: 'optimizer',
     training: 'training',
     serving: 'serving',
     billing: 'billing',

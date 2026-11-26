@@ -191,9 +191,6 @@ JobKind = Literal[
     "finetune",
     "finetune_job",
     "decision_job",
-    "optimizer",
-    "optimizer_run",
-    "optimizer_experiment",
     "deployment",
     "model_activation",
 ]

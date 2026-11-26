@@ -75,30 +75,6 @@ def create_run(*, cell, mode: str, matrix: list[dict], **fields: Any) -> EvalRun
     return EvalRun.objects.create(cell=cell, mode=mode, matrix=matrix, params=params, **fields)
 
 
-def provide_outputs(run: EvalRun, outputs: dict[int, tuple[Any, str]]) -> None:
-    """Posts a ``provided`` run's outputs, ``{row_index: (output, source_trace_id)}``.
-    A missing output stays visible as a degraded row."""
-    now = timezone.now()
-    EvalRunRow.objects.bulk_create(
-        [
-            EvalRunRow(
-                run=run,
-                row_index=index,
-                source_trace_id=trace_id or "",
-                output=output,
-                degraded=output is None,
-                degraded_reason="no_output: the caller provided no output"
-                if output is None
-                else "",
-                state=EvalRunRow.State.DONE,
-                finished_at=now,
-            )
-            for index, (output, trace_id) in sorted(outputs.items())
-        ],
-        batch_size=ROW_BATCH,
-    )
-
-
 def launch(run: EvalRun) -> None:
     # tasks.innermind imports this module.
     from overbae.tasks.innermind import run_eval_run  # noqa: PLC0415
@@ -117,9 +93,7 @@ def launch(run: EvalRun) -> None:
 
 
 def relaunch(run: EvalRun) -> bool:
-    """Re-runs a terminal run from its frozen inputs; a provided run keeps its outputs."""
-    if run.mode == EvalRun.Mode.PROVIDED:
-        raise RunError("A run with provided outputs cannot be re-launched.")
+    """Re-runs a terminal run from its frozen inputs."""
     with transaction.atomic():
         if not EvalRun.objects.filter(pk=run.pk, status__in=EvalRun.TERMINAL).update(
             status=EvalRun.Status.PENDING,
@@ -143,9 +117,7 @@ def selected_rows(run: EvalRun) -> list[row_store.DatasetRow]:
 
 def seed_rows(run: EvalRun) -> int:
     """Creates the run's rows: recorded outputs are done at once, generated ones wait
-    for admission, and provided ones already exist."""
-    if run.mode == EvalRun.Mode.PROVIDED:
-        return run.rows.count()
+    for admission."""
     run.rows.all().delete()
     run.scores.all().delete()
     now = timezone.now()
@@ -283,15 +255,13 @@ def finish(run: EvalRun, *, where: Q = Q()) -> None:
 def on_terminal(run: EvalRun) -> None:
 
     update_task(run.project_id, "eval_run", run.pk, run.status)
-    # Both consumers import this module to create their runs.
-    from overbae.models.optimizer import on_candidate_eval_finished  # noqa: PLC0415
+    # finetuning_eval imports this module to create its runs.
     from overbae.services.finetuning_eval import sync_eval_scores  # noqa: PLC0415
 
     if run.status == EvalRun.Status.COMPLETED:
         comparison.baseline_comparison(run)
     for job in FinetuningJob.objects.filter(job_evals__eval_run_id=run.pk).distinct():
         sync_eval_scores(job)
-    on_candidate_eval_finished(run)
 
 
 def fail(run_id, reason: str, *, where: Q = Q()) -> bool:

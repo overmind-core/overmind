@@ -24,7 +24,6 @@ from overbae.models import (
     FinetuningJob,
     InferenceRequest,
     ModelActivation,
-    OptimizerExperiment,
     Span,
     TrainingPreparation,
 )
@@ -320,8 +319,6 @@ def _query_traces_sync(payload: QueryTracesInput, context: MCPContext) -> QueryT
 
 _JOB_ALIASES = {
     "finetune": "finetune_job",
-    "optimizer": "optimizer_experiment",
-    "optimizer_run": "optimizer_experiment",
 }
 
 
@@ -517,30 +514,6 @@ def get_job_sync(payload: GetJobInput, context: MCPContext) -> GetJobOutput:
         }
         primary = _link("jobs", f"dataset_run/{job.id}", label)
         underlying.append(_link("datasets", str(job.id), label))
-    elif kind == "optimizer_experiment":
-        job = (
-            OptimizerExperiment.objects.filter(project=context.project, id=normalized_id)
-            .select_related("capability")
-            .first()
-            if normalized_id
-            else None
-        )
-        if job is None:
-            raise MCPError("resource_not_found", "The optimizer run was not found.")
-        created_at = job.created_at
-        updated_at = job.updated_at
-        label, status, job_error = (
-            f"Optimize {job.capability.name}",
-            job.status,
-            job.failure_reason or None,
-        )
-        details = {
-            "capability": job.capability.slug,
-            "current_iteration": job.current_iteration,
-            "num_iterations": job.num_iterations,
-            "scores": safe_json(job.scores or {}),
-        }
-        primary = _link("optimizer-runs", str(job.id), label)
     elif kind == "model_activation":
         job = (
             ModelActivation.objects.filter(

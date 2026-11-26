@@ -419,12 +419,7 @@ def model_defaults() -> dict[str, object]:
     return {
         "judge_model": default_judge_model(),
         "judge_models": judge_picker_models(),
-        "backtest_models": default_backtest_models(),
     }
-
-
-def default_backtest_models() -> list[str]:
-    return [OPENROUTER_MODEL_SLUGS[name] for name in model_chain(TaskType.DEFAULT)[:2]]
 
 
 @dataclass(frozen=True)

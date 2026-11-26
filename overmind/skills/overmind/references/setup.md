@@ -254,7 +254,7 @@ Run this after `python -m overmind sync` succeeds: the entry-point decorator car
    - **`llm_utilities` helper:** one expectation from the output side of `io_contract` when `structured_output` is true.
    - **`reference_trajectory=[...]`:** only on an entry point whose `code_path` trajectory entry names an ordered tool sequence; copy the tool names from that entry.
    - `output_schema`, `constraints` and `tool_protocol` are not expectations: the checkable ones already went to the toml's deterministic `eval_matrix`. Skip what the seeded checks cover (valid JSON, tool selection).
-1. Run `python -m overmind sync` again. It reads the `expectations` on the entry-point, workflow and `observe` decorators and adds them to each capability's Default eval set, so eval runs, `overmind backtest`, the optimizer and training judge what live scoring judges. Read `eval_preload.counts.expectations` on `overmind://capabilities/{capability}`; zero after decorating means the entry point's `capability_id` is missing or not the synced id.
+1. Run `python -m overmind sync` again. It reads the `expectations` on the entry-point, workflow and `observe` decorators and adds them to each capability's Default eval set, so eval runs and training judge what live scoring judges. Read `eval_preload.counts.expectations` on `overmind://capabilities/{capability}`; zero after decorating means the entry point's `capability_id` is missing or not the synced id.
 1. Do not run the application. Verification needs the approved run described in [Observability](../../overmind-observability/SKILL.md#explicit-run-approval).
 
 Never upload the repository. Never invent project or capability UUIDs.

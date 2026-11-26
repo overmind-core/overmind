@@ -116,10 +116,6 @@ function KeyValueRows({ entries }: { entries: Array<[string, unknown]> }) {
 
 const OVERMIND_GROUPS: Array<{ prefix: string; title: string }> = [
   { prefix: "overmind.capability.", title: "Capability" },
-  { prefix: "overmind.optimize.", title: "Optimise" },
-  { prefix: "overmind.setup.", title: "Setup" },
-  { prefix: "overmind.run.", title: "Run" },
-  { prefix: "overmind.init.", title: "Initialise" },
 ];
 
 // Mirrors the SDK attribute contract (overmind/docs/tracing-attributes.md,

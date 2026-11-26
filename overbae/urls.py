@@ -55,7 +55,6 @@ from overbae.api.inference_requests import (
 )
 from overbae.api.mcp_oauth import MCPConsentView
 from overbae.api.native_evaluation import NativeEvaluationViewSet
-from overbae.api.optimizer import OptimizerCandidateViewSet, OptimizerExperimentViewSet
 from overbae.api.otlp import otlp_traces
 from overbae.api.overwatch_agent import OverwatchQueryView
 from overbae.api.public_models import PublicModelLibraryDetailView, PublicModelLibraryListView
@@ -130,10 +129,6 @@ router.register(r"feedback", FeedbackViewSet, basename="feedback")
 router.register(
     r"connector-credentials", ConnectorCredentialViewSet, basename="connectorcredential"
 )
-router.register(
-    r"optimizer-experiments", OptimizerExperimentViewSet, basename="optimizer-experiment"
-)
-router.register(r"optimizer-candidates", OptimizerCandidateViewSet, basename="optimizer-candidate")
 router.register(r"finetuning-jobs", FinetuningJobViewSet, basename="finetuningjob")
 router.register(r"deployed-models", DeployedModelViewSet, basename="deployedmodel")
 router.register(r"eval-matrix", EvalMatrixViewSet, basename="evalmatrix")

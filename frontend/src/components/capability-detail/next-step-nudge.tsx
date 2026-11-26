@@ -41,17 +41,6 @@ export function CapabilityNextStepNudge({
     queryKey: ["finetuning-jobs", projectId, "capability", capabilityId],
     staleTime: 30_000,
   });
-  const experimentsQuery = useQuery({
-    enabled: featureFlags.evaluations && enabled,
-    queryFn: () =>
-      apiClient.optimizerExperiments.optimizerExperimentsList({
-        capability: capabilityId,
-        pageSize: 1,
-      }),
-    queryKey: ["capability-experiments-count", capabilityId],
-    staleTime: 30_000,
-  });
-
   const datasets = (datasetsQuery.data?.results ?? []).map((d) => ({
     contract: d.activeVersion ? (d.intent ?? null) : null,
   }));
@@ -61,11 +50,9 @@ export function CapabilityNextStepNudge({
     finetuningJobs: jobsQuery.data?.results ?? [],
     flags: {
       datasets: featureFlags.datasets,
-      evaluations: featureFlags.evaluations,
       finetuning: featureFlags.finetuning,
       inference: featureFlags.inference,
     },
-    optimiserExperimentCount: experimentsQuery.data?.count ?? 0,
   });
 
   const dismissKey = nudge ? DISMISS_KEY(nudge.kind, capabilityId) : "";
@@ -100,11 +87,6 @@ const COPY = {
     Icon: Icon.finetuning,
     title: "Fine-tune a model",
   },
-  optimise: {
-    description: "An eval dataset is ready",
-    Icon: Icon.optimiser,
-    title: "Optimise your agent",
-  },
   upload: {
     description: "No datasets attached to this capability",
     Icon: Icon.upload,
@@ -138,13 +120,6 @@ function ctaLink(
         <Link search={{ capabilityId, projectId, train: true }} to="/training">
           <Icon.finetuning />
           Fine-tune
-        </Link>
-      );
-    case "optimise":
-      return (
-        <Link search={{ capabilityId, optimize: true, projectId }} to="/optimiser">
-          <Icon.optimiser />
-          Optimise
         </Link>
       );
     case "upload":

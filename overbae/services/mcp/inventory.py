@@ -20,7 +20,6 @@ from overbae.models import (
     FinetuningJob,
     InferenceRequest,
     ModelActivation,
-    OptimizerExperiment,
     TrainingCheckpoint,
     TrainingPreparation,
 )
@@ -120,9 +119,6 @@ COLLECTIONS = {
     "eval_row": Collection(EvalMatrix, "name", None, "eval-rows", "evaluations"),
     "eval_run": Collection(
         EvalRun, "name", "status", "eval-runs", "evaluations", "dataset__capability_id"
-    ),
-    "optimizer": Collection(
-        OptimizerExperiment, "capability__name", "status", "optimizer-runs", "optimiser"
     ),
     **{
         kind: Collection(model, "name", "state", f"jobs/{kind}", "training", None)
@@ -444,12 +440,6 @@ def dependencies(project, payload):
                 "evaluation data",
                 EvalRun.objects.filter(project=project, dataset_id=identifier),
                 "eval-runs",
-            ),
-            (
-                "optimizer",
-                "optimization data",
-                OptimizerExperiment.objects.filter(project=project, dataset_id=identifier),
-                "optimizer-runs",
             ),
             (
                 "dataset_binding",

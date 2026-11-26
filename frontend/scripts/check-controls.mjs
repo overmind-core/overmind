@@ -131,11 +131,9 @@ const ACRONYMS =
 const PRODUCT_TERMS = [
   "ChatGPT",
   "Data Workshop",
-  "Agent Testing",
   "Model Training",
   "Context Graph",
   "Overmind",
-  "Optimiser",
   "Observability",
   "Console",
   "Datasets",

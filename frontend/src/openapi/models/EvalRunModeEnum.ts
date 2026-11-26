@@ -16,13 +16,11 @@
 /**
  * * `recorded` - Recorded
  * * `generate` - Generate
- * * `provided` - Provided
  * @export
  */
 export const EvalRunModeEnum = {
     recorded: 'recorded',
-    generate: 'generate',
-    provided: 'provided'
+    generate: 'generate'
 } as const;
 export type EvalRunModeEnum = typeof EvalRunModeEnum[keyof typeof EvalRunModeEnum];
 

@@ -196,7 +196,6 @@ class UserActivitySerializer(serializers.Serializer):
     traces = TraceActivitySerializer()
     inference = InferenceActivitySerializer()
     datasets = DatasetActivitySerializer()
-    optimizer = WorkflowActivitySerializer()
     evaluations = WorkflowActivitySerializer()
 
 

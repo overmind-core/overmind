@@ -6,7 +6,6 @@ from overbae.core.model_registry import (
     OPENROUTER_MODEL_SLUGS,
     ROLE_CHAINS,
     TaskType,
-    default_backtest_models,
     default_judge_model,
     model_chain,
     openrouter_configured,
@@ -68,7 +67,6 @@ def test_judge_chain_spans_three_families():
 
 def test_defaults_come_from_the_chains():
     assert default_judge_model() == model_chain(TaskType.JUDGE_SCORING)[0]
-    assert default_backtest_models() == ["openai/gpt-5.6-luna", "anthropic/claude-sonnet-5"]
 
 
 def test_catalog_names_are_unique_and_slugs_are_vendor_qualified():

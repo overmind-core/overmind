@@ -35,7 +35,6 @@ class Capability(models.Model):
     source_path = models.CharField(max_length=512, blank=True, default="")
     entrypoint_fn = models.CharField(max_length=255, blank=True, default="")
     model = models.CharField(max_length=128, blank=True, default="")
-    analyzer_model = models.CharField(max_length=128, blank=True, default="")
     cli_version = models.CharField(max_length=20, blank=True, default="unknown")
 
     status = models.CharField(
@@ -48,18 +47,10 @@ class Capability(models.Model):
     # scores candidates against it instead of re-deriving from the row.
     footprint = models.JSONField(default=dict, blank=True)
 
-    # Eval spec flattened from the SDK's eval_spec.json; these columns feed the
-    # optimizer and the eval_spec endpoint.
     input_schema = models.JSONField(default=dict, blank=True)
     output_fields = models.JSONField(default=dict, blank=True)
     output_schema = models.JSONField(default=dict, blank=True)
-    structure_weight = models.FloatField(default=20.0)
-    total_points = models.FloatField(default=100.0)
     tool_config = models.JSONField(default=dict, blank=True)
-    tool_usage_weight = models.FloatField(default=10.0)
-    consistency_rules = models.JSONField(default=list, blank=True)
-    optimizable_elements = models.JSONField(default=list, blank=True)
-    fixed_elements = models.JSONField(default=list, blank=True)
     policy_markdown = models.TextField(blank=True, default="")
     tools_summary = models.TextField(blank=True, default="")
     decision_logic = models.TextField(blank=True, default="")

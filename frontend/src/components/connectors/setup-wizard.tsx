@@ -1,6 +1,6 @@
 /**
  * One-page connector setup — credentials → project → range → capabilities →
- * destination, stacked like the optimiser wizard. Scroll vertically; no steps.
+ * destination, stacked in one column. Scroll vertically; no steps.
  */
 
 import { type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";

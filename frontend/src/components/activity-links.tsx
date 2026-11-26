@@ -105,18 +105,6 @@ export function ActivityTaskChip({
         Evaluation task
       </Link>
     );
-  if (kind === "optimizer_experiment")
-    return (
-      <Link
-        className={chipClass}
-        params={{ experimentId: id }}
-        search={{ projectId }}
-        to="/optimiser/$experimentId"
-      >
-        <Icon.optimiser className="size-3" />
-        Optimiser task
-      </Link>
-    );
   return (
     <Badge className="gap-1.5" size="chip" variant="neutral">
       <Icon.listBox className="size-3" />

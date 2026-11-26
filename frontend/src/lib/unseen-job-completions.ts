@@ -55,7 +55,6 @@ const ROUTE_UNSEEN_KINDS: ReadonlyArray<{
 }> = [
   { kinds: ["finetuning"], prefix: "/training" },
   { kinds: ["eval"], prefix: "/evaluations" },
-  { kinds: ["optimizer"], prefix: "/optimiser" },
 ];
 
 export function kindsForPathname(pathname: string): readonly RunningJobKind[] | null {

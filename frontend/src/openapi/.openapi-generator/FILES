@@ -28,8 +28,6 @@ apis/InferenceRequestsApi.ts
 apis/McpOauthApi.ts
 apis/ModelsApi.ts
 apis/NativeEvaluationsApi.ts
-apis/OptimizerCandidatesApi.ts
-apis/OptimizerExperimentsApi.ts
 apis/ProjectsApi.ts
 apis/PublicApi.ts
 apis/SessionsApi.ts
@@ -69,7 +67,6 @@ models/Binding.ts
 models/BindingStateRequest.ts
 models/BlankEnum.ts
 models/CancelWork.ts
-models/CandidateInputRequest.ts
 models/Capability.ts
 models/CapabilityFlow.ts
 models/CapabilityFlowExpectedOutput.ts
@@ -99,7 +96,6 @@ models/ChangeMessageRequest.ts
 models/CheckoutSessionResponse.ts
 models/CheckpointFile.ts
 models/ColumnStat.ts
-models/CommandResultInputRequest.ts
 models/ComparisonCoverage.ts
 models/ConfidenceEnum.ts
 models/ConnectorActiveConfig.ts
@@ -130,7 +126,6 @@ models/ConnectorVerifyResponse.ts
 models/ConsentDecisionRequest.ts
 models/ConsentDetails.ts
 models/ConsentRedirect.ts
-models/CreateIterationRequest.ts
 models/CreditTopUpRequestRequest.ts
 models/Dataset.ts
 models/DatasetAnalytics.ts
@@ -193,8 +188,6 @@ models/EvalScore.ts
 models/EvalScoreSourceTypeEnum.ts
 models/EvalSet.ts
 models/EvalSetRequest.ts
-models/EvalSpecResponse.ts
-models/EvaluateIterationRequest.ts
 models/EvaluationActivity.ts
 models/EvaluationActivityDataset.ts
 models/EvaluationActivityKindEnum.ts
@@ -269,7 +262,6 @@ models/JudgeModelEnum.ts
 models/Kind703Enum.ts
 models/LocalSessionRequest.ts
 models/MetricComparison.ts
-models/ModeCd6Enum.ts
 models/ModelActivation.ts
 models/ModelActivationStageEnum.ts
 models/ModelCatalogResponse.ts
@@ -292,18 +284,7 @@ models/NativeSample.ts
 models/NativeSamplePrediction.ts
 models/OnboardingMilestone.ts
 models/OpenThreadRequest.ts
-models/OpenrouterKeySourceEnum.ts
 models/OpenrouterStatusEnum.ts
-models/OptimizerCandidate.ts
-models/OptimizerCandidateStatusEnum.ts
-models/OptimizerCommand.ts
-models/OptimizerCommandStatusEnum.ts
-models/OptimizerExperiment.ts
-models/OptimizerExperimentCreateRequest.ts
-models/OptimizerExperimentStatusEnum.ts
-models/OptimizerExperimentsResultsCreate200Response.ts
-models/OptimizerIteration.ts
-models/OptimizerIterationStatusEnum.ts
 models/OverallComparison.ts
 models/Package.ts
 models/PackageFile.ts
@@ -329,10 +310,6 @@ models/PaginatedFinetuningJobEventList.ts
 models/PaginatedFinetuningJobListList.ts
 models/PaginatedFinetuningJobRunList.ts
 models/PaginatedNativeEvaluationList.ts
-models/PaginatedOptimizerCandidateList.ts
-models/PaginatedOptimizerCommandList.ts
-models/PaginatedOptimizerExperimentList.ts
-models/PaginatedOptimizerIterationList.ts
 models/PaginatedPartitionPlanList.ts
 models/PaginatedProjectInviteList.ts
 models/PaginatedProjectList.ts
@@ -368,7 +345,6 @@ models/PlanEnum.ts
 models/PlanUsage.ts
 models/PlanUsageUnit.ts
 models/PositionEnum.ts
-models/PostResultsRequest.ts
 models/PreparationEdge.ts
 models/PreparationEdgeKindEnum.ts
 models/PreparationNode.ts
@@ -408,7 +384,6 @@ models/ScopeEnum.ts
 models/SendMessageRequest.ts
 models/ServingContextPlan.ts
 models/Session.ts
-models/SetCommandTemplateRequest.ts
 models/SignalCatalogEntry.ts
 models/SignalEvent.ts
 models/SignalEventSeenRequest.ts

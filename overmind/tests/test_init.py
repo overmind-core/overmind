@@ -19,7 +19,6 @@ SURFACE_SKILLS = (
     "overmind-observability",
     "overmind-datasets",
     "overmind-evaluations",
-    "overmind-optimiser",
     "model-training-engineering",
     "overmind-training",
     "overmind-inference",
@@ -106,6 +105,22 @@ def test_cursor_init_replaces_previous_skill_installs(tmp_path, monkeypatch):
     assert (own / "SKILL.md").read_text() == "Ours\n"
     assert not removed.exists()
     assert (tmp_path / ".agents" / "skills" / "overmind" / "SKILL.md").is_file()
+
+
+@pytest.mark.parametrize(("ide", "skill_dir"), [("claude", ".claude"), ("cursor", ".agents")])
+def test_init_deletes_retired_skills_and_keeps_others(tmp_path, monkeypatch, ide, skill_dir):
+    monkeypatch.chdir(tmp_path)
+    retired = tmp_path / skill_dir / "skills" / "overmind-optimiser"
+    retired.mkdir(parents=True)
+    (retired / "SKILL.md").write_text("Retired\n")
+    own = tmp_path / skill_dir / "skills" / "team-release"
+    own.mkdir(parents=True)
+    (own / "SKILL.md").write_text("Ours\n")
+
+    _init(tmp_path, ide)
+
+    assert not retired.exists()
+    assert (own / "SKILL.md").read_text() == "Ours\n"
 
 
 def test_codex_local_init_without_url_override(tmp_path, monkeypatch):

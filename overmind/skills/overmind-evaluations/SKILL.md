@@ -1,6 +1,6 @@
 ---
 name: overmind-evaluations
-description: Prepare and run Overmind evaluations, author eval matrix rows and eval sets, compare runs, and inspect row-level failures. Use for judging a change against a baseline; training and repository optimisation have separate workflows.
+description: Prepare and run Overmind evaluations, author eval matrix rows and eval sets, compare runs, and inspect row-level failures. Use for judging a change against a baseline; training has a separate workflow.
 ---
 
 # Overmind Evaluations
@@ -66,7 +66,7 @@ observations of the same criteria.
 ## Configure the active eval set
 
 A capability's **active eval set** is the one set of criteria live scoring, eval
-runs, `overmind backtest`, the optimizer and training all grade with. Its rows come
+runs and training all grade with. Its rows come
 from three places:
 
 | Source                                         | Holds                                                         | Changed by                             |
@@ -153,8 +153,8 @@ Omission uses the default judge. The run freezes its judge and matrix; create a
 new run to change either. Pass an approved judge choice to `start_finetune` as
 `eval_judge_model`.
 
-The dataset's intent must be **eval** and the chosen cell must fit: eval runs and
-optimizer experiments refuse `train` and `pending` datasets (see the
+The dataset's intent must be **eval** and the chosen cell must fit: eval runs
+refuse `train` and `pending` datasets (see the
 [dataset contracts](../overmind-datasets/SKILL.md#intent-and-contracts)). The run uses the version it
 read, which freezes it.
 
@@ -184,9 +184,8 @@ reason, and the run's `summary` (`score`, per-metric means, failures and errors,
 baseline. Status is `improved`, `regressed`, `unchanged`, `added` or `removed`;
 deltas within half a point are `unchanged`.
 
-`overmind backtest`, the optimizer (including `model_comparison`) and fine-tuning
-before/after evaluations each grade with the capability's active set unless given
-another and keep the same rows for their whole run, so confirm the set before
+Fine-tuning before/after evaluations grade with the capability's active set unless
+given another and keep the same rows for their whole run, so confirm the set before
 starting one. They create their own baseline and candidate runs in one group; a
 manual eval run beforehand is only for comparisons you drive yourself.
 

@@ -113,9 +113,8 @@ COVERAGE_MAP: dict[str, Entry] = {
     "evaluate": Entry(
         S2,
         PROMISE,
-        "An eval set runs every candidate and backtests it against the recorded baseline.",
+        "An eval set runs every candidate and compares it with the recorded baseline.",
     ),
-    "optimise": Entry(S2, PROMISE, "Failing traces become a measured winning diff."),
     "train": Entry(
         S2,
         PROMISE,
@@ -297,7 +296,7 @@ COVERAGE_MAP: dict[str, Entry] = {
     "state-machines": Entry(
         S3,
         LOGIC,
-        "Job lifecycle, the optimiser, the native evaluation plan and model activation.",
+        "Job lifecycle, the native evaluation plan and model activation.",
     ),
     "recommendations": Entry(
         S4,

@@ -55,16 +55,14 @@ ______________________________________________________________________
 
 Overmind has the following features
 
-| Feature           | Reference                                                             |
-| ----------------- | --------------------------------------------------------------------- |
-| Agent Scanning    | [Code scanning and eval authoring](#code-scanning-and-eval-authoring) |
-| Observability     | [Telemetry](#telemetry)                                               |
-| Dataset           | [Datasets](#datasets)                                                 |
-| Evaluations       | [Evals](#evals)                                                       |
-| Finetuning        | [Finetuning](#finetuning)                                             |
-| Optimiser         | [Optimiser](#optimiser)                                               |
-| Model Backtesting | [Backtesting](#backtesting)                                           |
-| Inference         | [Inference](#inference)                                               |
+| Feature        | Reference                                                             |
+| -------------- | --------------------------------------------------------------------- |
+| Agent Scanning | [Code scanning and eval authoring](#code-scanning-and-eval-authoring) |
+| Observability  | [Telemetry](#telemetry)                                               |
+| Dataset        | [Datasets](#datasets)                                                 |
+| Evaluations    | [Evals](#evals)                                                       |
+| Finetuning     | [Finetuning](#finetuning)                                             |
+| Inference      | [Inference](#inference)                                               |
 
 ## Code scanning and eval authoring
 
@@ -122,23 +120,6 @@ Overmind has the following features
 - Data-only projects: use the `develop-model-from-data` prompt and `save_training_plan` first.
 - Split by group before fitting, measure a baseline, and never select on final-role data.
 - Use the skill `/overmind-training` to run finetuning operations
-
-## Optimiser
-
-> Runs an agent in your infrastructure to experiment with different prompts and models and find which works best. All results are backed by evaluations
-
-- Needs an `eval` dataset cell.
-- Flow: `check_optimizer_readiness`, `start_optimizer`, then run `overmind optimise start -e EXPERIMENT && overmind optimise next` in the repo and do each returned action.
-- Stop at `COMPLETE`. Apply the winning diff only when authorised.
-- Use the skill `/overmind-optimiser` to run optimiser operations
-
-## Backtesting
-
-> Tries different models and replays your LLM spans to see which model works best
-
-- Use the `compare-models` prompt: `check_optimizer_readiness` and `start_optimizer` with `mode=model_comparison` and 1-5 model ids, then `inspect_optimizer_result`.
-- Or replay stored LLM spans: `overmind backtest --models a,b --since 7d`.
-- Use the skill `/overmind-optimiser` to run backtesting operations
 
 ## Inference
 

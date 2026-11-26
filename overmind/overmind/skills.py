@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 from typer import echo
 
-from overmind.skills_db import SKILLS_VERSION, Skill, skills
+from overmind.skills_db import RETIRED_SKILL_SLUGS, SKILLS_VERSION, Skill, skills
 
 console = Console()
 
@@ -81,6 +81,15 @@ def sync_skill(skill: Skill, ide: str):
         # Cursor reads both trees, so a copy left by an earlier install shows up twice.
         shutil.rmtree(os.path.join(".cursor", "skills", skill.slug), ignore_errors=True)
     logging.info(f"Copied {src} to {dest}")
+
+
+def remove_retired_skills(ide: str) -> None:
+    roots = [os.path.join(get_destination_dir(ide), "skills")]
+    if ide == "cursor":
+        roots.append(os.path.join(".cursor", "skills"))
+    for root in roots:
+        for slug in RETIRED_SKILL_SLUGS:
+            shutil.rmtree(os.path.join(root, slug), ignore_errors=True)
 
 
 def get_destination_dir(ide: str):

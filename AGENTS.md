@@ -34,7 +34,7 @@ This file is the playbook every task needs; Claude Code, Codex and Cursor read i
 - Work-starting operations take a project-scoped request key: an identical retry returns the same record, and a changed payload conflicts. An unknown provider acknowledgement is reconciled from its saved call ID, never resubmitted.
 - Measured facts only. Missing usage, progress, scores and telemetry stay unknown; never fill them with a percentage, a zero, an ETA or elapsed time.
 - Code under `overbae/modal/`, `modal_shared/` and `overbae/services/sft_assets/` reaches Modal only after `modal deploy`; training and serving pin immutable releases.
-- Naming: UI "Optimiser" is backend `optimizer`; UI "Training" is backend `finetuning`; UI "Capability" is the `Capability` model, and the sidebar's "Agent" is the project graph.
+- Naming: UI "Training" is backend `finetuning`; UI "Capability" is the `Capability` model, and the sidebar's "Agent" is the project graph.
 - Overwatch (`/api/internal/overwatch/*`, app in `sales-dashboard/`) only reads product records and runs no user authentication. Its tokens, caches and Slack boundary are in backend-architecture `references/auth-and-billing.md`.
 - `DESIGN.md` carries a fixed YAML frontmatter schema that tooling reads. Extend the values; don't restructure the document.
 

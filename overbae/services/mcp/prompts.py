@@ -327,48 +327,6 @@ PROMPTS = (
         ),
     ),
     PromptDefinition(
-        name="optimize-capability",
-        title="Optimize capability",
-        description="Check readiness, schedule, and inspect a capability optimization experiment.",
-        arguments=(
-            _argument("capability", "Capability name, slug, or id."),
-            _argument("dataset", "Evaluation dataset UUID from list_datasets."),
-        ),
-        template=(
-            "Optimize capability {capability} using evaluation dataset {dataset}. Use "
-            "list_datasets, inspect_dataset, and query_dataset to choose and verify an "
-            "eval cell. Run check_optimizer_readiness with that dataset and cell, mode "
-            "optimize, and inspect missing prerequisites "
-            "before start_optimizer. Start only after readiness and human approval; the MCP "
-            "server schedules metadata while a connected local executioner runs the "
-            "experiment. Inspect progress with inspect_optimizer_result and "
-            "overmind://optimizer-runs/{{experiment}}. When a completed winner is approved for "
-            "landing, present its diff and hand the change to a human to apply locally."
-        ),
-    ),
-    PromptDefinition(
-        name="compare-models",
-        title="Compare models",
-        description="Schedule a bounded model-comparison experiment and report its measured winner.",
-        arguments=(
-            _argument("capability", "Capability name, slug, or id."),
-            _argument("dataset", "Evaluation dataset UUID from list_datasets."),
-            _argument("model_ids", "Comma-separated model ids selected for comparison."),
-        ),
-        template=(
-            "Compare selected models for capability {capability} on evaluation dataset "
-            "{dataset}; requested models: {model_ids}. Use list_datasets, inspect_dataset, "
-            "and query_dataset to choose and verify an eval cell. Run "
-            "check_optimizer_readiness with that dataset and cell, mode model_comparison and "
-            "those model ids, then start_optimizer with the same "
-            "mode only when ready and the human has confirmed the model list. The local "
-            "executioner performs the repository-side runs; MCP schedules and records them. "
-            "Inspect with inspect_optimizer_result and "
-            "overmind://optimizer-runs/{{experiment}}; report per-model evidence, winner, "
-            "and the next action."
-        ),
-    ),
-    PromptDefinition(
         name="ship-model",
         title="Ship model",
         description="Verify a deployment, activate the approved capability model, and hand off repository rollout.",

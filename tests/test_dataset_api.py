@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from overbae.models import (
     Capability,
     Dataset,
-    OptimizerExperiment,
+    EvalRun,
     Project,
     ProjectMembership,
     Span,
@@ -200,7 +200,7 @@ def test_patch_sets_capability_intent_and_active_cell():
     }
 
 
-def test_preparation_names_an_optimizer_experiment_by_its_capability():
+def test_preparation_lists_the_eval_runs_that_used_a_version():
     project = _project()
     client = _client(project)
     capability = Capability.objects.create(project=project, name="Support", slug="support")
@@ -212,20 +212,16 @@ def test_preparation_names_an_optimizer_experiment_by_its_capability():
         capability=str(capability.id),
     )
     cell = use.use(dataset, "eval")
-    experiment = OptimizerExperiment.objects.create(
-        project=project, capability=capability, dataset=dataset, cell=cell, entrypoint="answer"
-    )
+    run = EvalRun.objects.create(project=project, name="Nightly", dataset=dataset, cell=cell)
     res = client.get(f"/api/datasets/{dataset.id}/preparation/")
     assert res.status_code == 200, res.content
     usage = next(
         node["cell"]["usage"] for node in res.data["nodes"] if node["cell"]["id"] == str(cell.id)
     )
-    assert usage["optimizer_experiments"][0]["id"] == str(experiment.id)
-    assert usage["optimizer_experiments"][0]["name"] == "Support"
-    assert usage["optimizer_experiments"][0]["status"] == experiment.status
+    assert [(row["id"], row["name"]) for row in usage["eval_runs"]] == [(str(run.id), "Nightly")]
     detail = client.get(f"/api/datasets/{dataset.id}/")
     assert detail.status_code == 200
-    assert detail.data["cells"][0]["usage"]["optimizer_experiments"][0]["name"] == "Support"
+    assert detail.data["cells"][0]["usage"]["eval_runs"][0]["name"] == "Nightly"
 
 
 def test_delete_refused_while_a_version_is_used():

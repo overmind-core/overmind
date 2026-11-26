@@ -20,7 +20,7 @@ def test_evaluate(workshop, cli, sample_agent, worker, tmp_path, fake_llm, conso
     group = workshop.call(
         "run_evaluation",
         {
-            "name": "backtest",
+            "name": "compare",
             "dataset": dataset,
             "judge_model": JUDGE,
             "targets": [
@@ -53,8 +53,7 @@ def test_evaluate(workshop, cli, sample_agent, worker, tmp_path, fake_llm, conso
     project = workshop.project()["id"]
     console.goto(f"/evaluations?projectId={project}")
     for label in ("recorded", "candidate", "weak"):
-        console.sees(f"backtest · {label}")
-    console.click("backtest · weak")
+        console.sees(f"compare · {label}")
+    console.click("compare · weak")
     console.sees("Re-run")
-    console.sees("Optimise")
     console.save_evidence("evaluate-weak-run")

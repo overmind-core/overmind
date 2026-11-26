@@ -17,7 +17,6 @@ import * as runtime from '../runtime';
 import type {
   Capability,
   CapabilityRequest,
-  EvalSpecResponse,
   PaginatedCapabilityListList,
   PaginatedPromptList,
   PatchedCapabilityRequest,
@@ -27,8 +26,6 @@ import {
     CapabilityToJSON,
     CapabilityRequestFromJSON,
     CapabilityRequestToJSON,
-    EvalSpecResponseFromJSON,
-    EvalSpecResponseToJSON,
     PaginatedCapabilityListListFromJSON,
     PaginatedCapabilityListListToJSON,
     PaginatedPromptListFromJSON,
@@ -42,10 +39,6 @@ export interface CapabilitiesCreateRequest {
 }
 
 export interface CapabilitiesDestroyRequest {
-    id: string;
-}
-
-export interface CapabilitiesEvalSpecRetrieveRequest {
     id: string;
 }
 
@@ -203,63 +196,6 @@ export class CapabilitiesApi extends runtime.BaseAPI {
      */
     async capabilitiesDestroy(requestParameters: CapabilitiesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.capabilitiesDestroyRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * Get capability eval spec
-     */
-    async capabilitiesEvalSpecRetrieveRaw(requestParameters: CapabilitiesEvalSpecRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSpecResponse>> {
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling capabilitiesEvalSpecRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/capabilities/{id}/eval_spec/`;
-        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => EvalSpecResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Get capability eval spec
-     */
-    async capabilitiesEvalSpecRetrieve(requestParameters: CapabilitiesEvalSpecRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSpecResponse> {
-        const response = await this.capabilitiesEvalSpecRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
     }
 
     /**

@@ -934,7 +934,6 @@ export type EvalRunsActivityListStatusEnum = typeof EvalRunsActivityListStatusEn
  */
 export const EvalRunsListModeEnum = {
     generate: 'generate',
-    provided: 'provided',
     recorded: 'recorded'
 } as const;
 export type EvalRunsListModeEnum = typeof EvalRunsListModeEnum[keyof typeof EvalRunsListModeEnum];

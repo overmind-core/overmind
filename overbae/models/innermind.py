@@ -138,7 +138,7 @@ class EvalMatrix(models.Model):
 
 
 class EvalSet(models.Model):
-    """``Capability.active_eval_set`` drives the optimizer, backtest and training defaults."""
+    """``Capability.active_eval_set`` drives the live scoring, eval run and training defaults."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(
@@ -200,8 +200,6 @@ class EvalRun(models.Model):
         RECORDED = "recorded"
         # A model generates each row's output.
         GENERATE = "generate"
-        # The caller posts each row's output before scoring.
-        PROVIDED = "provided"
 
     TERMINAL = (Status.COMPLETED, Status.FAILED, Status.CANCELLED)
 

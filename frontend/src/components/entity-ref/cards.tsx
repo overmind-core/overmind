@@ -28,10 +28,6 @@ function livePoll(status: unknown) {
   return typeof status === "string" && TERMINAL.has(status) ? (false as const) : 5_000;
 }
 
-function pct(value: number | null | undefined) {
-  return value == null ? null : `${Math.round(value)}%`;
-}
-
 function isTerminal(status: unknown) {
   return typeof status === "string" && TERMINAL.has(status);
 }
@@ -271,39 +267,6 @@ export function ModelCard({ id, name }: { id: string; name: string }) {
       <Row label="Last active">
         {data.lastActiveAt ? <DateTime value={data.lastActiveAt} /> : null}
       </Row>
-    </EntityCardShell>
-  );
-}
-
-export function ExperimentCard({ id, name }: { id: string; name: string }) {
-  const { data, isPending } = useQuery({
-    queryFn: () => apiClient.optimizerExperiments.optimizerExperimentsRetrieve({ id }),
-    queryKey: ["optimizer-experiment", id],
-    refetchInterval: (q) => livePoll((q.state.data as { status?: string } | undefined)?.status),
-  });
-  if (isPending) return <EntityCardSkeleton kind="experiment" name={name} />;
-  if (!data) return <EntityCardMissing kind="experiment" name={name} />;
-
-  const scores = (data.scores ?? {}) as Record<string, unknown>;
-  const best = typeof scores.best === "number" ? scores.best : null;
-
-  return (
-    <EntityCardShell
-      footer={
-        <>
-          <StatusBadge fallback="pending" status={data.status} />
-          <span className="text-xs tabular-nums text-muted-foreground">
-            Iteration {data.currentIteration ?? 0}/{data.numIterations ?? 0}
-          </span>
-        </>
-      }
-      kind="experiment"
-      name={data.capabilityName || name}
-    >
-      <Row label="Dataset">{data.datasetName}</Row>
-      <Row label="Eval set">{data.evalSetName}</Row>
-      <Row label="Best score">{pct(best)}</Row>
-      <Row label="Started">{data.createdAt ? <DateTime value={data.createdAt} /> : null}</Row>
     </EntityCardShell>
   );
 }

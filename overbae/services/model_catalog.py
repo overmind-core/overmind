@@ -174,27 +174,6 @@ def resolve_training_openrouter_slug(model_id: str) -> str | None:
     return match["openrouter_id"] if match["openrouter_status"] == "available" else None
 
 
-def resolve_bare_openrouter_slug(model_name: str) -> str | None:
-    """Canonical OpenRouter slug for a bare model name (no ``provider/`` prefix),
-    or ``None`` when it cannot be resolved. Curated names win; otherwise the
-    cached catalog is indexed by final path segment so base models like
-    ``qwen3-8b`` resolve too.
-    """
-    name = normalize_model_name(model_name)
-    if not name or "/" in name:
-        return None
-    if name in OPENROUTER_MODEL_SLUGS:
-        return OPENROUTER_MODEL_SLUGS[name]
-    models, upstream_available = fetch_model_catalog()
-    if not upstream_available:
-        return None
-    by_last_segment: dict[str, str] = {}
-    for entry in models:
-        slug = entry.get("id") or ""
-        by_last_segment.setdefault(slug.rsplit("/", 1)[-1], slug)
-    return by_last_segment.get(name)
-
-
 def estimate_cost(
     model_name: str,
     prompt_tokens: int | None,

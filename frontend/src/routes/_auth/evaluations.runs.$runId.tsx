@@ -46,7 +46,6 @@ export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
 
 const MODE_LABEL: Record<string, string> = {
   generate: "Generated",
-  provided: "Provided",
   recorded: "Recorded",
 };
 
@@ -298,22 +297,6 @@ function RunHeaderCard({
         <RunElapsed run={actionRun} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <RelaunchButton runId={actionRun.id} visible={!active} />
-          {actionRun.status === "completed" && (
-            <Button asChild size="sm">
-              <Link
-                search={{
-                  optimize: true,
-                  projectId,
-                  ...(actionRun.capabilityId ? { capabilityId: actionRun.capabilityId } : {}),
-                  ...(actionRun.dataset ? { datasetId: actionRun.dataset } : {}),
-                }}
-                to="/optimiser"
-              >
-                <Icon.optimiser />
-                Optimise
-              </Link>
-            </Button>
-          )}
         </div>
       </div>
     </Card>

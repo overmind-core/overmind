@@ -16,7 +16,7 @@ const PILLARS = [
   {
     description: "Catch regressions before your users do",
     icon: Icon.eval,
-    name: "Evaluate & Optimise",
+    name: "Evaluate",
   },
   { description: "Own your intelligence", icon: Icon.training, name: "Train & Serve" },
 ] as const;

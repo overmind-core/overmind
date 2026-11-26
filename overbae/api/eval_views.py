@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Case, CharField, Exists, OuterRef, Q, Subquery, Value, When
+from django.db.models import Case, CharField, Exists, OuterRef, Q, Value, When
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
@@ -47,7 +47,6 @@ from overbae.models import (
     EvalScore,
     EvalSet,
     FinetuningJobEval,
-    OptimizerCandidate,
 )
 from overbae.services.datasets import rows as row_store
 from overbae.services.evaluation_activity import (
@@ -115,8 +114,8 @@ class EvalMatrixViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Delete an eval set"),
 )
 class EvalSetViewSet(viewsets.ModelViewSet):
-    """A named selection of matrix rows. The capability's active set drives the
-    optimizer, backtests and training evaluations."""
+    """A named selection of matrix rows. The capability's active set drives live
+    scoring, eval runs and training evaluations."""
 
     serializer_class = EvalSetSerializer
     search_fields = ["name", "description"]
@@ -196,9 +195,7 @@ class EvalRunViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return EvalRun.objects.none()
-        candidate = OptimizerCandidate.objects.filter(eval_run=OuterRef("pk"))
         origin = Case(
-            When(Exists(candidate), then=Value("optimizer")),
             When(
                 Exists(FinetuningJobEval.objects.filter(eval_run=OuterRef("pk"))),
                 then=Value("finetuning"),
@@ -211,10 +208,7 @@ class EvalRunViewSet(
                 project_id__in=project_ids_for(self.request.user, self.request.auth)
             )
             .select_related("dataset__capability", "cell", "model_ref")
-            .annotate(
-                origin=origin,
-                optimizer_experiment=Subquery(candidate.values("experiment_id")[:1]),
-            )
+            .annotate(origin=origin)
         )
 
     @extend_schema(

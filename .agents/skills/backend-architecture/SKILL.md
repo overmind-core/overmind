@@ -9,7 +9,7 @@ Single Django app `overbae`, project-scoped tenancy.
 
 ## Layout
 
-- `api/` — DRF views and serializers, one module per surface (`eval_views.py`, `datasets.py`, `optimizer.py`, `otlp.py`, `billing.py`, `mcp.py`, …). `views.py` and `serializers.py` are legacy monoliths; a new surface gets its own module. The global exception handler (`api/exception_handler.py`) flattens list errors to `{detail}`, adds `code`, maps `IntegrityError` to 409 `conflict`, and returns `{detail, code: internal_error, error_id}` for unhandled errors.
+- `api/` — DRF views and serializers, one module per surface (`eval_views.py`, `datasets.py`, `otlp.py`, `billing.py`, `mcp.py`, …). `views.py` and `serializers.py` are legacy monoliths; a new surface gets its own module. The global exception handler (`api/exception_handler.py`) flattens list errors to `{detail}`, adds `code`, maps `IntegrityError` to 409 `conflict`, and returns `{detail, code: internal_error, error_id}` for unhandled errors.
 - `models/` — split by domain (`iam.py`, `capabilities.py`, `traces.py`, `innermind.py`, `finetuning.py`, `datasets.py`, `dataset_pipeline.py`, `operations.py`, `billing.py`, …).
 - `innermind/` — the eval matrix evaluators, live span and trajectory scoring, deterministic checks, evaluation runs, the Default eval set, health and signals.
 - `services/` — business logic. Largest subtrees: `datasets/` (Data Workshop; data-workshop skill), `mcp/` (mcp skill), `connectors/`, `sft_assets/` (training code baked into the Modal image), `codebase/`.

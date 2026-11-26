@@ -1,4 +1,4 @@
-import { type ComponentType, type CSSProperties, type SVGProps, useEffect, useState } from "react";
+import { type ComponentType, type SVGProps, useEffect, useState } from "react";
 
 import { Link, useRouterState, useSearch } from "@tanstack/react-router";
 
@@ -10,7 +10,6 @@ import {
   JobNotificationBadge,
   type JobNotificationBadgeTone,
 } from "@/components/job-notification-badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Icon } from "@/components/ui/icons";
 import {
   Sidebar,
@@ -22,16 +21,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useAllEvalRunsQuery } from "@/hooks/use-evaluations";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import { useGuestGate } from "@/hooks/use-guest-gate";
-import { useOptimizerExperimentsQuery } from "@/hooks/use-optimizer";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { useUnseenSignalCountQuery } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
@@ -43,7 +38,6 @@ import {
   kindsForPathname,
   useUnseenCompletions,
 } from "@/lib/unseen-job-completions";
-import { cn } from "@/lib/utils";
 
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 type Flag = keyof typeof featureFlags;
@@ -55,37 +49,15 @@ interface NavLeaf {
   to: string;
 }
 
-interface NavGroup {
-  icon: IconType;
-  label: string;
-  items: NavLeaf[];
-}
-
-type NavEntry = NavLeaf | NavGroup;
-
-const isGroup = (entry: NavEntry): entry is NavGroup => "items" in entry;
 const flagOn = (flag: Flag | null): boolean => flag === null || featureFlags[flag];
 
-const platformNavTree: NavEntry[] = [
+const platformNavTree: NavLeaf[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
   { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
-  {
-    icon: Icon.agentTesting,
-    items: [
-      { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
-      { flag: "evaluations", icon: Icon.optimiser, label: "Optimiser", to: "/optimiser" },
-    ],
-    label: "Agent Testing",
-  },
-  {
-    icon: Icon.models,
-    items: [
-      { flag: "finetuning", icon: Icon.training, label: "Training", to: "/training" },
-      { flag: "inference", icon: Icon.inference, label: "Inference", to: "/inference" },
-    ],
-    label: "Models",
-  },
+  { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
+  { flag: "finetuning", icon: Icon.training, label: "Training", to: "/training" },
+  { flag: "inference", icon: Icon.inference, label: "Inference", to: "/inference" },
 ];
 
 // Not rendered in the sidebar — Settings is the top-bar gear and Projects sits
@@ -96,20 +68,10 @@ const configNavTree: NavLeaf[] = [
   { flag: null, icon: Icon.integrations, label: "Integrations", to: "/observability/integrations" },
 ];
 
-const filterNav = (tree: NavEntry[]): NavEntry[] =>
-  tree
-    .map((entry) =>
-      isGroup(entry) ? { ...entry, items: entry.items.filter((i) => flagOn(i.flag)) } : entry
-    )
-    .filter((entry) => (isGroup(entry) ? entry.items.length > 0 : flagOn(entry.flag)));
-
-const platformNav: NavEntry[] = filterNav(platformNavTree);
+const platformNav: NavLeaf[] = platformNavTree.filter((leaf) => flagOn(leaf.flag));
 const configNav: NavLeaf[] = configNavTree.filter((leaf) => flagOn(leaf.flag));
 
-export const navLinks: NavLeaf[] = [
-  ...platformNav.flatMap((entry) => (isGroup(entry) ? entry.items : [entry])),
-  ...configNav,
-];
+export const navLinks: NavLeaf[] = [...platformNav, ...configNav];
 
 const externalLinks = [
   { href: "https://docs.overmindlab.ai", icon: Icon.docs, label: "Docs" },
@@ -122,7 +84,6 @@ const isLeafActive = (pathname: string, to: string): boolean =>
 const JOB_KIND_ROUTE: Record<RunningJobKind, string> = {
   eval: "/evaluations",
   finetuning: "/training",
-  optimizer: "/optimiser",
 };
 
 type NavJobBadge = { count: number; tone: JobNotificationBadgeTone };
@@ -132,7 +93,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const { projectId } = useSearch({ from: "/_auth" });
   const ftQuery = useFinetuningJobsQuery(projectId);
   const evalQuery = useAllEvalRunsQuery(projectId);
-  const optimizerQuery = useOptimizerExperimentsQuery(projectId);
   const unseen = useUnseenCompletions();
   const unseenSignals =
     useUnseenSignalCountQuery(featureFlags.signals ? projectId : undefined).data ?? 0;
@@ -140,7 +100,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const running = buildRunningJobs({
     evalRuns: evalQuery.data?.results,
     finetuning: ftQuery.data?.results,
-    optimizerExperiments: optimizerQuery.data?.results,
   });
 
   const runningByRoute: Record<string, number> = {};
@@ -210,105 +169,6 @@ function NavLink({
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
-  );
-}
-
-// The trigger deliberately takes no `tooltip` prop: `CollapsibleTrigger asChild`
-// and the tooltip wrapper clash over the ref and swallow the toggle click.
-function NavGroupItem({
-  group,
-  pathname,
-  badges,
-}: {
-  group: NavGroup;
-  pathname: string;
-  badges: Record<string, NavJobBadge>;
-}) {
-  const { icon: IconCmp, items, label } = group;
-  const guard = useGuestGate();
-  const hasActiveChild = items.some((item) => isLeafActive(pathname, item.to));
-  return (
-    <Collapsible asChild className="group/collapsible" defaultOpen>
-      <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton className="!py-2.5" isActive={hasActiveChild}>
-            <IconCmp className="!size-[17px]" />
-            <span className="sidebar-label flex-1">{label}</span>
-            <Icon.chevronRight className="ml-auto !size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {/* border-l-0 drops the primitive's 1px trunk; each item draws its own. */}
-          <SidebarMenuSub className="mr-0 border-l-0 pr-0">
-            {items.map((item, index) => {
-              const ItemIcon = item.icon;
-              const active = isLeafActive(pathname, item.to);
-              return (
-                <SidebarMenuSubItem
-                  // `.sidebar-elbow::before` (styles.css) draws each item's own
-                  // connector. Every trunk starts at one shared point 0.75rem
-                  // above the FIRST row's centre and ends at its own row's
-                  // centre — hence the row pitch (2rem) times index. The active
-                  // line is raised above the muted ones, and its colour must
-                  // stay on the sidebar's semantic palette.
-                  className={cn("sidebar-elbow", active && "z-10")}
-                  key={item.to}
-                  style={
-                    {
-                      "--elbow-h": `calc(${index} * 2rem + 0.75rem)`,
-                      ...(active && { "--elbow-color": "var(--sidebar-foreground)" }),
-                    } as CSSProperties
-                  }
-                >
-                  <SidebarMenuSubButton asChild isActive={active}>
-                    <Link
-                      onClick={item.to === "/" ? undefined : guard()}
-                      search={(e) => ({ projectId: e.projectId })}
-                      to={item.to}
-                    >
-                      <ItemIcon className="!size-[15px]" />
-                      <span className="sidebar-label">{item.label}</span>
-                      {badges[item.to] ? <NavJobCountBadge badge={badges[item.to]} /> : null}
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              );
-            })}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </SidebarMenuItem>
-    </Collapsible>
-  );
-}
-
-function NavSection({
-  entries,
-  iconOnly,
-  pathname,
-  badges = {},
-}: {
-  entries: NavEntry[];
-  iconOnly: boolean;
-  pathname: string;
-  badges?: Record<string, NavJobBadge>;
-}) {
-  return (
-    <>
-      {entries.map((entry) => {
-        if (!isGroup(entry)) {
-          return (
-            <NavLink badge={badges[entry.to]} key={entry.to} leaf={entry} pathname={pathname} />
-          );
-        }
-        return iconOnly ? (
-          entry.items.map((leaf) => (
-            <NavLink badge={badges[leaf.to]} key={leaf.to} leaf={leaf} pathname={pathname} />
-          ))
-        ) : (
-          <NavGroupItem badges={badges} group={entry} key={entry.label} pathname={pathname} />
-        );
-      })}
-    </>
   );
 }
 
@@ -406,12 +266,14 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              <NavSection
-                badges={navJobBadges}
-                entries={platformNav}
-                iconOnly={iconOnly}
-                pathname={location.pathname}
-              />
+              {platformNav.map((leaf) => (
+                <NavLink
+                  badge={navJobBadges[leaf.to]}
+                  key={leaf.to}
+                  leaf={leaf}
+                  pathname={location.pathname}
+                />
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

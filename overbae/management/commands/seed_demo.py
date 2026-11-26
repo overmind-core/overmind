@@ -3,7 +3,7 @@
 One demo project — Support Copilot at Ledgerline, a fictional payments company — with
 thirty days of traffic across three capabilities and every downstream surface filled:
 live span and trajectory scores, signal events, datasets with versions and chats, eval
-runs, optimiser runs, training jobs, served models and the credits ledger.
+runs, training jobs, served models and the credits ledger.
 
 Deterministic (seeded RNG, stable ids, timestamps anchored to NOW) and idempotent: a re-run
 deletes the project (and the retired Undermind demo, if present) before it seeds. The
@@ -64,10 +64,6 @@ from overbae.models import (
     ModelActivation,
     ModelRef,
     NativeEvaluationPlan,
-    OptimizerCandidate,
-    OptimizerCommand,
-    OptimizerExperiment,
-    OptimizerIteration,
     Project,
     ProjectMembership,
     SignalEvent,
@@ -388,63 +384,6 @@ _JUDGE_REASONS = {
         "Asks for 'more information' without naming a class.",
     ],
 }
-_COMMAND_TEMPLATE = """uv run python - <<'EOF'
-from support.triage.capability import run_triage
-self.stdout.write(run_triage(**__DATAPOINT_INPUT__))
-EOF
-"""
-_TRIAGE_DIFFS = [
-    """diff --git a/support/triage/prompts.py b/support/triage/prompts.py
-index 4c1f2ab..8e9d310 100644
---- a/support/triage/prompts.py
-+++ b/support/triage/prompts.py
-@@ -1,12 +1,18 @@
- SYSTEM_PROMPT = \"\"\"You are Ledgerline's support triage capability.
--Classify the ticket and return strict JSON with urgency, category,
--team and a one-line summary.
-+Process:
-+1. Identify the failure surface (API, dashboard, payouts, billing, fraud).
-+2. Call lookup_merchant; enterprise merchants are never `low` urgency.
-+3. Payment-disruption reports route to oncall-payments; suspected fraud
-+   to risk-ops.
-+4. Summaries never quote card numbers.
-+
-+Return strict JSON matching the schema. Urgency reflects merchant
-+impact, not sentiment.
- \"\"\"
-""",
-    """diff --git a/support/triage/prompts.py b/support/triage/prompts.py
-index 4c1f2ab..2b7a914 100644
---- a/support/triage/prompts.py
-+++ b/support/triage/prompts.py
-@@ -1,8 +1,13 @@
- SYSTEM_PROMPT = \"\"\"You are Ledgerline's support triage capability.
--Classify the ticket and return strict JSON with urgency, category,
--team and a one-line summary.
-+Think through the routing before answering:
-+- Which team owns this failure surface?
-+- Does the merchant plan floor the urgency?
-+Return strict JSON with urgency, category, team and a one-line summary.
- \"\"\"
-+
-+FEW_SHOT = [
-+    {"ticket": "Payouts stuck since Monday", "team": "oncall-payments"},
-+]
-""",
-    """diff --git a/support/triage/capability.py b/support/triage/capability.py
-index 91c0d44..d02f871 100644
---- a/support/triage/capability.py
-+++ b/support/triage/capability.py
-@@ -41,7 +41,10 @@ def run_triage(ticket_text, merchant_plan="growth", previous_tickets=0):
-     merchant = lookup_merchant(merchant_name=extract_merchant(ticket_text))
--    result = llm.chat(SYSTEM_PROMPT, ticket_text)
-+    context = f"plan={merchant_plan} incidents={merchant.open_incidents}"
-+    result = llm.chat(SYSTEM_PROMPT, f"{context}\\n\\n{ticket_text}")
-+    if merchant_plan == "enterprise" and result["urgency"] == "low":
-+        result["urgency"] = "medium"
-     return validate(result)
-""",
-]
 TRIAGE_GROUP = uuid.uuid5(uuid.NAMESPACE_URL, "seed/ft/group/triage")
 MODAL_URL = (
     "https://ledgerline--overmind-inference-{worker}-web.modal.run?model={model}&max_model_len=8192"
@@ -712,7 +651,6 @@ class Command(BaseCommand):
         ):
             model.objects.filter(project__slug__in=slugs).delete()
         FinetuningJob.objects.filter(project__slug__in=slugs).delete()
-        OptimizerExperiment.objects.filter(project__slug__in=slugs).delete()
         EvalRun.objects.filter(project__slug__in=slugs).delete()
         Project.objects.filter(slug__in=slugs).delete()
         for dataset_id in doomed_datasets:
@@ -1468,7 +1406,6 @@ class Command(BaseCommand):
         for cap in capabilities:
             Capability.objects.filter(pk=cap.pk).update(
                 cli_version="0.1.55",
-                analyzer_model="anthropic/claude-sonnet-5",
                 created_at=days_ago(DAYS),
                 updated_at=days_ago(0.2),
             )
@@ -3132,7 +3069,7 @@ class Command(BaseCommand):
         )
         make_eval_run(
             name="Triage — prompt v3 verification",
-            description="Optimiser winner replayed against the incumbent prompt.",
+            description="Prompt v3 replayed against the incumbent prompt.",
             dataset=triage_golden,
             eval_set=triage_set,
             targets=[
@@ -3198,311 +3135,6 @@ class Command(BaseCommand):
             sample_fn=kb_sample,
             failed="Generation stalled: the judge provider returned 429 for 20 minutes.",
             use=False,
-        )
-
-        # ── Optimiser runs ───────────────────────────────────────────────────────────────
-
-        self.stdout.write("Creating optimiser runs...")
-
-        def _run_score(run) -> float:
-            headline = comparison.headline(run.summary)
-            return round(headline * 100, 1) if headline is not None else 0.0
-
-        def build_experiment(
-            *,
-            cap,
-            dataset,
-            eval_set,
-            born,
-            done,
-            entrypoint,
-            baseline_q,
-            iteration_qs,
-            diffs,
-            status="completed",
-            num_iterations=None,
-            with_eval_runs=False,
-            sample_fn=triage_sample,
-            mode="optimize",
-            model_ids=(),
-        ):
-            """iteration_qs: per iteration, a list of (quality, target_model) or plain qualities."""
-            version = dataset.active_cell
-            exp = OptimizerExperiment.objects.create(
-                project=project,
-                capability=cap,
-                dataset=dataset,
-                cell=version,
-                eval_set=eval_set,
-                triggered_by=owner,
-                entrypoint=entrypoint,
-                code_trigger=f"{entrypoint}(**datapoint)",
-                mode=mode,
-                model_ids=list(model_ids),
-                status=status,
-                num_iterations=num_iterations or len(iteration_qs),
-                num_candidates_per_iteration=len(iteration_qs[0]) if iteration_qs else 3,
-                command_template=_COMMAND_TEMPLATE,
-            )
-            datapoints = list(row_store.iter_rows(version))
-            span_hours = max(4.0, (done - born).total_seconds() / 3600.0)
-            total_iters = 1 + len(iteration_qs)
-            cmd_pairs, cand_pairs, iter_pairs = [], [], []
-
-            def _mk_eval_run(candidate, label, quality, t):
-                (run,) = make_eval_run(
-                    name=f"Optimizer · {cap.name} · {label}",
-                    description=f"Optimizer experiment {exp.pk}, {label}",
-                    dataset=dataset,
-                    eval_set=eval_set,
-                    targets=[
-                        (
-                            label,
-                            cap.model,
-                            None,
-                            EvalRun.Mode.PROVIDED,
-                            candidate.is_baseline,
-                            quality,
-                        )
-                    ],
-                    born=t,
-                    n_samples=len(datapoints),
-                    sample_fn=sample_fn,
-                    use=False,
-                    group=exp.pk,
-                    params={
-                        "optimizer_candidate_id": str(candidate.pk),
-                        "optimizer_mode": mode,
-                        "target_model": candidate.target_model or cap.model,
-                    },
-                )
-                return run
-
-            def _commands_for(candidate, iteration, quality, t, trace_type, originals):
-                rows, per = [], []
-                for idx, dp in enumerate(datapoints):
-                    score = round(min(100.0, max(5.0, random.gauss(quality * 100, 7.0))), 1)
-                    per.append(score)
-                    out = (
-                        dp.expected_output
-                        if isinstance(dp.expected_output, dict)
-                        else {"output": dp.expected_output}
-                    )
-                    rows.append(
-                        OptimizerCommand(
-                            experiment=exp,
-                            candidate=candidate,
-                            iteration=iteration,
-                            datapoint_index=idx,
-                            input=dp.input,
-                            command=exp.command_template.replace(
-                                "__DATAPOINT_INPUT__", repr(dp.input)
-                            ),
-                            output=json.dumps(out)[:400],
-                            result={
-                                "output": json.dumps(out)[:400],
-                                "trace_id": hexid(16),
-                                "exit_code": 0,
-                                "duration_ms": random.randint(900, 4200),
-                                "stdout": "",
-                                "stderr": "",
-                            },
-                            score=score,
-                            trace_type=trace_type,
-                            original_trace_id=originals[idx] if originals else "",
-                            status="evaluated",
-                            timeout=600,
-                        )
-                    )
-                OptimizerCommand.objects.bulk_create(rows)
-                cmd_pairs.extend((r.pk, t + timedelta(minutes=j * 0.5)) for j, r in enumerate(rows))
-                return rows, round(sum(per) / len(per), 1)
-
-            def _align(candidate, target, current):
-                from django.db.models import F
-
-                OptimizerCommand.objects.filter(candidate=candidate).update(
-                    score=F("score") + (target - current)
-                )
-
-            t = born + timedelta(minutes=20)
-            base_iter = OptimizerIteration.objects.create(
-                experiment=exp, order=0, name="Baseline", status="evaluated"
-            )
-            base_cand = OptimizerCandidate.objects.create(
-                experiment=exp,
-                iteration=base_iter,
-                candidate_index=0,
-                code_path="",
-                is_baseline=True,
-                status="evaluated",
-            )
-            base_cmds, base_score = _commands_for(
-                base_cand, base_iter, baseline_q, t, "original", None
-            )
-            base_originals = [c.result["trace_id"] for c in base_cmds]
-            if with_eval_runs:
-                base_run = _mk_eval_run(base_cand, "baseline", baseline_q, t)
-                new_score = _run_score(base_run)
-                _align(base_cand, new_score, base_score)
-                base_score = new_score
-                base_cand.eval_run = base_run
-            base_cand.score = base_score
-            base_cand.save(update_fields=["score", "eval_run"] if with_eval_runs else ["score"])
-            base_iter.scores = {"best": base_score}
-            base_iter.save(update_fields=["scores"])
-            iter_pairs.append((base_iter.pk, t))
-            cand_pairs.append((base_cand.pk, t))
-
-            scores = {"baseline": base_score, "best": base_score}
-            by_model = {}
-            stalled = 0
-            winner = None
-            for i, cand_qs in enumerate(iteration_qs, start=1):
-                t = born + timedelta(hours=span_hours * i / total_iters)
-                iteration = OptimizerIteration.objects.create(
-                    experiment=exp, order=i, name=f"Iteration{i}", status="completed"
-                )
-                iter_pairs.append((iteration.pk, t))
-                iter_scores, iter_models = {}, {}
-                iter_best_cand, iter_best = None, -1.0
-                for ci, spec in enumerate(cand_qs):
-                    q, target_model = spec if isinstance(spec, tuple) else (spec, "")
-                    cand = OptimizerCandidate.objects.create(
-                        experiment=exp,
-                        iteration=iteration,
-                        candidate_index=ci,
-                        code_path="" if target_model else diffs[(i + ci) % len(diffs)],
-                        target_model=target_model,
-                        is_baseline=False,
-                        status="evaluated",
-                    )
-                    _, cscore = _commands_for(
-                        cand,
-                        iteration,
-                        q,
-                        t + timedelta(minutes=5 + ci * 10),
-                        "replay",
-                        base_originals,
-                    )
-                    if with_eval_runs:
-                        crun = _mk_eval_run(
-                            cand, f"candidate {ci}", q, t + timedelta(minutes=5 + ci * 10)
-                        )
-                        new_score = _run_score(crun)
-                        _align(cand, new_score, cscore)
-                        cscore = new_score
-                        cand.eval_run = crun
-                    cand.score = cscore
-                    if target_model:
-                        cand.scores = {"coverage_rate": rnd(0.92, 1.0)}
-                        iter_models[target_model] = cscore
-                        by_model[target_model] = cscore
-                    cand.save()
-                    cand_pairs.append((cand.pk, t + timedelta(minutes=5 + ci * 10)))
-                    iter_scores[str(cand.pk)] = cscore
-                    if cscore > iter_best:
-                        iter_best, iter_best_cand = cscore, cand
-                scores[str(i)] = iter_scores
-                iteration.scores = {
-                    "best": iter_best,
-                    **({"models": iter_models} if iter_models else {}),
-                }
-                iteration.save(update_fields=["scores"])
-                if iter_best > scores["best"] + 1.0:
-                    scores["best"] = iter_best
-                    winner = iter_best_cand
-                    stalled = 0
-                else:
-                    stalled += 1
-            if by_model:
-                scores["by_model"] = by_model
-                scores["models"] = by_model
-            exp.scores = scores
-            exp.current_iteration = len(iteration_qs)
-            exp.stalled_iterations = stalled
-            state = {"eval_pending": {}}
-            if status == "completed" and winner is not None and mode == "optimize":
-                state["winner_score"] = scores["best"]
-                state["winner_candidate_id"] = str(winner.pk)
-            if mode == "model_comparison" and by_model:
-                best_model = max(by_model, key=by_model.get)
-                incumbent_wins = base_score >= by_model[best_model]
-                state["model_comparison"] = {
-                    "selected_winner": best_model,
-                    "selected_winner_score": by_model[best_model],
-                    "incumbent_score": base_score,
-                    "overall_winner": "incumbent" if incumbent_wins else best_model,
-                    "incumbent_wins": incumbent_wins,
-                }
-            exp.state = state
-            exp.save()
-            backdate(OptimizerCommand, cmd_pairs)
-            backdate(OptimizerCandidate, cand_pairs)
-            backdate(OptimizerIteration, iter_pairs)
-            OptimizerExperiment.objects.filter(pk=exp.pk).update(created_at=born, updated_at=done)
-            return exp, winner
-
-        triage_opt_subset = _from_traces(
-            triage_capability, "Triage Optimiser Subset", want=12, intent="eval", born=days_ago(12)
-        )
-        Cell.objects.filter(pk=triage_opt_subset.active_cell.pk).update(used_at=days_ago(12))
-        triage_exp, triage_winner = build_experiment(
-            cap=triage_capability,
-            dataset=triage_opt_subset,
-            eval_set=triage_set,
-            born=days_ago(12, h=-2),
-            done=days_ago(11, h=-3),
-            entrypoint="run_triage",
-            baseline_q=0.714,
-            iteration_qs=[
-                [0.75, 0.69, 0.73],
-                [0.80, 0.74, 0.76],
-                [0.86, 0.78, 0.80],
-                [0.83, 0.79, 0.82],
-                [0.82, 0.80, 0.84],
-            ],
-            diffs=_TRIAGE_DIFFS,
-            with_eval_runs=True,
-        )
-        kb_compare_exp, _ = build_experiment(
-            cap=kb_capability,
-            dataset=kb_golden,
-            eval_set=kb_set,
-            born=days_ago(6),
-            done=days_ago(6, h=-3),
-            entrypoint="answer_question",
-            baseline_q=0.84,
-            iteration_qs=[
-                [
-                    (0.79, "openai/gpt-5.6-terra"),
-                    (0.86, "google/gemini-3.1-pro-preview"),
-                    (0.81, "qwen/qwen3.6-235b"),
-                ]
-            ],
-            diffs=[],
-            sample_fn=kb_sample,
-            mode="model_comparison",
-            model_ids=[
-                "openai/gpt-5.6-terra",
-                "google/gemini-3.1-pro-preview",
-                "qwen/qwen3.6-235b",
-            ],
-            num_iterations=1,
-        )
-        dispute_cancelled_exp, _ = build_experiment(
-            cap=dispute_capability,
-            dataset=dispute_golden,
-            eval_set=dispute_set,
-            born=days_ago(3),
-            done=days_ago(3, h=-1.5),
-            entrypoint="resolve_dispute",
-            baseline_q=0.79,
-            iteration_qs=[[0.80, 0.77, 0.81]],
-            diffs=_TRIAGE_DIFFS[2:],
-            sample_fn=dispute_sample,
-            status="cancelled",
-            num_iterations=5,
         )
 
         # ── Training ─────────────────────────────────────────────────────────────────────
@@ -4392,7 +4024,6 @@ class Command(BaseCommand):
             ("Eval runs", EvalRun.objects.filter(project=project).count()),
             ("Eval scores", EvalScore.objects.filter(project=project).count()),
             ("Signal events", SignalEvent.objects.filter(project=project).count()),
-            ("Optimiser runs", OptimizerExperiment.objects.filter(project=project).count()),
             ("Training jobs", FinetuningJob.objects.filter(project=project).count()),
             ("Deployed models", DeployedModel.objects.filter(project=project).count()),
             ("Inference calls", InferenceCall.objects.filter(project=project).count()),

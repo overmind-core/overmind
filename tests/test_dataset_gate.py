@@ -23,7 +23,6 @@ from overbae.models import (
     ProjectMembership,
     User,
 )
-from overbae.models.optimizer import optimizer_dataset_error
 from overbae.services.datasets import lifecycle, use
 from overbae.tasks import datasets as dataset_tasks
 from tests.workshop_script_fixtures import retained_package, select_script
@@ -68,9 +67,8 @@ def _used(*datasets: Dataset) -> list[bool]:
 
 
 def test_a_check_changes_nothing_and_a_use_freezes_once():
-    _project, capability, _user, train, evaluation = _setup()
+    _project, _capability, _user, train, evaluation = _setup()
     assert use.check(train, "train") == train.active_cell
-    assert optimizer_dataset_error(capability, evaluation) is None
     assert _used(train, evaluation) == [False, False]
     cell = use.use(train, "train")
     first = cell.used_at

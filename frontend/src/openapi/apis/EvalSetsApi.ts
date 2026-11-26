@@ -65,7 +65,7 @@ export interface EvalSetsRetrieveRequest {
 export class EvalSetsApi extends runtime.BaseAPI {
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Activate this set on its capability
      */
     async evalSetsActivateCreateRaw(requestParameters: EvalSetsActivateCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
@@ -115,7 +115,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Activate this set on its capability
      */
     async evalSetsActivateCreate(requestParameters: EvalSetsActivateCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
@@ -124,7 +124,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Create an eval set
      */
     async evalSetsCreateRaw(requestParameters: EvalSetsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
@@ -176,7 +176,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Create an eval set
      */
     async evalSetsCreate(requestParameters: EvalSetsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
@@ -185,7 +185,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Delete an eval set
      */
     async evalSetsDestroyRaw(requestParameters: EvalSetsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -235,7 +235,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Delete an eval set
      */
     async evalSetsDestroy(requestParameters: EvalSetsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -243,7 +243,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * List eval sets
      */
     async evalSetsListRaw(requestParameters: EvalSetsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedEvalSetList>> {
@@ -301,7 +301,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * List eval sets
      */
     async evalSetsList(requestParameters: EvalSetsListRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedEvalSetList> {
@@ -310,7 +310,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Update an eval set\'s name or rows
      */
     async evalSetsPartialUpdateRaw(requestParameters: EvalSetsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
@@ -363,7 +363,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Update an eval set\'s name or rows
      */
     async evalSetsPartialUpdate(requestParameters: EvalSetsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {
@@ -372,7 +372,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Get an eval set
      */
     async evalSetsRetrieveRaw(requestParameters: EvalSetsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EvalSet>> {
@@ -422,7 +422,7 @@ export class EvalSetsApi extends runtime.BaseAPI {
     }
 
     /**
-     * A named selection of matrix rows. The capability\'s active set drives the optimizer, backtests and training evaluations.
+     * A named selection of matrix rows. The capability\'s active set drives live scoring, eval runs and training evaluations.
      * Get an eval set
      */
     async evalSetsRetrieve(requestParameters: EvalSetsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EvalSet> {

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, useState } from "react";
 
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -144,12 +144,10 @@ export function EvalMatrixTable({
   projectId,
   capabilityId,
   capability,
-  actions,
 }: {
   projectId: string;
   capabilityId?: string;
   capability?: Capability;
-  actions?: ReactNode;
 }) {
   const highlights = useActivityHighlights();
   const matrix = useEvalMatrixQuery(projectId, capabilityId);
@@ -309,13 +307,10 @@ export function EvalMatrixTable({
           hasActiveFilters={hasActiveFilters}
           onClearFilters={clearFilters}
           primary={
-            <>
-              {actions}
-              <Button onClick={guard(() => setCreating(true))}>
-                <Icon.add />
-                Add evaluation
-              </Button>
-            </>
+            <Button onClick={guard(() => setCreating(true))}>
+              <Icon.add />
+              Add evaluation
+            </Button>
           }
           search={
             <SearchInput

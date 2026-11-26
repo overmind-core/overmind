@@ -30,8 +30,8 @@ file and follow it:
 - `dataset`: [Datasets](../overmind-datasets/SKILL.md)
 - `model-workflows`: [Develop models from data](../overmind-training/SKILL.md#develop-models-from-data)
 - `finetune`: [Training](../overmind-training/SKILL.md)
-- `optimise`: [Optimiser](../overmind-optimiser/SKILL.md)
-- `backtest`: [Model comparison and backtest](../overmind-optimiser/SKILL.md#model-comparison-and-backtest)
+- `improve`: [references/improve.md](references/improve.md)
+- `compare-models`: [references/compare-models.md](references/compare-models.md)
 
 ## Product surface skills
 
@@ -45,7 +45,6 @@ Each works directly with the configured MCP connection and can be used on its ow
 | [Observability](../overmind-observability/SKILL.md)                  | Traces, failures, signals, latency and Python instrumentation |
 | [Datasets](../overmind-datasets/SKILL.md)                            | Intent and contracts, transformations, lineage, export        |
 | [Evaluations](../overmind-evaluations/SKILL.md)                      | Eval matrix, eval sets, live scoring, runs and comparisons    |
-| [Optimiser](../overmind-optimiser/SKILL.md)                          | Prompt/code experiments, model comparison and backtest        |
 | [Training](../overmind-training/SKILL.md)                            | Model selection, preparation, cost, fine-tuning, data-first   |
 | [Inference](../overmind-inference/SKILL.md)                          | Deployments, serving metrics, inference and activation        |
 | [Integrations](../overmind-integrations/SKILL.md)                    | Provider connectors, boundary mapping and trace import        |
@@ -66,8 +65,6 @@ Route guided work to these exact prompt names:
 - `prepare-evaluation`: check evaluation dataset, eval matrix rows, eval set, and credits.
 - `evaluate-change`: run an evaluation and compare it with a supplied baseline.
 - `finetune-capability`: check, estimate, launch, and verify fine-tuning.
-- `optimize-capability`: schedule and inspect prompt/code optimization.
-- `compare-models`: schedule and inspect model comparison.
 - `ship-model`: verify deployment, activate a model, and hand off repository rollout.
 
 Do not reimplement these workflows as a single generic call. The prompt
@@ -144,7 +141,7 @@ update the report when the outcome changes.
    Use returned scoped resource links and explicit IDs for follow-up work.
    `list_datasets` remains the dataset-specific inventory.
 1. **Contracts gate dataset consumption.** Fine-tuning needs a `train`
-   version; eval runs and optimizer experiments need `eval`; `pending` is
+   version; eval runs need `eval`; `pending` is
    refused. See [Datasets: intent and contracts](../overmind-datasets/SKILL.md#intent-and-contracts).
 1. **Follow structured errors and durable receipts.** Read the error code, fields and retryability. Creation and paid launch are separate where the schema specifies a draft. Authorization already granted for an unchanged saved scope persists through routine continuation. Unresolved provider submissions require receipt recovery; never blindly repeat them.
 1. **Tracing is Python-only and approval-gated.** Check the application code
@@ -171,7 +168,7 @@ update the report when the outcome changes.
   resource for recipe/checkpoint details; absent pins remain unknown.
 - **Async jobs.** Poll returned job references with `get_job(kind, id)`, or inspect up to eight with `inspect_jobs`. Pass its cursor as `after` with `timeout_seconds` (0–30) to wait for changes.
   Source landing uses `kind=dataset_run`; transformations use the returned `kind=dataset_pipeline` and run ID. Other supported kinds include
-  `eval_run`, `finetune_job`, `deployment`, `model_activation`, and `optimizer_experiment`.
+  `eval_run`, `finetune_job`, `deployment` and `model_activation`.
 - `inspect_operation` reads a linked operational receipt, with `after`/`limit`
   pagination over its durable events. It never wakes a worker. Distinguish observed
   state, heartbeat and forward progress; shared-pool telemetry does not prove a
@@ -202,7 +199,6 @@ group's owning skill carries its workflow.
   `start_finetune`, `save_training_plan`, `create_training_experiment`.
 - Serving: `retry_deployment`, `set_active_model`, `set_benchmark_model`,
   `run_inference`, `get_model_swap_prompt`.
-- Optimization: `check_optimizer_readiness`, `start_optimizer`, `inspect_optimizer_result`.
 - Connectors: `inspect_connectors`, `configure_connector`, `sync_connector`.
 
 ## How the workflows chain
@@ -215,15 +211,15 @@ Typical loop (local setup once, then MCP):
    is Python, add tracing; any other language gets none.
 1. **Turn traces into data and shape it**: [Datasets](../overmind-datasets/SKILL.md).
 1. **Grade it**: [Evaluations](../overmind-evaluations/SKILL.md). The capability's
-   active eval set grades live traces, eval runs, backtests, the optimizer and
-   training alike. Finetune and optimizer runs create their own baselines; do not
-   spend a manual eval run just to give them a comparison point.
-1. **Improve**: [Training](../overmind-training/SKILL.md) (**train** dataset),
-   [Optimiser](../overmind-optimiser/SKILL.md) (**eval** dataset; `/overmind optimise`
-   or `/overmind backtest`).
+   active eval set grades live traces, eval runs and training alike. Fine-tuning
+   creates its own baseline; do not spend a manual eval run just to give it a
+   comparison point.
+1. **Improve**: [Training](../overmind-training/SKILL.md) (**train** dataset), or
+   change a prompt or code with [improve](references/improve.md) and try other
+   models with [compare-models](references/compare-models.md) (**eval** dataset).
 1. **Prove it**: `compare_evaluations` new vs the automatic baseline.
 1. **Ship**: [Inference](../overmind-inference/SKILL.md) for activation and
-   `get_model_swap_prompt`, or land the optimizer winner's diff locally.
+   `get_model_swap_prompt`.
 
 ## Resources
 
@@ -254,11 +250,10 @@ The implemented resource templates are:
 - `overmind://signal-events`
 - `overmind://finetunes/{job_id}`
 - `overmind://deployments/{deployment}`
-- `overmind://optimizer-runs/{experiment}`
 - `overmind://connectors/{connector}`
 - `overmind://jobs/{kind}/{id}`
 
-Use a capability, dataset, run, deployment, connector, or experiment name/id
+Use a capability, dataset, run, deployment or connector name/id
 only where the tool schema accepts it. Resource reads are project-scoped and
 return JSON.
 
@@ -276,7 +271,6 @@ the relevant route using a resource ID already resolved through MCP:
 | Dataset        | `datasets/{id}`         |
 | Evaluation run | `evaluations/runs/{id}` |
 | Training       | `training`              |
-| Optimiser      | `optimiser`             |
 | Serving        | `inference`             |
 
 Use the host's browser-opening tool (Codex `open_in_codex` when available), or

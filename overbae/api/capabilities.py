@@ -28,20 +28,6 @@ from overbae.services.capabilities import graph, identity
 from overbae.services.capability_prompts import sync_capability_prompts
 
 
-class EvalSpecResponseSerializer(serializers.Serializer):
-    capability_description = serializers.CharField()
-    source_path = serializers.CharField()
-    input_schema = serializers.JSONField()
-    output_fields = serializers.JSONField()
-    structure_weight = serializers.FloatField()
-    total_points = serializers.FloatField()
-    tool_config = serializers.JSONField()
-    tool_usage_weight = serializers.FloatField()
-    consistency_rules = serializers.JSONField()
-    optimizable_elements = serializers.JSONField()
-    fixed_elements = serializers.JSONField()
-
-
 class GraphEdgeSerializer(serializers.Serializer):
     kind = serializers.ChoiceField(choices=["invokes", "shares_tool"])
     source = serializers.CharField()
@@ -99,7 +85,7 @@ class CapabilityViewSet(
     queryset = Capability.objects.all()
     filterset_class = CapabilityFilter
     search_fields = ["name", "slug", "description", "source_path"]
-    ordering_fields = ["name", "created_at", "total_points"]
+    ordering_fields = ["name", "created_at"]
     lookup_field = "id"
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -132,28 +118,6 @@ class CapabilityViewSet(
 
     def perform_destroy(self, instance):
         instance.set_status(Capability.Status.DELETED)
-
-    @extend_schema(summary="Get capability eval spec", responses={200: EvalSpecResponseSerializer})
-    @action(detail=True, methods=["get"])
-    def eval_spec(self, request, id=None):
-        capability = self.get_object()
-        return Response(
-            EvalSpecResponseSerializer(
-                {
-                    "capability_description": capability.description,
-                    "source_path": capability.source_path,
-                    "input_schema": capability.input_schema,
-                    "output_fields": capability.output_fields,
-                    "structure_weight": capability.structure_weight,
-                    "total_points": capability.total_points,
-                    "tool_config": capability.tool_config,
-                    "tool_usage_weight": capability.tool_usage_weight,
-                    "consistency_rules": capability.consistency_rules,
-                    "optimizable_elements": capability.optimizable_elements,
-                    "fixed_elements": capability.fixed_elements,
-                }
-            ).data
-        )
 
     @extend_schema(
         summary="List the capability's selectable system prompts",

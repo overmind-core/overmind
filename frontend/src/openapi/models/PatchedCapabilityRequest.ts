@@ -35,24 +35,6 @@ export interface PatchedCapabilityRequest {
     toolConfig?: any | null;
     /**
      *
-     * @type {any}
-     * @memberof PatchedCapabilityRequest
-     */
-    consistencyRules?: any | null;
-    /**
-     *
-     * @type {any}
-     * @memberof PatchedCapabilityRequest
-     */
-    optimizableElements?: any | null;
-    /**
-     *
-     * @type {any}
-     * @memberof PatchedCapabilityRequest
-     */
-    fixedElements?: any | null;
-    /**
-     *
      * @type {string}
      * @memberof PatchedCapabilityRequest
      */
@@ -81,12 +63,6 @@ export interface PatchedCapabilityRequest {
      * @memberof PatchedCapabilityRequest
      */
     model?: string;
-    /**
-     *
-     * @type {string}
-     * @memberof PatchedCapabilityRequest
-     */
-    analyzerModel?: string;
     /**
      *
      * @type {string}
@@ -129,24 +105,6 @@ export interface PatchedCapabilityRequest {
      * @memberof PatchedCapabilityRequest
      */
     outputSchema?: any | null;
-    /**
-     *
-     * @type {number}
-     * @memberof PatchedCapabilityRequest
-     */
-    structureWeight?: number;
-    /**
-     *
-     * @type {number}
-     * @memberof PatchedCapabilityRequest
-     */
-    totalPoints?: number;
-    /**
-     *
-     * @type {number}
-     * @memberof PatchedCapabilityRequest
-     */
-    toolUsageWeight?: number;
     /**
      *
      * @type {string}
@@ -229,15 +187,11 @@ export function PatchedCapabilityRequestFromJSONTyped(json: any, ignoreDiscrimin
     return {
 
         'toolConfig': json['tool_config'] == null ? undefined : json['tool_config'],
-        'consistencyRules': json['consistency_rules'] == null ? undefined : json['consistency_rules'],
-        'optimizableElements': json['optimizable_elements'] == null ? undefined : json['optimizable_elements'],
-        'fixedElements': json['fixed_elements'] == null ? undefined : json['fixed_elements'],
         'name': json['name'] == null ? undefined : json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'sourcePath': json['source_path'] == null ? undefined : json['source_path'],
         'entrypointFn': json['entrypoint_fn'] == null ? undefined : json['entrypoint_fn'],
         'model': json['model'] == null ? undefined : json['model'],
-        'analyzerModel': json['analyzer_model'] == null ? undefined : json['analyzer_model'],
         'cliVersion': json['cli_version'] == null ? undefined : json['cli_version'],
         'status': json['status'] == null ? undefined : CapabilityStatusEnumFromJSON(json['status']),
         'observed': json['observed'] == null ? undefined : json['observed'],
@@ -245,9 +199,6 @@ export function PatchedCapabilityRequestFromJSONTyped(json: any, ignoreDiscrimin
         'inputSchema': json['input_schema'] == null ? undefined : json['input_schema'],
         'outputFields': json['output_fields'] == null ? undefined : json['output_fields'],
         'outputSchema': json['output_schema'] == null ? undefined : json['output_schema'],
-        'structureWeight': json['structure_weight'] == null ? undefined : json['structure_weight'],
-        'totalPoints': json['total_points'] == null ? undefined : json['total_points'],
-        'toolUsageWeight': json['tool_usage_weight'] == null ? undefined : json['tool_usage_weight'],
         'policyMarkdown': json['policy_markdown'] == null ? undefined : json['policy_markdown'],
         'toolsSummary': json['tools_summary'] == null ? undefined : json['tools_summary'],
         'decisionLogic': json['decision_logic'] == null ? undefined : json['decision_logic'],
@@ -273,15 +224,11 @@ export function PatchedCapabilityRequestToJSONTyped(value?: PatchedCapabilityReq
     return {
 
         'tool_config': value['toolConfig'],
-        'consistency_rules': value['consistencyRules'],
-        'optimizable_elements': value['optimizableElements'],
-        'fixed_elements': value['fixedElements'],
         'name': value['name'],
         'description': value['description'],
         'source_path': value['sourcePath'],
         'entrypoint_fn': value['entrypointFn'],
         'model': value['model'],
-        'analyzer_model': value['analyzerModel'],
         'cli_version': value['cliVersion'],
         'status': CapabilityStatusEnumToJSON(value['status']),
         'observed': value['observed'],
@@ -289,9 +236,6 @@ export function PatchedCapabilityRequestToJSONTyped(value?: PatchedCapabilityReq
         'input_schema': value['inputSchema'],
         'output_fields': value['outputFields'],
         'output_schema': value['outputSchema'],
-        'structure_weight': value['structureWeight'],
-        'total_points': value['totalPoints'],
-        'tool_usage_weight': value['toolUsageWeight'],
         'policy_markdown': value['policyMarkdown'],
         'tools_summary': value['toolsSummary'],
         'decision_logic': value['decisionLogic'],

@@ -272,7 +272,7 @@ colour across every chart.
 
 An entity's icon carries the accent of its type (`ENTITY_META` in
 `components/entity-ref/shell.tsx`): trace `cat-1`, dataset `cat-2`, capability and
-eval run `cat-3`, model `cat-4`, optimisation and training run `cat-5`, project
+eval run `cat-3`, model `cat-4`, training run `cat-5`, project
 `cat-6`. The label stays neutral. The accent is the type, never a status: a green
 dataset icon does not mean success. `FileTypeIcon` gives a file the accent of what
 it holds. Provider logos use the full-colour mark where `@lobehub/icons` has one.
@@ -655,12 +655,12 @@ tones get away with a 1.65:1 border because their hue does the work.
 
 ### Navigation
 
-- **Sidebar:** 16rem expanded, 3rem icon-collapsed, 18rem mobile. Labels in
-  NeueBit at 1.46em with +0.05em tracking. Transparent border and accent; the
-  separation comes from background tone alone.
+- **Sidebar:** One flat list of first-level items. 16rem expanded, 3rem
+  icon-collapsed, 18rem mobile. Labels in NeueBit at 1.46em with +0.05em
+  tracking. Transparent border and accent; the separation comes from background
+  tone alone.
 - **Active row:** 8% foreground tint, a genuine 700 bitmap cut, foreground-tinted
   icon, 2px radius.
-- **Sub-items:** Connected by the stepped pixel elbow described in Shapes.
 - **Breadcrumbs:** Chevron-separated, NeueBit, active crumb bold, inactive
   `text-muted-foreground hover:text-foreground`.
 
@@ -808,7 +808,7 @@ train table**, **Does not match Research Agent**, **Intent pending**, else
 and allows direct intent/capability changes where the dataset is not frozen. There
 is no automatic repair action; transformations are authored by the native coding agent. Then the
 consumers in the primary tint on the right: a train table offers **Train a
-model**; an eval table offers **Run the optimiser** and **Use in a training
+model**; an eval table offers **Use in a training
 job** (the eval dataset that scores the job); each opens the wizard on its
 page with the current published dataset selected, without changing its active cell.
 Other cells have no activation control or empty action footer. The Console cannot
@@ -877,7 +877,7 @@ deletion with an actionable error. Both formats include a run-details card with 
 Probability runs show participants, the baseline, exact dataset versions and row
 counts, optional calibration data, timestamps and status. Completion time comes
 from the recorded scoring observation; missing credit usage remains unmeasured.
-Evaluation details have no Optimise action. Probability metrics appear above the shared-style
+Probability metrics appear above the shared-style
 comparison table, with models as rows and measured metrics as columns. The baseline
 appears once. Model comparison uses the same DataTable, compact model/baseline
 badges and resizable columns as other Console lists, with benchmark group rows

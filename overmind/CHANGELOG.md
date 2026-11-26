@@ -42,16 +42,16 @@ entries here cover the SDK surface.
 - `overmind sync` reads the `expectations=` declared on the checkout's `entry_point`,
   `workflow` and `observe` decorators and sends them with each synced capability; they never
   enter `overmind.toml`. The platform adds them to the capability's Default eval set, so
-  `overmind backtest`, optimiser runs and training evaluations judge the same criteria as
-  live scoring. Run `overmind sync` again after decorating.
-- `overmind backtest` creates one run per target in a single eval-run group
-  (`targets`, a `recorded` baseline plus one `generate` run per model) and gates
-  on each candidate's `/comparison/` against the baseline.
+  eval runs and training evaluations judge the same criteria as live scoring. Run
+  `overmind sync` again after decorating.
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 
 ### Added
 
+- `/overmind improve` and `/overmind compare-models`: helper workflows in the
+  `overmind` skill. A coding agent measures a prompt or code change with live
+  scoring, or scores other models on recorded calls with an eval run.
 - `overmind dataset attach FILE --json` uploads a table without creating a
   dataset and prints its `upload_id`, rows and sha256; a dataset script reads it
   as the frame `attachment` through `try_dataset_script` or `add_dataset_version`.
@@ -97,6 +97,17 @@ entries here cover the SDK surface.
 
 ### Removed
 
+- `overmind optimise`, `overmind backtest`, the `overmind-optimiser` skill and the
+  `/overmind optimise` and `/overmind backtest` routes. The platform no longer runs
+  optimiser experiments or model comparisons. `overmind init` deletes the installed
+  `overmind-optimiser` skill.
+- The `overmind.attrs` constants for the `overmind.command`, `overmind.optimize.*`,
+  `overmind.setup.*`, `overmind.init.*`, `overmind.run.*`, `overmind.run_state.*`,
+  `overmind.candidates.*`, `overmind.seed_validation.*`, `overmind.seed_coverage.*`
+  and `overmind.coding_agent.*` attributes, the evaluator's `overmind.eval.*`
+  batch attributes (`EVAL_BATCH_SIZE` to `EVAL_SOURCE_SUMMARY`), and the
+  `OVERMIND_TRACE_FILE` trace-file mode the optimiser used.
+- `layer_cmd` is now `finetune_cmd`.
 - `observe_safe` — use `observe(capture="none")` (or `init(redact_keys=...)`).
 - `function`, `conversation`, `get_tracer`, `set_agent_id`, `set_agent_name`,
   `set_project_id` are no longer exported; identity rides on

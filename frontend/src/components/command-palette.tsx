@@ -107,15 +107,6 @@ const NAV_KEYWORDS: Record<string, string[]> = {
     "delete connector",
     "remove connector",
   ],
-  "/optimiser": [
-    "optimiser",
-    "optimizer",
-    "optimize",
-    "optimisation",
-    "model comparison",
-    "delete experiment",
-    "remove experiment",
-  ],
   "/projects": ["projects", "create project", "new project", "delete project", "remove project"],
   "/settings": [
     "settings",
@@ -271,19 +262,6 @@ const ACTIONS: ActionDef[] = [
     label: "Delete finetune job",
     projectScoped: true,
     to: "/training",
-  },
-  {
-    icon: Icon.optimiser,
-    id: "action:delete-experiment",
-    keywords: [
-      "delete experiment",
-      "remove experiment",
-      "delete optimizer experiment",
-      "delete optimisation",
-    ],
-    label: "Delete experiment",
-    projectScoped: true,
-    to: "/optimiser",
   },
 ];
 

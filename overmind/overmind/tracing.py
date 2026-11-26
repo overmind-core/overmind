@@ -539,8 +539,8 @@ class _GenAiUsageSpanProcessor(SpanProcessor):
 
 
 def _attach_remote_parent_if_present() -> None:
-    """Attach the W3C ``TRACEPARENT`` env var (injected by the optimiser into
-    agent subprocesses) as the ambient parent context. No-op when absent."""
+    """Attach the W3C ``TRACEPARENT`` env var (set by a parent process that launched
+    this one) as the ambient parent context. No-op when absent."""
     raw = os.environ.get("TRACEPARENT") or os.environ.get("OTEL_TRACEPARENT")
     if not raw:
         return
@@ -754,30 +754,6 @@ def init(
             enable_tracing(providers)
             if debug:
                 _log_debug_summary("(unchanged — already initialised)", capability_id, capability_name, project_id)
-            _track_sdk_init("success", providers=providers, capability_id=capability_id)
-            return True
-
-        # Optimise-step subprocess: the runner wrapper set up a file-exporter
-        # provider (OVERMIND_TRACE_FILE) and stripped the API key — reuse it
-        # instead of crashing or replacing the exporter.
-        if os.environ.get("OVERMIND_TRACE_FILE") and not (overmind_api_key or os.environ.get("OVERMIND_API_KEY")):
-            from overmind import __version__ as sdk_version
-
-            logger.debug(
-                "Overmind SDK init() skipped: OVERMIND_TRACE_FILE is set and no "
-                "OVERMIND_API_KEY available; reusing the local file-exporter "
-                "TracerProvider configured by the optimise runner wrapper.",
-            )
-            _ensure_pipeline_processors(trace.get_tracer_provider())
-            _tracer = trace.get_tracer("overmind", sdk_version)
-            _seed_identity_context(capability_id, capability_name, project_id)
-            enable_tracing(providers)
-            _attach_remote_parent_if_present()
-            _initialized = True
-            if debug:
-                _log_debug_summary(
-                    f"file:{os.environ['OVERMIND_TRACE_FILE']}", capability_id, capability_name, project_id
-                )
             _track_sdk_init("success", providers=providers, capability_id=capability_id)
             return True
 
