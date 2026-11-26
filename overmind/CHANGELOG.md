@@ -52,6 +52,9 @@ entries here cover the SDK surface.
 
 ### Added
 
+- `/overmind improve` and `/overmind compare-models`: helper workflows in the
+  `overmind` skill. A coding agent changes a prompt or code, or tries other models,
+  and measures the result with eval runs or live scoring.
 - `overmind dataset attach FILE --json` uploads a table without creating a
   dataset and prints its `upload_id`, rows and sha256; a dataset script reads it
   as the frame `attachment` through `try_dataset_script` or `add_dataset_version`.
@@ -99,9 +102,8 @@ entries here cover the SDK surface.
 
 - `overmind optimise`, `overmind backtest`, the `overmind-optimiser` skill and the
   `/overmind optimise` and `/overmind backtest` routes. The platform no longer runs
-  optimiser experiments or model comparisons; compare models with an eval run that
-  has a `recorded` baseline target. Run `overmind init` again to refresh skill files
-  that an earlier version copied into the repository.
+  optimiser experiments or model comparisons. `overmind init` deletes the installed
+  `overmind-optimiser` skill.
 - The `overmind.optimize.*`, `overmind.setup.*` and `overmind.init.*` span
   attributes, and the `OVERMIND_TRACE_FILE` trace-file mode the optimiser used.
 - `layer_cmd` is now `finetune_cmd`.

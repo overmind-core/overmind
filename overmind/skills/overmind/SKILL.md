@@ -30,6 +30,8 @@ file and follow it:
 - `dataset`: [Datasets](../overmind-datasets/SKILL.md)
 - `model-workflows`: [Develop models from data](../overmind-training/SKILL.md#develop-models-from-data)
 - `finetune`: [Training](../overmind-training/SKILL.md)
+- `improve`: [references/improve.md](references/improve.md)
+- `compare-models`: [references/compare-models.md](references/compare-models.md)
 
 ## Product surface skills
 
@@ -212,7 +214,9 @@ Typical loop (local setup once, then MCP):
    active eval set grades live traces, eval runs and training alike. Fine-tuning
    creates its own baseline; do not spend a manual eval run just to give it a
    comparison point.
-1. **Improve**: [Training](../overmind-training/SKILL.md) (**train** dataset).
+1. **Improve**: [Training](../overmind-training/SKILL.md) (**train** dataset), or
+   change a prompt or code with [improve](references/improve.md) and try other
+   models with [compare-models](references/compare-models.md) (**eval** dataset).
 1. **Prove it**: `compare_evaluations` new vs the automatic baseline.
 1. **Ship**: [Inference](../overmind-inference/SKILL.md) for activation and
    `get_model_swap_prompt`.

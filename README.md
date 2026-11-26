@@ -50,6 +50,8 @@ Sign up at [console.overmindlab.ai](https://console.overmindlab.ai/?utm_source=g
 | `/overmind ensure-tracing` | Inspect traces and instrument the agent  |
 | `/overmind dataset`        | Build, clean, upload or export a dataset |
 | `/overmind finetune`       | Fine-tune, deploy and smoke-test a model |
+| `/overmind improve`        | Change a prompt or code and measure it   |
+| `/overmind compare-models` | Score other models on recorded calls     |
 
 ### Run it yourself
 

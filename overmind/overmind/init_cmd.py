@@ -21,7 +21,7 @@ from overmind.config import (
     load,
     saved_project_api_key,
 )
-from overmind.skills import get_destination_dir, sync_skills
+from overmind.skills import get_destination_dir, remove_retired_skills, sync_skills
 from overmind.skills_db import skills
 
 console = Console()
@@ -254,6 +254,7 @@ def run_init(
     mcp_url, base_url = resolve_mcp_url(env, configured_url)
 
     sync_skills([skill.slug for skill in skills], ide=ide)
+    remove_retired_skills(ide)
     dest = get_destination_dir(ide)
     console.print(f"Skills → {dest}/skills ({len(skills)})")
 
