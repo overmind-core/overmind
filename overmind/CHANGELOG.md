@@ -42,11 +42,8 @@ entries here cover the SDK surface.
 - `overmind sync` reads the `expectations=` declared on the checkout's `entry_point`,
   `workflow` and `observe` decorators and sends them with each synced capability; they never
   enter `overmind.toml`. The platform adds them to the capability's Default eval set, so
-  `overmind backtest`, optimiser runs and training evaluations judge the same criteria as
-  live scoring. Run `overmind sync` again after decorating.
-- `overmind backtest` creates one run per target in a single eval-run group
-  (`targets`, a `recorded` baseline plus one `generate` run per model) and gates
-  on each candidate's `/comparison/` against the baseline.
+  eval runs and training evaluations judge the same criteria as live scoring. Run
+  `overmind sync` again after decorating.
 - `overmind dataset upload` inspects the upload before creating the dataset; the
   server now refuses an uninspected upload, so older CLI versions must upgrade.
 
