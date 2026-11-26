@@ -655,12 +655,12 @@ tones get away with a 1.65:1 border because their hue does the work.
 
 ### Navigation
 
-- **Sidebar:** 16rem expanded, 3rem icon-collapsed, 18rem mobile. Labels in
-  NeueBit at 1.46em with +0.05em tracking. Transparent border and accent; the
-  separation comes from background tone alone.
+- **Sidebar:** One flat list of first-level items. 16rem expanded, 3rem
+  icon-collapsed, 18rem mobile. Labels in NeueBit at 1.46em with +0.05em
+  tracking. Transparent border and accent; the separation comes from background
+  tone alone.
 - **Active row:** 8% foreground tint, a genuine 700 bitmap cut, foreground-tinted
   icon, 2px radius.
-- **Sub-items:** Connected by the stepped pixel elbow described in Shapes.
 - **Breadcrumbs:** Chevron-separated, NeueBit, active crumb bold, inactive
   `text-muted-foreground hover:text-foreground`.
 

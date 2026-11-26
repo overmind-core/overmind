@@ -92,7 +92,6 @@ export const Icon = {
   menu: glyph("menu"),
   minimap: glyph("map"),
   model: glyph("cpu"),
-  models: glyph("neural-network-2"),
   notify: glyph("bell"),
   observability: glyph("eye"),
   observabilityTitle: Eyeball,
