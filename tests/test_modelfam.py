@@ -89,9 +89,9 @@ def test_models_json_all_resolve() -> None:
 def test_serve_image_key_from_base_model() -> None:
     assert serve_image_key("ft-abc", "unsloth/Muse-Glimmer-30B") == "vllm"
     assert serve_image_key("ft-abc") == "vllm"
-    assert serve_image_key("ft-abc", "Qwen/Qwen3-8B") == "sglang"
-    assert serve_image_key("Qwen/Qwen3-8B") == "sglang"
-    assert serve_image_key("unsloth/Qwen3-14B") == "sglang"
+    assert serve_image_key("ft-abc", "Qwen/Qwen3.5-4B") == "sglang"
+    assert serve_image_key("Qwen/Qwen3.5-4B") == "sglang"
+    assert serve_image_key("unsloth/Qwen3.5-4B") == "sglang"
     assert serve_image_key("Qwen/Qwen3-Coder-30B-A3B-Instruct") == "vllm"
     assert serve_image_key("LiquidAI/LFM3-1.7B") == "sglang_lfm3"
     assert serve_image_key("ft-292bb9da-lfm3-1-7b") == "sglang_lfm3"
@@ -193,7 +193,7 @@ def test_finetune_hf_base_uses_unsloth_catalog_row() -> None:
     from overbae.modal.model_registry import get_hf_base
 
     with override_settings(FINETUNING_BACKEND="modal"):
-        assert get_hf_base("Qwen/Qwen3-8B") == "unsloth/Qwen3-8B"
+        assert get_hf_base("Qwen/Qwen3.5-9B") == "unsloth/Qwen3.5-9B"
 
 
 def test_trust_and_llama31() -> None:
@@ -467,6 +467,38 @@ def test_enabled_catalog_excludes_always_on_thinking() -> None:
         if not entry.get("disabled") and catalog_hf_id(entry) in ALWAYS_ON_THINKING_HF_IDS
     ]
     assert not enabled_hits, f"always-on thinking bases must be disabled: {enabled_hits}"
+
+
+_RETIRED_FOR_SUCCESSOR = (
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/Qwen2.5-Coder-32B-Instruct",
+    "Qwen/Qwen3-1.7B",
+    "Qwen/Qwen3-4B",
+    "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-14B",
+    "Qwen/Qwen3-32B",
+    "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "Qwen/Qwen3.5-27B",
+)
+
+
+def test_successor_retirements_stay_out_of_training_and_serving() -> None:
+    data = json.loads(_MODELS_JSON.read_text())
+    by_id = {entry["id"]: entry for entry in data["models"]}
+    for model_id in _RETIRED_FOR_SUCCESSOR:
+        assert model_id not in by_id
+    for model_id in (
+        "Qwen/Qwen3-0.6B",
+        "Qwen/Qwen3.5-4B",
+        "Qwen/Qwen3.6-27B",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct",
+    ):
+        assert by_id[model_id]["disabled"] is False
 
 
 def test_lfm25_2_6b_is_disabled() -> None:

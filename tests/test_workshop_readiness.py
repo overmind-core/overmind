@@ -112,7 +112,7 @@ def test_worker_prompt_reports_capability_mismatch(capability, frame_of):
 def test_unreviewed_data_can_start_model_preprocessing(capability, settings):
     settings.FINETUNING_BACKEND = "modal"
     ds = make_dataset(capability, intent="train")
-    prep = request_preparation(ds.active_cell, "Qwen/Qwen3-8B", 4096)
+    prep = request_preparation(ds.active_cell, "Qwen/Qwen3.5-9B", 4096)
     assert prep.state == "queued" and ds.active_cell.used_at is None
 
 
@@ -140,7 +140,7 @@ def test_training_create_allows_warnings_and_freezes_pair_atomically(capability)
         "capability": str(capability.id),
         "eval_dataset": str(evaluation.id),
         "eval_set": str(eval_set.id),
-        "base_model": "Qwen/Qwen3-8B",
+        "base_model": "Qwen/Qwen3.5-9B",
         "name": "Screening",
         "validation_enabled": False,
     }

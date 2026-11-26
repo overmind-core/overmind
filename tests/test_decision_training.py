@@ -111,4 +111,4 @@ def test_native_full_weight_training_is_rejected_before_gpu_allocation(settings)
     project = Project.objects.create(name="Native method", slug="native-method")
     dataset = frozen_dataset(project, [example()], contract="train")
     with pytest.raises(ValueError, match="decision training currently supports LoRA"):
-        request_preparation(dataset.active_cell, "Qwen/Qwen3-8B", 4096, training_type="full")
+        request_preparation(dataset.active_cell, "Qwen/Qwen3.5-9B", 4096, training_type="full")

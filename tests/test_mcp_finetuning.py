@@ -62,7 +62,7 @@ def test_preparation_and_deployment_errors_are_safe_for_agents(monkeypatch, tool
         monkeypatch.setattr(tools_finetuning, "begin_preparation", Mock(side_effect=failure))
         arguments = {
             "dataset": str(train.id),
-            "base_model": "Qwen/Qwen3-8B",
+            "base_model": "Qwen/Qwen3.5-9B",
             "context_length": 4096,
         }
     else:
@@ -116,7 +116,7 @@ def test_exact_preparation_has_pollable_project_scoped_receipt(settings, monkeyp
     monkeypatch.setattr(tools_finetuning.inspect_preparation, "delay", lambda *a: None)
     result = _call(
         "prepare_training_data",
-        {"dataset": str(dataset.id), "base_model": "Qwen/Qwen3-8B", "context_length": 4096},
+        {"dataset": str(dataset.id), "base_model": "Qwen/Qwen3.5-9B", "context_length": 4096},
         context,
     )
     assert not result.isError, result.structuredContent
@@ -519,7 +519,7 @@ def test_repeated_launch_key_returns_one_job_and_rejects_changed_recipe(monkeypa
     arguments = {
         "dataset": str(train.id),
         "cell": str(train.active_cell.id),
-        "base_model": "Qwen/Qwen2.5-7B-Instruct",
+        "base_model": "Qwen/Qwen3.5-9B",
         "request_key": "one-experiment",
         "hyperparameters": {"training_type": {"type": "Lora"}, "seed": 17},
         "eval_model_before": False,

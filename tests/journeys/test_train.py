@@ -122,7 +122,7 @@ def test_train(
             "dataset": train,
             "eval_dataset": evals,
             "eval_set": eval_set,
-            "base_model": "Qwen/Qwen3-8B",
+            "base_model": "Qwen/Qwen3.5-9B",
             "capability": "answer",
         },
     )["finetune"]["id"]

@@ -31,7 +31,7 @@ def training(workshop, cli, sample_agent, worker, sft, fake_modal, beat, tmp_pat
             "request_key": "train-support-model",
             "dataset": train,
             "eval_dataset": evals,
-            "base_model": "Qwen/Qwen3-1.7B",
+            "base_model": "Qwen/Qwen3.5-2B",
             "capability": "answer",
             "eval_model_before": False,
         },

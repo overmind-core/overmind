@@ -40,8 +40,8 @@ class TestCatalogContextPolicy:
             get_training_context_policy("no-such-backend")
 
     def test_modal_models_are_not_uniformly_capped(self):
-        assert get_sft_context_length("Qwen/Qwen3-8B", backend="modal") == 40960
-        assert get_sft_context_length("Qwen/Qwen2.5-7B-Instruct", backend="modal") == 32768
+        assert get_sft_context_length("Qwen/Qwen3-0.6B", backend="modal") == 40960
+        assert get_sft_context_length("LiquidAI/LFM2.5-350M", backend="modal") == 32768
         assert get_sft_context_length("meta-llama/Llama-3.1-8B-Instruct", backend="modal") == 131072
         assert get_sft_context_length("Qwen/Qwen3.5-9B", backend="modal") == 262144
         assert get_sft_context_length("fdtn-ai/antares-1b", backend="modal") == 131072
@@ -55,7 +55,7 @@ class TestCatalogContextPolicy:
 class TestRecommendFiltersByDatasetContext:
     @override_settings(FINETUNING_BACKEND="modal")
     def test_eligible_models_drop_short_context(self):
-        # 50k tokens: Qwen2.5 (32k) and Qwen3 dense (40k) drop; Llama/Qwen3.5 remain.
+        # 50k tokens: Qwen3-0.6B trains at 40K and drops; Llama 8B and Qwen 3.5 remain.
         filtered, excluded = eligible_models(has_tool_calling=False, max_row_tokens=50_000)
         surviving = {m["id"] for models in filtered.values() for m in models}
         assert surviving, "some models must still fit at 50k"
@@ -63,12 +63,11 @@ class TestRecommendFiltersByDatasetContext:
             (get_sft_context_length(mid, backend="modal") or 0) >= 50_000 + _HEADROOM
             for mid in surviving
         )
-        assert "Qwen/Qwen2.5-7B-Instruct" not in surviving
-        assert "Qwen/Qwen3-8B" not in surviving
+        assert "Qwen/Qwen3-0.6B" not in surviving
         assert "meta-llama/Llama-3.1-8B-Instruct" in surviving
 
         reasons = {e.model: e.reason for e in excluded}
-        assert "50,000" in reasons["Qwen/Qwen3-8B"]
+        assert "50,000" in reasons["Qwen/Qwen3-0.6B"]
 
     @override_settings(FINETUNING_BACKEND="modal")
     def test_analysis_excludes_short_context_models(self):
@@ -180,7 +179,7 @@ class TestJobSerializerContextValidation:
         detail = "This workload needs a larger context window." if known else private
         operation = Mock(side_effect=failure_type(detail))
         monkeypatch.setattr(f"overbae.api.serializers.{source}", operation)
-        serializer = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        serializer = self._serializer(max_token_length=100, base_model="Qwen/Qwen3.5-9B")
         assert not serializer.is_valid()
         operation.assert_called_once()
         assert private not in str(serializer.errors)
@@ -243,13 +242,13 @@ class TestJobSerializerContextValidation:
 
     @override_settings(FINETUNING_BACKEND="modal")
     def test_rows_within_model_max_pass(self):
-        s = self._serializer(max_token_length=12309, base_model="Qwen/Qwen3-8B")
+        s = self._serializer(max_token_length=12309, base_model="Qwen/Qwen3.5-9B")
         assert s.is_valid(), s.errors
 
     @pytest.mark.parametrize("field", ["eval_dataset", "eval_set"])
     @pytest.mark.parametrize("omit", [True, False])
     def test_enabled_training_evaluations_require_inputs_without_capability(self, field, omit):
-        s = self._serializer(max_token_length=100, base_model="Qwen/Qwen3-8B")
+        s = self._serializer(max_token_length=100, base_model="Qwen/Qwen3.5-9B")
         s.initial_data["eval_model_before"] = True
         if omit:
             s.initial_data.pop(field)
