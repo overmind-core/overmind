@@ -95,7 +95,7 @@ def test_runner_transfers_only_bound_selections_and_worker_restores_exact_tokens
         validation_cell=validation.active_cell,
         validation_enabled=True,
         provider="modal",
-        base_model="Qwen/Qwen3-8B",
+        base_model="Qwen/Qwen3.5-9B",
         hyperparameters={
             "n_epochs": 1,
             "context_length": 4096,
