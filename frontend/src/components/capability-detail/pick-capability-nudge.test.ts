@@ -5,7 +5,6 @@ import { pickCapabilityNudge } from "./pick-capability-nudge";
 
 const ALL_FLAGS = {
   datasets: true,
-  evaluations: true,
   finetuning: true,
   inference: true,
 };
@@ -18,21 +17,8 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [],
         finetuningJobs: [],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 0,
       })
     ).toEqual({ kind: "upload" });
-  });
-
-  it("returns optimise when an eval dataset exists and no experiments", () => {
-    expect(
-      pickCapabilityNudge({
-        datasets: [{ contract: "eval" }],
-        deployedModels: [],
-        finetuningJobs: [],
-        flags: ALL_FLAGS,
-        optimiserExperimentCount: 0,
-      })
-    ).toEqual({ kind: "optimise" });
   });
 
   it("returns finetune when an ft dataset exists and no jobs", () => {
@@ -42,19 +28,17 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [],
         finetuningJobs: [],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 0,
       })
     ).toEqual({ kind: "finetune" });
   });
 
-  it("prefers finetune over optimise when both datasets exist", () => {
+  it("returns finetune when eval and training datasets both exist", () => {
     expect(
       pickCapabilityNudge({
         datasets: [{ contract: "eval" }, { contract: "train" }],
         deployedModels: [],
         finetuningJobs: [],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 0,
       })?.kind
     ).toBe("finetune");
   });
@@ -66,7 +50,6 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [{ finetuningJobId: "j1", id: "m1", status: "failed" }],
         finetuningJobs: [{ createdAt: "2024-01-02", id: "j1", status: "succeeded" }],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 1,
       })
     ).toEqual({ jobId: "j1", kind: "deploy", modelId: "m1" });
   });
@@ -78,7 +61,6 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [{ finetuningJobId: "j1", id: "m1", status: "ready" }],
         finetuningJobs: [{ createdAt: "2024-01-02", id: "j1", status: "succeeded" }],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 1,
       })
     ).toBeNull();
   });
@@ -90,7 +72,6 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [],
         finetuningJobs: [{ id: "j1", status: "running" }],
         flags: ALL_FLAGS,
-        optimiserExperimentCount: 0,
       })
     ).toBeNull();
   });
@@ -102,7 +83,6 @@ describe("pickCapabilityNudge", () => {
         deployedModels: [],
         finetuningJobs: [],
         flags: { ...ALL_FLAGS, datasets: false },
-        optimiserExperimentCount: 0,
       })
     ).toBeNull();
   });

@@ -1,7 +1,7 @@
 """How consumers read a cell's rows.
 
 A row is addressed by ``(cell, index)``; ``DatasetRow`` is the in-process
-shape eval, training and the optimiser work with, so none of them touch
+shape eval and training work with, so neither touches
 Parquet directly.
 """
 

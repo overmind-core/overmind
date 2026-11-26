@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   datasetsSearchSchema,
   evaluationsSearchSchema,
-  optimiserSearchSchema,
   tracesSearchSchema,
   trainingSearchSchema,
 } from "./schemas";
@@ -87,29 +86,6 @@ describe("schemas", () => {
     it("falls back to unfiltered for a status only the generic Job model has", () => {
       const result = evaluationsSearchSchema.parse({ run_status: "partially_completed" });
       expect(result.run_status).toBe("all");
-    });
-  });
-
-  describe("optimiserSearchSchema", () => {
-    it("round-trips a deep link carrying both a page and filters", () => {
-      const result = optimiserSearchSchema.parse({
-        page: "2",
-        run_capability: "capability-1",
-        run_search: "gpt",
-        run_status: "running",
-      });
-      expect(result.page).toBe(2);
-      expect(result.run_capability).toBe("capability-1");
-      expect(result.run_search).toBe("gpt");
-      expect(result.run_status).toBe("running");
-    });
-    it("accepts optimize + capability deep-link params", () => {
-      const result = optimiserSearchSchema.parse({
-        capabilityId: "capability-1",
-        optimize: true,
-      });
-      expect(result.optimize).toBe(true);
-      expect(result.capabilityId).toBe("capability-1");
     });
   });
 

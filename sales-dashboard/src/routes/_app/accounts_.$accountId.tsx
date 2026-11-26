@@ -74,7 +74,7 @@ function AccountPage() {
 }
 
 function AccountBody({ data, days }: { data: UserActivity; days: number }) {
-  const { training, traces, inference, datasets, optimizer, evaluations, billing } = data;
+  const { training, traces, inference, datasets, evaluations, billing } = data;
   const trainingByDay = new Map(training.daily.map((point) => [point.day.slice(0, 10), point]));
   const trainingDaily = fillDays([], days, data.computed_at).map(({ day }) => {
     const values = trainingByDay.get(day)?.values ?? {};
@@ -112,7 +112,6 @@ function AccountBody({ data, days }: { data: UserActivity; days: number }) {
           value={formatInt(inference.models)}
         />
         <Stat label="Datasets" value={formatInt(datasets.total)} />
-        <Stat label="Optimiser runs" value={formatInt(optimizer.total)} />
         <Stat label="Evaluations" value={formatInt(evaluations.total)} />
         <Stat label="Projects" value={formatInt(data.user.projects)} />
       </div>
@@ -159,14 +158,9 @@ function AccountBody({ data, days }: { data: UserActivity; days: number }) {
           values={inference.by_model}
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Breakdown format={formatInt} title="Datasets by source" values={datasets.by_source} />
         <Breakdown format={formatInt} title="Datasets by intent" values={datasets.by_intent} />
-        <Breakdown
-          format={formatInt}
-          title="Optimiser runs by status"
-          values={optimizer.by_status}
-        />
         <Breakdown
           format={formatInt}
           title="Evaluations by status"

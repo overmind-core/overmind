@@ -97,6 +97,14 @@ entries here cover the SDK surface.
 
 ### Removed
 
+- `overmind optimise`, `overmind backtest`, the `overmind-optimiser` skill and the
+  `/overmind optimise` and `/overmind backtest` routes. The platform no longer runs
+  optimiser experiments or model comparisons; compare models with an eval run that
+  has a `recorded` baseline target. Run `overmind init` again to refresh skill files
+  that an earlier version copied into the repository.
+- The `overmind.optimize.*`, `overmind.setup.*` and `overmind.init.*` span
+  attributes, and the `OVERMIND_TRACE_FILE` trace-file mode the optimiser used.
+- `layer_cmd` is now `finetune_cmd`.
 - `observe_safe` — use `observe(capture="none")` (or `init(redact_keys=...)`).
 - `function`, `conversation`, `get_tracer`, `set_agent_id`, `set_agent_name`,
   `set_project_id` are no longer exported; identity rides on

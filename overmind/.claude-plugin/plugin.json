@@ -15,7 +15,6 @@
     "observability",
     "tracing",
     "agent",
-    "optimization",
     "mcp"
   ],
   "skills": "./skills/",

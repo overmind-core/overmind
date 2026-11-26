@@ -18,9 +18,7 @@ import { displayJobStatus, type RunningJobItem } from "@/lib/running-jobs";
 import { cn } from "@/lib/utils";
 
 function kindLabel(kind: RunningJobItem["kind"]): string {
-  if (kind === "finetuning") return "Fine-tuning";
-  if (kind === "optimizer") return "Optimiser";
-  return "Eval";
+  return kind === "finetuning" ? "Fine-tuning" : "Eval";
 }
 
 function JobRow({
@@ -66,13 +64,7 @@ function JobTaskLink({ job }: { job: RunningJobItem }) {
     <span>
       <ActivityTaskChip
         id={job.id}
-        kind={
-          job.kind === "finetuning"
-            ? "finetune_job"
-            : job.kind === "eval"
-              ? "eval_run"
-              : "optimizer_experiment"
-        }
+        kind={job.kind === "finetuning" ? "finetune_job" : "eval_run"}
         projectId={projectId}
       />
       {job.datasetId && (

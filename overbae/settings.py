@@ -555,10 +555,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "overbae.tasks.guest_cleanup.sweep_guest_workspaces",
         "schedule": 86400.0,
     },
-    "reconcile-optimizer-experiments": {
-        "task": "overbae.tasks.optimizer_reconciler.reconcile_optimizer_experiments",
-        "schedule": 10.0,
-    },
     "reconcile-deployments": {
         "task": "overbae.tasks.inference_controller.reconcile_deployments",
         "schedule": 15.0,

@@ -20,8 +20,7 @@ export const Icon = {
   add: glyph("plus"),
   addUser: glyph("user-plus"),
   agent: glyph("robot-body"),
-  agentTesting: glyph("test-tubes"),
-  ai: glyph("sparkle"), // the "optimise / AI / magic" affordance (not Sparkles)
+  ai: glyph("sparkle"), // the "AI / magic" affordance (not Sparkles)
   algorithm: glyph("algorithm"),
   analytics: glyph("analytics"),
   arrowDown: glyph("arrow-down"),
@@ -97,8 +96,6 @@ export const Icon = {
   notify: glyph("bell"),
   observability: glyph("eye"),
   observabilityTitle: Eyeball,
-  optimiser: glyph("speed-fast"),
-  optimiserTitle: TitleChart,
   overmind: OvermindEyeMono,
   panelLeftClose: glyph("arrow-bar-left"),
   panelLeftOpen: glyph("arrow-bar-right"),

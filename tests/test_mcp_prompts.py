@@ -73,7 +73,7 @@ def test_lists_the_small_prompt_manifest_over_transport():
     assert {prompt["name"] for prompt in response.json()["result"]["prompts"]} == {
         prompt.name for prompt in PROMPTS
     }
-    assert len(PROMPTS) == 14
+    assert len(PROMPTS) == 12
 
 
 def test_upload_prompt_requires_local_path_and_keeps_optional_shape():
@@ -124,8 +124,6 @@ def test_dataset_prompts_do_not_use_retired_workshop_language():
         "prepare-evaluation",
         "evaluate-change",
         "finetune-capability",
-        "optimize-capability",
-        "compare-models",
         "upload-dataset-file",
         "export-dataset",
     }

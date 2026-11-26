@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db.models import Prefetch, Q
+from django.db.models import Q
 from mcp import types
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.shared.exceptions import McpError
@@ -41,8 +41,6 @@ from overbae.models import (
     FinetuningJob,
     InferenceRequest,
     ModelActivation,
-    OptimizerCandidate,
-    OptimizerExperiment,
     SignalEvent,
     SignalSubscription,
     Span,
@@ -92,7 +90,6 @@ from sandbox.documents.languages import LANGUAGES
 JSON_MIME = "application/json"
 _MAX_EVENTS = 20
 _MAX_LIST = 50
-_OPTIMIZER_PATCH_CAP = 4_000
 _ERROR_CAP = 1_000
 
 
@@ -1151,179 +1148,6 @@ def _deployment_resource(project, value: str, uri: str) -> dict:
     }
 
 
-_DISCONNECTED = {"connected": False, "hostname": "", "cli_version": "", "heartbeat_at": None}
-
-
-def _optimizer_resource(project, value: str, uri: str) -> dict:
-    normalized_id = uuid_reference(value)
-    experiment = (
-        OptimizerExperiment.objects.filter(project=project, id=normalized_id)
-        .select_related("capability", "dataset")
-        .first()
-        if normalized_id
-        else None
-    )
-    if experiment is None:
-        raise _not_found("optimizer run", value)
-    candidates = OptimizerCandidate.objects.select_related("eval_run").order_by("candidate_index")
-    iterations = list(
-        experiment.iterations.order_by("order").prefetch_related(
-            Prefetch("candidates", queryset=candidates)
-        )[: _MAX_LIST + 1]
-    )
-    bounded_iterations = iterations[:_MAX_LIST]
-    candidate_rows: list[dict] = []
-    iteration_rows = []
-    links = [
-        resource_link(
-            "optimizer-runs", str(experiment.id), f"Optimizer {experiment.capability.name}"
-        )
-    ]
-    for iteration in bounded_iterations:
-        iteration_candidates = list(iteration.candidates.all())
-        bounded_candidates = iteration_candidates[:_MAX_LIST]
-        rows = []
-        for candidate in bounded_candidates:
-            patch = (candidate.code_path or "")[:_OPTIMIZER_PATCH_CAP]
-            row = {
-                "id": str(candidate.id),
-                "index": candidate.candidate_index,
-                "status": candidate.status,
-                "is_baseline": candidate.is_baseline,
-                "target_model": candidate.target_model or None,
-                "score": candidate.score,
-                "scores": safe_json(candidate.scores or {}),
-                "patch": patch or None,
-                "patch_truncated": len(candidate.code_path or "") > _OPTIMIZER_PATCH_CAP,
-                "eval_run": (
-                    resource_link("eval-runs", str(candidate.eval_run_id), candidate.eval_run.name)
-                    if candidate.eval_run_id and candidate.eval_run is not None
-                    else None
-                ),
-            }
-            rows.append(row)
-            candidate_rows.append(row)
-            if row["eval_run"] is not None:
-                links.append(row["eval_run"])
-        iteration_rows.append(
-            {
-                "id": str(iteration.id),
-                "order": iteration.order,
-                "name": iteration.name
-                or ("Baseline" if iteration.order == 0 else f"Iteration {iteration.order}"),
-                "status": iteration.status,
-                "scores": safe_json(iteration.scores or {}),
-                "candidates": rows,
-                "candidates_truncated": len(iteration_candidates) > len(bounded_candidates),
-            }
-        )
-
-    state = safe_json(experiment.state or {})
-    winner_id = str((experiment.state or {}).get("winner_candidate_id") or "")
-    winner = next((row for row in candidate_rows if row["id"] == winner_id), None)
-    if winner is None and winner_id:
-        selected = (
-            OptimizerCandidate.objects.filter(experiment=experiment, id=winner_id)
-            .select_related("eval_run")
-            .first()
-        )
-        if selected is not None:
-            patch = (selected.code_path or "")[:_OPTIMIZER_PATCH_CAP]
-            winner = {
-                "id": str(selected.id),
-                "target_model": selected.target_model or None,
-                "score": selected.score,
-                "is_baseline": selected.is_baseline,
-                "patch": patch or None,
-            }
-    comparison = state.get("model_comparison") if isinstance(state, dict) else None
-    if winner is None and experiment.mode == OptimizerExperiment.Mode.MODEL_COMPARISON:
-        if isinstance(comparison, dict) and comparison.get("overall_winner") == "incumbent":
-            winner = {
-                "id": None,
-                "target_model": None,
-                "score": float(comparison.get("incumbent_score") or 0.0),
-                "kind": "incumbent",
-            }
-        elif isinstance(comparison, dict) and comparison.get("selected_winner"):
-            selected = (
-                OptimizerCandidate.objects.filter(
-                    experiment=experiment, target_model=comparison["selected_winner"]
-                )
-                .order_by("-score", "-iteration__order", "candidate_index")
-                .first()
-            )
-            if selected is not None:
-                winner = {
-                    "id": str(selected.id),
-                    "target_model": selected.target_model or None,
-                    "score": selected.score,
-                    "kind": "candidate",
-                    "is_baseline": selected.is_baseline,
-                    "patch": (selected.code_path or "")[:_OPTIMIZER_PATCH_CAP] or None,
-                }
-    if winner is None:
-        possible = [row for row in candidate_rows if not row["is_baseline"]]
-        if experiment.mode == OptimizerExperiment.Mode.OPTIMIZE:
-            baseline = float((experiment.scores or {}).get("baseline") or 0.0)
-            possible = [row for row in possible if row["patch"] and row["score"] > baseline]
-        winner = max(possible, key=lambda row: row["score"], default=None)
-
-    terminal = experiment.status in {
-        OptimizerExperiment.Status.COMPLETED,
-        OptimizerExperiment.Status.FAILED,
-        OptimizerExperiment.Status.CANCELLED,
-    }
-    if terminal:
-        next_action = {
-            "state": "inspect_result",
-            "message": "The optimizer experiment is terminal.",
-            "command": None,
-        }
-    else:
-        next_action = {
-            "state": "run_executioner",
-            "message": "Drive the experiment with the local CLI.",
-            "command": f"overmind optimise start -e {experiment.id} && overmind optimise next",
-        }
-    job_link = resource_link("jobs", f"optimizer_experiment/{experiment.id}", "Optimizer job")
-    links.insert(1, job_link)
-    return {
-        "uri": uri,
-        "kind": "optimizer_run",
-        "id": str(experiment.id),
-        "status": experiment.status,
-        "capability": experiment.capability.slug if experiment.capability_id else None,
-        "dataset": str(experiment.dataset_id) if experiment.dataset_id else None,
-        "mode": experiment.mode,
-        "current_iteration": experiment.current_iteration,
-        "num_iterations": experiment.num_iterations,
-        "scores": safe_json(experiment.scores or {}),
-        "state": state,
-        "failure_reason": experiment.failure_reason[:1_000],
-        "iterations": iteration_rows,
-        "iterations_truncated": len(iterations) > len(bounded_iterations),
-        "winner": (
-            {
-                "candidate_id": winner["id"],
-                "target_model": winner["target_model"],
-                "score": winner["score"],
-                "kind": winner.get("kind", "candidate"),
-            }
-            if winner is not None
-            else None
-        ),
-        # The lease protocol is gone: the local CLI drives the run and never
-        # registers a connection, so both blocks are permanently disconnected.
-        "executioner": _DISCONNECTED,
-        "connection": _DISCONNECTED,
-        "next_action": next_action,
-        "resource_links": links[: _MAX_LIST + 2],
-        "created_at": experiment.created_at,
-        "updated_at": experiment.updated_at,
-    }
-
-
 def _job_resource(project, kind: str, value: str, uri: str) -> dict:
     if kind == "inference_request":
         request = InferenceRequest.objects.filter(project=project, pk=uuid_reference(value)).first()
@@ -1411,8 +1235,6 @@ def _job_resource(project, kind: str, value: str, uri: str) -> dict:
         }
     if kind in {"deployment", "model_deployment"}:
         return _deployment_resource(project, value, uri)
-    if kind in {"optimizer", "optimizer_run", "optimizer_experiment"}:
-        return _optimizer_resource(project, value, uri)
     normalized_id = uuid_reference(value)
     if kind == "dataset_transfer":
         from overbae.services.datasets import transfers
@@ -1742,7 +1564,6 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "eval-sets",
             "finetunes",
             "deployments",
-            "optimizer-runs",
             "connectors",
         }
         and len(segments) == 1
@@ -1756,7 +1577,6 @@ def _read_resource_sync(project, raw_uri: str) -> dict:
             "eval-sets": _eval_set_resource,
             "finetunes": _finetune_resource,
             "deployments": _deployment_resource,
-            "optimizer-runs": _optimizer_resource,
             "connectors": _connector_resource,
         }
         return kind_map[host](project, segments[0], raw_uri)
@@ -1889,7 +1709,6 @@ def resource_templates() -> list[types.ResourceTemplate]:
         ),
         ("finetune", "overmind://finetunes/{job_id}", "Fine-tuning job status"),
         ("deployment", "overmind://deployments/{deployment}", "Deployment status"),
-        ("optimizer-run", "overmind://optimizer-runs/{experiment}", "Optimizer run status"),
         ("connector", "overmind://connectors/{connector}", "Connector metadata and sync status"),
         ("job", "overmind://jobs/{kind}/{id}", "Project job status"),
         (

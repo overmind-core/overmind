@@ -462,14 +462,10 @@ class CapabilityListSerializer(serializers.ModelSerializer):
             "model",
             "active_model",
             "benchmark_model",
-            "structure_weight",
-            "total_points",
-            "tool_usage_weight",
             "status",
             "observed",
             "suggested_name",
             "entrypoint_fn",
-            "analyzer_model",
             "dataset_size",
             "dataset_has_expected_output",
             "dataset_input_keys",
@@ -676,17 +672,13 @@ class CapabilityFlowSerializer(serializers.Serializer):
 class CapabilitySerializer(serializers.ModelSerializer):
     activation = ModelActivationSerializer(read_only=True, allow_null=True)
     tool_config = serializers.JSONField(required=False, allow_null=True)
-    consistency_rules = serializers.JSONField(required=False, allow_null=True)
-    optimizable_elements = serializers.JSONField(required=False, allow_null=True)
-    fixed_elements = serializers.JSONField(required=False, allow_null=True)
     dataset_size = serializers.SerializerMethodField()
     flow = serializers.SerializerMethodField()
 
     class Meta:
         model = Capability
         fields = "__all__"
-        # ``slug`` stays immutable: OTLP ingest, optimizer runs and external
-        # references resolve by it.
+        # ``slug`` stays immutable: OTLP ingest and external references resolve by it.
         read_only_fields = [
             "id",
             "slug",
@@ -770,17 +762,8 @@ class CapabilitySerializer(serializers.ModelSerializer):
         attrs = super().validate(attrs)
         # Back-filling defaults on a partial update would clobber JSONB columns
         # (a PATCH of ``policy_markdown`` alone would wipe ``tool_config``).
-        if self.partial:
-            return attrs
-        defaults = {
-            "tool_config": {},
-            "consistency_rules": [],
-            "optimizable_elements": [],
-            "fixed_elements": [],
-        }
-        for key, default in defaults.items():
-            if attrs.get(key) is None:
-                attrs[key] = default.copy() if isinstance(default, (dict, list)) else default
+        if not self.partial and attrs.get("tool_config") is None:
+            attrs["tool_config"] = {}
         return attrs
 
 
@@ -2517,7 +2500,6 @@ class CatalogModelSerializer(serializers.Serializer):
 class ModelDefaultsSerializer(serializers.Serializer):
     judge_model = serializers.CharField()
     judge_models = serializers.ListField(child=serializers.CharField())
-    backtest_models = serializers.ListField(child=serializers.CharField())
 
 
 class ModelCatalogResponseSerializer(serializers.Serializer):

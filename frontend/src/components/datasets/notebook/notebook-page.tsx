@@ -167,15 +167,10 @@ export function DatasetNotebook({
           search: { capabilityId, datasetId, projectId, train: true },
           to: "/training",
         });
-      } else if (purpose === "train_eval") {
+      } else {
         void navigate({
           search: { capabilityId, evalDatasetId: datasetId, projectId, train: true },
           to: "/training",
-        });
-      } else {
-        void navigate({
-          search: { capabilityId, datasetId, optimize: true, projectId },
-          to: "/optimiser",
         });
       }
     },

@@ -47,12 +47,6 @@ skills = [
         provider="overmind-core",
     ),
     Skill(
-        name="Overmind Optimiser",
-        slug="overmind-optimiser",
-        description="Improve prompts, code and model choices",
-        provider="overmind-core",
-    ),
-    Skill(
         name="Model Training Engineering",
         slug="model-training-engineering",
         description="Engineer evidence-led data, training and model comparisons",

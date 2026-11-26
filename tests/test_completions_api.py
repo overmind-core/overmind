@@ -422,93 +422,12 @@ class TestChatCompletionsEndpoint:
         assert chat.status_code == status.HTTP_404_NOT_FOUND
         assert all(row["finetuned"] for row in listed.json()["data"])
 
-    def test_unlisted_slug_without_optimiser_header_returns_404(self):
+    def test_unlisted_slug_returns_404(self):
         u, p = _user(), _project()
         _membership(u, p)
         r = _jwt_client(u).post(
             self.URL,
             {"model": "mistralai/mistral-large", "messages": self.MESSAGES},
-            format="json",
-        )
-        assert r.status_code == status.HTTP_404_NOT_FOUND
-
-    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
-    def test_optimiser_header_bypasses_the_allowlist_for_api_keys_only(self):
-        u, p = _user(), _project()
-        _membership(u, p)
-        fake_resp = {
-            "id": "chatcmpl-opt",
-            "object": "chat.completion",
-            "model": "mistralai/mistral-large",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "Hi!"},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        }
-        mock_post = MagicMock()
-        mock_post.return_value.ok = True
-        mock_post.return_value.json.return_value = fake_resp
-        with patch("overbae.api.completions._requests.post", mock_post):
-            r = _api_key_client(u, p).post(
-                self.URL,
-                {"model": "mistralai/mistral-large", "messages": self.MESSAGES},
-                format="json",
-                HTTP_X_OVERMIND_OPTIMISER="1",
-            )
-        assert r.status_code == status.HTTP_200_OK
-        assert r.json()["id"] == "chatcmpl-opt"
-        assert mock_post.call_args.kwargs["json"]["model"] == "mistralai/mistral-large"
-
-        # The same header on a JWT session buys nothing — the allowlist still gates.
-        with patch("overbae.api.completions._requests.post", mock_post):
-            jwt = _jwt_client(u).post(
-                self.URL,
-                {"model": "mistralai/mistral-large", "messages": self.MESSAGES},
-                format="json",
-                HTTP_X_OVERMIND_OPTIMISER="1",
-            )
-        assert jwt.status_code == status.HTTP_404_NOT_FOUND
-
-    @override_settings(OPENROUTER_API_KEY="or-test", OPENROUTER_PROXY_ENABLED=True)
-    def test_optimiser_bare_model_name_resolves_to_full_slug(self):
-        u, p = _user(), _project()
-        _membership(u, p)
-        fake_resp = {
-            "id": "chatcmpl-opt",
-            "object": "chat.completion",
-            "model": "openai/gpt-5-mini",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "Hi!"},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        }
-        mock_post = MagicMock()
-        mock_post.return_value.ok = True
-        mock_post.return_value.json.return_value = fake_resp
-        with patch("overbae.api.completions._requests.post", mock_post):
-            r = _api_key_client(u, p).post(
-                self.URL,
-                {"model": "gpt-5-mini", "messages": self.MESSAGES},
-                format="json",
-                HTTP_X_OVERMIND_OPTIMISER="1",
-            )
-        assert r.status_code == status.HTTP_200_OK
-        assert mock_post.call_args.kwargs["json"]["model"] == "openai/gpt-5-mini"
-
-    def test_bare_model_name_without_optimiser_header_still_404s(self):
-        u, p = _user(), _project()
-        _membership(u, p)
-        r = _jwt_client(u).post(
-            self.URL,
-            {"model": "gpt-5-mini", "messages": self.MESSAGES},
             format="json",
         )
         assert r.status_code == status.HTTP_404_NOT_FOUND

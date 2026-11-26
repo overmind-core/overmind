@@ -1,4 +1,4 @@
-"""Score or fine-tune from stored LLM calls. The application is not run."""
+"""Fine-tune from stored LLM calls. The application is not run."""
 
 from __future__ import annotations
 
@@ -18,28 +18,26 @@ from overmind.config import DEFAULT_PATH, Config, load, resolve_api_credentials
 
 console = Console()
 
-BACKTEST_CAP = 5
 FINETUNE_CAP = 4
 _DURATION = re.compile(r"^(\d+)([dhm])$")
-_PASS = {"improved", "unchanged"}
 
 
-class LayerError(Exception):
+class FinetuneError(Exception):
     def __init__(self, message: str, *, code: int = 1):
         super().__init__(message)
         self.code = code
 
 
-def parse_models(values: list[str] | None, *, cap: int) -> list[str]:
+def parse_models(values: list[str] | None) -> list[str]:
     models: list[str] = []
     for value in values or []:
         models.extend(part.strip() for part in value.split(",") if part.strip())
     if not models:
-        raise LayerError(f"Pass between 1 and {cap} models with --models.")
+        raise FinetuneError(f"Pass between 1 and {FINETUNE_CAP} models with --models.")
     if len(models) != len(set(models)):
-        raise LayerError("Duplicate models are not allowed.")
-    if len(models) > cap:
-        raise LayerError(f"Select between 1 and {cap} models.")
+        raise FinetuneError("Duplicate models are not allowed.")
+    if len(models) > FINETUNE_CAP:
+        raise FinetuneError(f"Select between 1 and {FINETUNE_CAP} models.")
     return models
 
 
@@ -61,7 +59,7 @@ def parse_until(value: str) -> datetime | None:
 def parse_timeout(value: str) -> float:
     match = _DURATION.match(value.strip())
     if not match:
-        raise LayerError("timeout must look like 45m, 2h or 1d.")
+        raise FinetuneError("timeout must look like 45m, 2h or 1d.")
     count, unit = int(match.group(1)), match.group(2)
     scale = {"m": 60, "h": 3600, "d": 86400}[unit]
     return float(count * scale)
@@ -72,7 +70,7 @@ def _parse_iso(value: str, *, what: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError as exc:
-        raise LayerError(f"{what} must be an ISO timestamp or a duration like 7d.") from exc
+        raise FinetuneError(f"{what} must be an ISO timestamp or a duration like 7d.") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
@@ -88,13 +86,13 @@ def resolve_capability(config: Config, reference: str) -> tuple[str, str]:
         try:
             return str(uuid.UUID(reference)), reference[:8]
         except ValueError as exc:
-            raise LayerError("Capability not found in overmind.toml. Pass its slug or id.") from exc
+            raise FinetuneError("Capability not found in overmind.toml. Pass its slug or id.") from exc
     if len(caps) == 1:
         cap = caps[0]
         return cap.id, cap.slug or cap.id[:8]
     if not caps:
-        raise LayerError("Pass --capability. overmind.toml has no capability id.")
-    raise LayerError("Pass --capability. overmind.toml has more than one.")
+        raise FinetuneError("Pass --capability. overmind.toml has no capability id.")
+    raise FinetuneError("Pass --capability. overmind.toml has more than one.")
 
 
 class Client:
@@ -118,21 +116,9 @@ class Client:
             if dataset.get("state") == "idle":
                 return dataset
             if dataset.get("state") == "error":
-                raise LayerError(dataset.get("error") or "Landing failed.")
+                raise FinetuneError(dataset.get("error") or "Landing failed.")
             if self.clock() >= deadline:
-                raise LayerError("Timed out waiting for the dataset.", code=2)
-            self.sleep(2)
-
-    def wait_eval(self, run_id: str, *, deadline: float) -> dict[str, Any]:
-        while True:
-            run = self.get(f"/api/eval-runs/{run_id}/")
-            status = run.get("status")
-            if status == "completed":
-                return run
-            if status in {"failed", "cancelled"}:
-                raise LayerError(run.get("error") or f"Evaluation {status}.")
-            if self.clock() >= deadline:
-                raise LayerError("Timed out waiting for the evaluation.", code=2)
+                raise FinetuneError("Timed out waiting for the dataset.", code=2)
             self.sleep(2)
 
 
@@ -149,7 +135,7 @@ def _json(response: requests.Response, operation: str) -> dict[str, Any]:
         detail = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
     elif getattr(response, "text", ""):
         detail = str(response.text)[:400]
-    raise LayerError(detail or f"{operation} failed ({response.status_code}).")
+    raise FinetuneError(detail or f"{operation} failed ({response.status_code}).")
 
 
 def _cell_id(dataset: dict[str, Any]) -> str:
@@ -157,7 +143,7 @@ def _cell_id(dataset: dict[str, Any]) -> str:
         return str(dataset["active"])
     cells = dataset.get("cells") or []
     if not cells:
-        raise LayerError("The dataset has no version.")
+        raise FinetuneError("The dataset has no version.")
     return str(cells[0]["id"])
 
 
@@ -181,13 +167,6 @@ def _selection(
     return body
 
 
-def _openrouter_ids(client: Client) -> set[str]:
-    catalog = client.get("/api/models/catalog/")
-    if catalog.get("upstream_available") is False:
-        raise LayerError("The model catalog is unavailable.")
-    return {str(item.get("id")) for item in catalog.get("models") or [] if item.get("id")}
-
-
 def _finetune_ids(client: Client) -> set[str]:
     catalog = client.get("/api/finetuning-jobs/models/")
     found: set[str] = set()
@@ -203,106 +182,11 @@ def _finetune_ids(client: Client) -> set[str]:
     return found
 
 
-def _require_models(client: Client, models: list[str], *, finetune: bool) -> None:
-    known = _finetune_ids(client) if finetune else _openrouter_ids(client)
+def _require_models(client: Client, models: list[str]) -> None:
+    known = _finetune_ids(client)
     missing = [model for model in models if model not in known]
     if missing:
-        raise LayerError(f"Unknown model: {', '.join(missing)}.")
-
-
-def _metric_errors(run: dict[str, Any]) -> int:
-    metrics = (run.get("summary") or {}).get("metrics") or {}
-    return sum(int(row.get("errors") or 0) for row in metrics.values() if isinstance(row, dict))
-
-
-def _gate(client: Client, baseline: dict[str, Any], candidates: list[dict[str, Any]]) -> int:
-    failed = _metric_errors(baseline) > 0
-    console.print(f"{'recorded':<40} {'unscored' if failed else 'baseline'}")
-    for run in candidates:
-        overall = client.get(f"/api/eval-runs/{run['id']}/comparison/").get("overall") or {}
-        status = overall.get("status") or "missing"
-        errors = _metric_errors(run)
-        if errors and status in _PASS:
-            status = "unscored"
-        candidate = overall.get("candidate")
-        delta = overall.get("delta")
-        score = "" if candidate is None else f"{candidate:.3f}"
-        change = "" if delta is None else f"{delta:+.3f}"
-        console.print(f"{run['label']:<40} {score:<8} {status:<12} {change}")
-        if status not in _PASS or errors:
-            failed = True
-    return 1 if failed else 0
-
-
-def run_backtest(
-    client: Client,
-    *,
-    project_id: str,
-    capability_id: str,
-    capability_slug: str,
-    models: list[str],
-    since: datetime,
-    until: datetime | None,
-    limit: int,
-    from_model: str,
-    timeout_s: float,
-) -> int:
-    _require_models(client, models, finetune=False)
-    capability = client.get(f"/api/capabilities/{capability_id}/")
-    eval_set = capability.get("active_eval_set")
-    if not eval_set:
-        raise LayerError("The capability has no eval set.")
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    created = client.post(
-        "/api/datasets/",
-        {
-            "project": project_id,
-            "name": f"backtest {capability_slug} {stamp}"[:255],
-            "capability": capability_id,
-            "intent": "eval",
-            "source": {
-                "llm_calls": _selection(
-                    capability_id=capability_id,
-                    since=since,
-                    until=until,
-                    limit=limit,
-                    from_model=from_model,
-                )
-            },
-        },
-    )
-    deadline = client.clock() + timeout_s
-    dataset = client.wait_dataset(str(created["id"]), deadline=deadline)
-    kept = (dataset.get("source_spec") or {}).get("kept")
-    skipped = (dataset.get("source_spec") or {}).get("skipped")
-    console.print(f"{kept if kept is not None else dataset.get('rows')} calls, {skipped or 0} skipped")
-    targets = [
-        {"label": "recorded", "mode": "recorded", "is_baseline": True},
-        *[
-            {
-                "label": model,
-                "mode": "generate",
-                "model_name": model,
-                "params": {"generation_strategy": "single_completion"},
-            }
-            for model in models
-        ],
-    ]
-    group = client.post(
-        "/api/eval-runs/",
-        {
-            "project": project_id,
-            "name": f"backtest {capability_slug} {stamp}"[:255],
-            "dataset": dataset["id"],
-            "cell": _cell_id(dataset),
-            "eval_set": eval_set,
-            "max_items": int(dataset.get("rows") or limit),
-            "targets": targets,
-        },
-    )
-    finished = [client.wait_eval(str(run["id"]), deadline=deadline) for run in group["runs"]]
-    baseline = next(run for run in finished if run.get("is_baseline"))
-    return _gate(client, baseline, [run for run in finished if not run.get("is_baseline")])
+        raise FinetuneError(f"Unknown model: {', '.join(missing)}.")
 
 
 def run_finetune(
@@ -319,11 +203,11 @@ def run_finetune(
     eval_percent: int,
     timeout_s: float,
 ) -> int:
-    _require_models(client, models, finetune=True)
+    _require_models(client, models)
     capability = client.get(f"/api/capabilities/{capability_id}/")
     eval_set = capability.get("active_eval_set")
     if not eval_set:
-        raise LayerError("The capability has no eval set.")
+        raise FinetuneError("The capability has no eval set.")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     created = client.post(
         "/api/datasets/split/",
@@ -367,10 +251,10 @@ def run_finetune(
                 },
             )
             queued.append(f"{model} {job['id']}")
-    except LayerError as exc:
+    except FinetuneError as exc:
         for line in queued:
             console.print(line)
-        raise LayerError(f"{exc} Queued: {len(queued)}.", code=1) from exc
+        raise FinetuneError(f"{exc} Queued: {len(queued)}.", code=1) from exc
     console.print(f"group {group_id}")
     for line in queued:
         console.print(line)
@@ -382,9 +266,9 @@ def _client(api_key: str, api_url: str, path) -> tuple[Client, Config]:
     try:
         key, url = resolve_api_credentials(api_key, api_url, config)
     except ValueError as exc:
-        raise LayerError(str(exc)) from exc
+        raise FinetuneError(str(exc)) from exc
     if not key:
-        raise LayerError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
+        raise FinetuneError("Missing API key. Pass --api-key or set OVERMIND_API_KEY.")
     session = requests.Session()
     session.headers["X-Api-Key"] = key
     return Client(session, url), config
@@ -403,60 +287,14 @@ def _common(
     client, config = _client(api_key, api_url, path)
     project = project_id.strip() or config.project_id.strip()
     if not project:
-        raise LayerError("Missing project-id. Pass --project-id or add project-id to overmind.toml.")
+        raise FinetuneError("Missing project-id. Pass --project-id or add project-id to overmind.toml.")
     capability_id, slug = resolve_capability(config, capability)
     now = datetime.now(timezone.utc)
     start = parse_since(since, now=now)
     end = parse_until(until)
     if end is not None and end < start:
-        raise LayerError("until is before since.")
+        raise FinetuneError("until is before since.")
     return client, project, capability_id, slug, start, end
-
-
-def backtest(
-    models: Annotated[
-        list[str] | None,
-        typer.Option("--models", help="1–5 model ids, comma-separated or repeated."),
-    ] = None,
-    capability: Annotated[str, typer.Option("--capability", help="Capability slug or id.")] = "",
-    since: Annotated[str, typer.Option("--since", help="ISO timestamp or a duration like 7d.")] = "7d",
-    until: Annotated[str, typer.Option("--until", help="ISO timestamp.")] = "",
-    limit: Annotated[int, typer.Option("--limit", min=1, max=10_000)] = 200,
-    from_model: Annotated[str, typer.Option("--from-model", help="Only spans recorded from this model.")] = "",
-    timeout: Annotated[str, typer.Option("--timeout", help="Wait budget, like 45m.")] = "45m",
-    project_id: Annotated[str, typer.Option("--project-id")] = "",
-    api_key: Annotated[str, typer.Option("--api-key", envvar="OVERMIND_API_KEY")] = "",
-    api_url: Annotated[str, typer.Option("--api-url", envvar="OVERMIND_API_URL")] = "",
-    path: Annotated[Path, typer.Option("--path", help="Path to overmind.toml")] = DEFAULT_PATH,
-) -> None:
-    """Score models on stored LLM calls. Exit 1 when any model regresses."""
-    try:
-        chosen = parse_models(models, cap=BACKTEST_CAP)
-        client, project, capability_id, slug, start, end = _common(
-            api_key=api_key,
-            api_url=api_url,
-            path=path,
-            project_id=project_id,
-            capability=capability,
-            since=since,
-            until=until,
-        )
-        code = run_backtest(
-            client,
-            project_id=project,
-            capability_id=capability_id,
-            capability_slug=slug,
-            models=chosen,
-            since=start,
-            until=end,
-            limit=limit,
-            from_model=from_model,
-            timeout_s=parse_timeout(timeout),
-        )
-    except LayerError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(exc.code) from exc
-    raise typer.Exit(code)
 
 
 def finetune(
@@ -478,7 +316,7 @@ def finetune(
 ) -> None:
     """Start one fine-tune job per model from stored LLM calls. Does not wait for training."""
     try:
-        chosen = parse_models(models, cap=FINETUNE_CAP)
+        chosen = parse_models(models)
         client, project, capability_id, slug, start, end = _common(
             api_key=api_key,
             api_url=api_url,
@@ -501,7 +339,7 @@ def finetune(
             eval_percent=eval_percent,
             timeout_s=parse_timeout(timeout),
         )
-    except LayerError as exc:
+    except FinetuneError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(exc.code) from exc
     raise typer.Exit(code)

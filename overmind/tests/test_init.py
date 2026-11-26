@@ -19,7 +19,6 @@ SURFACE_SKILLS = (
     "overmind-observability",
     "overmind-datasets",
     "overmind-evaluations",
-    "overmind-optimiser",
     "model-training-engineering",
     "overmind-training",
     "overmind-inference",

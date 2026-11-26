@@ -28,7 +28,7 @@ Codex, Cursor or OpenCode, and asks the person to sign in once.
 ## Install
 
 ```bash
-pip install overmind              # CLI (`overmind init`, sync, dataset/model files, optimiser)
+pip install overmind              # CLI (`overmind init`, sync, dataset/model files, fine-tuning)
 pip install "overmind[tracing]"   # OpenTelemetry tracing (optional extra)
 ```
 
@@ -296,7 +296,6 @@ untouched. Codex loads project configuration only for trusted repositories.
 | `overmind-observability` | Investigate traces, failures, latency and instrumentation gaps  |
 | `overmind-datasets`      | Prepare, verify, generate and export Data Workshop versions     |
 | `overmind-evaluations`   | Author eval matrix rows, prepare runs and compare results       |
-| `overmind-optimiser`     | Run prompt/code experiments and model comparisons               |
 | `overmind-training`      | Prepare exact inputs, estimate costs and inspect fine-tuning    |
 | `overmind-inference`     | Inspect serving metrics, worker state and live routing          |
 | `overmind-integrations`  | Configure provider mappings and verify imported traces          |
@@ -378,7 +377,6 @@ overmind dataset export DATASET     Download committed rows as JSONL or CSV
 overmind connector add TYPE         Add a tracing connector from env or a TTY prompt
 overmind model download-checkpoint DEPLOYMENT
                                     Download an archived fine-tuned checkpoint
-overmind optimise [OPTIONS]         SDK loop the /overmind optimise skill drives
 overmind skills list [--verbose]    List installed/available skills
 overmind skills sync <name>...      Sync one or more skills to the latest version
 ```

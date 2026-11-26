@@ -62,8 +62,6 @@ COMMANDS: dict[str, str] = {
     # "overmind-ensure-tracing": "../overmind-observability/SKILL.md",
     # "overmind-dataset": "../overmind-datasets/SKILL.md",
     # "overmind-finetune": "../overmind-training/SKILL.md",
-    # "overmind-optimise": "../overmind-optimiser/SKILL.md",
-    # "overmind-backtest": "../overmind-optimiser/SKILL.md",
 }
 
 SLASH_LABELS: dict[str, str] = {
@@ -73,19 +71,15 @@ SLASH_LABELS: dict[str, str] = {
     "overmind-ensure-tracing": "/overmind ensure-tracing",
     "overmind-dataset": "/overmind dataset",
     "overmind-finetune": "/overmind finetune",
-    "overmind-optimise": "/overmind optimise",
-    "overmind-backtest": "/overmind backtest",
 }
 
 COMMAND_DESCRIPTIONS: dict[str, str] = {
-    "overmind": "Route Overmind setup, tracing, datasets, finetune, optimise, and backtest",
+    "overmind": "Route Overmind setup, tracing, datasets and finetune",
     "overmind-onboard": "Connect this repository to Overmind",
     "overmind-setup": "Scan the repository and sync capabilities",
     "overmind-ensure-tracing": "Inspect traces and instrument the agent",
     "overmind-dataset": "Build, clean, upload, or export a dataset",
     "overmind-finetune": "Fine-tune, deploy, and smoke-test a model",
-    "overmind-optimise": "Run prompt and code optimisation",
-    "overmind-backtest": "Compare models in the repository",
 }
 
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---\n*", re.DOTALL)

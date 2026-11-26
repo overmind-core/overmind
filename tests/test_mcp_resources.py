@@ -20,7 +20,6 @@ from overbae.models import (
     EvalRun,
     EvalSet,
     FinetuningJob,
-    OptimizerExperiment,
     Project,
     ProjectMembership,
     Span,
@@ -153,7 +152,6 @@ def test_resource_templates_cover_the_public_resource_surface():
         "overmind://eval-sets/{eval_set}",
         "overmind://finetunes/{job_id}",
         "overmind://deployments/{deployment}",
-        "overmind://optimizer-runs/{experiment}",
         "overmind://jobs/{kind}/{id}",
         "overmind://operations/{id}",
         "overmind://jobs/data_exploration/{id}/strata",
@@ -306,11 +304,6 @@ def test_resource_reads_are_json_and_project_scoped():
         base_model="model/base",
     )
     deployment = DeployedModel.objects.create(project=project, model_id="ft-support")
-    optimizer = OptimizerExperiment.objects.create(
-        project=project,
-        capability=capability,
-        dataset=dataset,
-    )
     token = APIToken(scope={"scope": "project", "permission": ["read"]})
     context = MCPContext(user=User(email="resource@example.com"), token=token, project=project)
 
@@ -323,7 +316,6 @@ def test_resource_reads_are_json_and_project_scoped():
         f"overmind://eval-runs/{eval_run.id}",
         f"overmind://finetunes/{finetune.id}",
         f"overmind://deployments/{deployment.id}",
-        f"overmind://optimizer-runs/{optimizer.id}",
         f"overmind://jobs/dataset_run/{dataset.id}",
     ]
 

@@ -10,7 +10,7 @@ company — with thirty days of traffic across three capabilities (ticket triage
 KB answering, dispute resolution) and every downstream surface filled: an eval
 matrix and eval sets, live span and trajectory scores with `EvalScore` history,
 signal subscriptions and events, sessions, datasets with immutable cell chains,
-grouped eval runs, optimiser runs (harness, model comparison), training jobs
+grouped eval runs, training jobs
 with judge evals and class metrics, deployed models with inference traffic, and
 the credits ledger.
 
@@ -35,7 +35,7 @@ labelled Demo; they never imply that a real coding agent performed the seeded wo
 Celery beat + reconcilers stay running against the seeded DB. Violations cause
 workers to re-drive seeded rows against **real providers** and spend credits:
 
-- Every `EvalRun` / `FinetuningJob` / `OptimizerExperiment` / dataset `Cell`
+- Every `EvalRun` / `FinetuningJob` / dataset `Cell`
   is TERMINAL (reconcilers re-drive non-terminal rows within 10–60s).
 - The span sweep re-scores any span whose `eval_attributes` lacks a `score`
   key, and the trajectory sweep any root from the last day with a `score` but

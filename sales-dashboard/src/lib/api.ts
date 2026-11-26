@@ -146,7 +146,6 @@ export type UserActivity = Cached & {
     by_intent: Record<string, number>;
     daily: Daily[];
   };
-  optimizer: Workflow;
   evaluations: Workflow;
 };
 

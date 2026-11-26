@@ -13,10 +13,6 @@ from overbae.models import (
     EvalSet,
     Feedback,
     ModelRef,
-    OptimizerCandidate,
-    OptimizerCommand,
-    OptimizerExperiment,
-    OptimizerIteration,
     Project,
     ProjectMembership,
     SignalEvent,
@@ -31,141 +27,6 @@ from overbae.models import (
 @admin.register(Dataset)
 @admin.register(Cell)
 class DatasetAdmin(admin.ModelAdmin): ...
-
-
-@admin.register(OptimizerExperiment)
-class OptimizerExperimentAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "capability",
-        "status",
-        "current_iteration",
-        "num_iterations",
-        "created_at",
-    ]
-    list_filter = ["status"]
-    search_fields = ["id", "capability__name"]
-    readonly_fields = ["id", "created_at", "updated_at"]
-
-
-@admin.register(OptimizerIteration)
-class OptimizerIterationAdmin(admin.ModelAdmin):
-    list_display = ["id", "experiment", "order", "name", "status", "created_at"]
-    list_filter = ["status"]
-    search_fields = ["id", "experiment__id"]
-    readonly_fields = ["id", "created_at"]
-
-
-@admin.register(OptimizerCandidate)
-class OptimizerCandidateAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "iteration",
-        "candidate_index",
-        "is_baseline",
-        "score",
-        "status",
-        "created_at",
-    ]
-    list_filter = ["status", "is_baseline"]
-    search_fields = ["id", "iteration__id"]
-    readonly_fields = ["id", "created_at"]
-    actions = ["mark_evaluated"]
-
-    @admin.action(description="Mark candidates as evaluated.")
-    def mark_evaluated(self, request, queryset):
-        updated = queryset.update(status=OptimizerCandidate.Status.EVALUATED)
-        self.message_user(request, f"{updated} candidate(s) set to evaluated.")
-
-
-@admin.register(OptimizerCommand)
-class OptimizerCommandAdmin(admin.ModelAdmin):
-    actions = ["mark_pending"]
-    list_display = [
-        "id",
-        "iteration",
-        "datapoint_index",
-        "status",
-        "score",
-        "created_at",
-    ]
-    search_fields = [
-        "id",
-        "experiment__id",
-        "candidate__id",
-        "iteration__id",
-        "original_trace_id",
-        "command",
-        "code_path",
-        "error",
-    ]
-    list_filter = [
-        "experiment",
-        "candidate",
-        "iteration",
-        "status",
-        "trace_type",
-        "timeout",
-        "created_at",
-    ]
-    readonly_fields = [
-        "id",
-        "created_at",
-        "updated_at",
-    ]
-    fieldsets = (
-        (
-            "Identifiers",
-            {
-                "fields": [
-                    "id",
-                    "experiment",
-                    "candidate",
-                    "iteration",
-                    "datapoint_index",
-                ]
-            },
-        ),
-        (
-            "Command Details",
-            {
-                "fields": [
-                    "command",
-                    "code_path",
-                    "trace_type",
-                    "original_trace_id",
-                    "timeout",
-                    "status",
-                ]
-            },
-        ),
-        (
-            "Results",
-            {
-                "fields": [
-                    "input",
-                    "output",
-                    "result",
-                    "score",
-                    "error",
-                ]
-            },
-        ),
-        (
-            "Timestamps",
-            {
-                "fields": [
-                    "created_at",
-                    "updated_at",
-                ]
-            },
-        ),
-    )
-
-    @admin.action(description="Change the status of all selected commands to pending.")
-    def mark_pending(self, request, queryset):
-        updated = queryset.update(status=OptimizerCommand.Status.PENDING)
-        self.message_user(request, f"{updated} command(s) set to pending.")
 
 
 @admin.register(User)
@@ -302,22 +163,16 @@ class CapabilityAdmin(admin.ModelAdmin):
         ),
         (
             "Source",
-            {"fields": ("source_path", "entrypoint_fn", "model", "analyzer_model", "footprint")},
+            {"fields": ("source_path", "entrypoint_fn", "model", "footprint")},
         ),
         (
-            "Eval Spec",
+            "Contract",
             {
                 "fields": (
                     "input_schema",
                     "output_fields",
                     "output_schema",
-                    "structure_weight",
-                    "total_points",
                     "tool_config",
-                    "tool_usage_weight",
-                    "consistency_rules",
-                    "optimizable_elements",
-                    "fixed_elements",
                     "policy_markdown",
                 )
             },

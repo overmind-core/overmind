@@ -27,7 +27,6 @@ class Feedback(models.Model):
         OBSERVABILITY = "observability", "Observability"
         DATASETS = "datasets", "Datasets"
         EVALUATION = "evaluation", "Evaluation"
-        OPTIMIZER = "optimizer", "Optimiser"
         TRAINING = "training", "Training"
         SERVING = "serving", "Serving"
         BILLING = "billing", "Billing"

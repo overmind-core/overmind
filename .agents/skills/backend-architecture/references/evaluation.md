@@ -7,7 +7,7 @@ An `EvalRun` scores one target (`mode` `recorded`, `generate` or `provided`) ove
 - `innermind/runs.py` owns the lifecycle (create, launch, generate, score, aggregate, finish, cancel, relaunch, reap). `generation.py` and `replay.py` produce outputs. A `provided` run cannot relaunch.
 - `dataset.DatasetRowProcessor` scores rows with the live span evaluators and saves each `EvalScore(source_type=dataset_row)` as it is written, only while the run's `scoring_task_id` is the scorer's own. The scorer beats `updated_at` every 30 s; `runs.reap_stalled` hands a silent one to a new scorer that skips saved rows (up to `SCORING_ATTEMPTS`), sends a pending run's start again after 10 minutes and fails it after 60.
 - A row stands for the capability's answer: it takes every frozen row whose `span_type` is blank or `llm_call`, whatever its `span_name`. `tool_call`, `retrieval` and `workflow` rows stay live-only.
-- An optimiser experiment reuses its first run's matrix for later candidates; a training job does the same for its evaluations.
+- A training job reuses its first run's matrix for its later evaluations.
 - `comparison.compare` pairs the latest score per row that both runs scored into wins, losses and ties (`EPSILON` 0.005), and labels per-metric and overall means improved, regressed or unchanged; added and removed mark a metric present in only one run. It also reports trust.
 - Replayed rows snapshot the runner's initial request (`replay.RunResult.request`). A token-limited generation keeps its partial answer and usage, is marked degraded, and is excluded from trusted scores rather than scored as zero.
 

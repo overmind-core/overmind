@@ -218,12 +218,6 @@ export interface EvalRunDetail {
     readonly origin: string;
     /**
      *
-     * @type {string}
-     * @memberof EvalRunDetail
-     */
-    readonly optimizerExperiment: string | null;
-    /**
-     *
      * @type {number}
      * @memberof EvalRunDetail
      */
@@ -288,7 +282,6 @@ export function instanceOfEvalRunDetail(value: object): value is EvalRunDetail {
     if (!('summary' in value) || value['summary'] === undefined) return false;
     if (!('progress' in value) || value['progress'] === undefined) return false;
     if (!('origin' in value) || value['origin'] === undefined) return false;
-    if (!('optimizerExperiment' in value) || value['optimizerExperiment'] === undefined) return false;
     if (!('triggeredBy' in value) || value['triggeredBy'] === undefined) return false;
     if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
     if (!('updatedAt' in value) || value['updatedAt'] === undefined) return false;
@@ -335,7 +328,6 @@ export function EvalRunDetailFromJSONTyped(json: any, ignoreDiscriminator: boole
         'summary': json['summary'],
         'progress': EvalRunProgressFromJSON(json['progress']),
         'origin': json['origin'],
-        'optimizerExperiment': json['optimizer_experiment'],
         'triggeredBy': json['triggered_by'],
         'createdAt': (new Date(json['created_at'])),
         'updatedAt': (new Date(json['updated_at'])),
@@ -348,7 +340,7 @@ export function EvalRunDetailToJSON(json: any): EvalRunDetail {
     return EvalRunDetailToJSONTyped(json, false);
 }
 
-export function EvalRunDetailToJSONTyped(value?: Omit<EvalRunDetail, 'id'|'project'|'name'|'description'|'label'|'dataset'|'dataset_name'|'capability_id'|'capability_name'|'cell'|'cell_info'|'max_items'|'sampling'|'eval_set'|'matrix'|'mode'|'model_ref'|'model_name'|'resolved_model'|'params'|'group'|'is_baseline'|'judge_model'|'status'|'error'|'summary'|'progress'|'origin'|'optimizer_experiment'|'triggered_by'|'created_at'|'updated_at'|'completed_at'|'context_checks'> | null, ignoreDiscriminator: boolean = false): any {
+export function EvalRunDetailToJSONTyped(value?: Omit<EvalRunDetail, 'id'|'project'|'name'|'description'|'label'|'dataset'|'dataset_name'|'capability_id'|'capability_name'|'cell'|'cell_info'|'max_items'|'sampling'|'eval_set'|'matrix'|'mode'|'model_ref'|'model_name'|'resolved_model'|'params'|'group'|'is_baseline'|'judge_model'|'status'|'error'|'summary'|'progress'|'origin'|'triggered_by'|'created_at'|'updated_at'|'completed_at'|'context_checks'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

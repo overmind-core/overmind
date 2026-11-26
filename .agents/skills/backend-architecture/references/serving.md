@@ -25,7 +25,7 @@ A ready `DeployedModel` has at most one live `DedicatedDeployment` on the privat
 
 ## Activation
 
-`services/model_activation.py` makes a ready deployment live. REST `active_model` and MCP `set_active_model` persist a per-capability `ModelActivation`; the deployment reconciler wakes and verifies through `pre_warm`, then switches the alias atomically. The previous target serves until verification succeeds and stays saved for switch-back. Only successful application API-key calls to the alias advance the connection timestamps; probes, pinned calls and optimiser traffic never do.
+`services/model_activation.py` makes a ready deployment live. REST `active_model` and MCP `set_active_model` persist a per-capability `ModelActivation`; the deployment reconciler wakes and verifies through `pre_warm`, then switches the alias atomically. The previous target serves until verification succeeds and stays saved for switch-back. Only successful application API-key calls to the alias advance the connection timestamps; probes and pinned calls never do.
 
 ## Inference requests
 

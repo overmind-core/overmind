@@ -75,7 +75,6 @@ const AREAS: { value: FeedbackAreaEnum; label: string; path?: RegExp }[] = [
   { label: "Observability", path: /^\/observability/, value: FeedbackAreaEnum.observability },
   { label: "Datasets", path: /^\/datasets/, value: FeedbackAreaEnum.datasets },
   { label: "Evaluation", path: /^\/evaluations/, value: FeedbackAreaEnum.evaluation },
-  { label: "Optimiser", path: /^\/optimiser/, value: FeedbackAreaEnum.optimizer },
   { label: "Training", path: /^\/training/, value: FeedbackAreaEnum.training },
   { label: "Serving", path: /^\/inference/, value: FeedbackAreaEnum.serving },
   { label: "Billing", path: /^\/settings/, value: FeedbackAreaEnum.billing },

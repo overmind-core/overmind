@@ -38,7 +38,6 @@ from overbae.models import (
     EvalRun,
     FinetuningJob,
     InferenceCall,
-    OptimizerExperiment,
     Project,
     ProjectMembership,
     Span,
@@ -499,8 +498,5 @@ def user_activity(user: User, since: datetime) -> dict[str, Any]:
             "by_intent": _counts(datasets, "intent"),
             "daily": _daily(datasets.filter(created_at__gte=since), "created_at"),
         },
-        "optimizer": _workflow(
-            OptimizerExperiment.objects.filter(project_id__in=project_ids), since
-        ),
         "evaluations": _workflow(EvalRun.objects.filter(project_id__in=project_ids), since),
     }

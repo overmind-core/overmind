@@ -83,24 +83,6 @@ export interface CapabilityList {
     benchmarkModel?: string | null;
     /**
      *
-     * @type {number}
-     * @memberof CapabilityList
-     */
-    structureWeight?: number;
-    /**
-     *
-     * @type {number}
-     * @memberof CapabilityList
-     */
-    totalPoints?: number;
-    /**
-     *
-     * @type {number}
-     * @memberof CapabilityList
-     */
-    toolUsageWeight?: number;
-    /**
-     *
      * @type {CapabilityStatusEnum}
      * @memberof CapabilityList
      */
@@ -123,12 +105,6 @@ export interface CapabilityList {
      * @memberof CapabilityList
      */
     entrypointFn?: string;
-    /**
-     *
-     * @type {string}
-     * @memberof CapabilityList
-     */
-    analyzerModel?: string;
     /**
      *
      * @type {number}
@@ -232,14 +208,10 @@ export function CapabilityListFromJSONTyped(json: any, ignoreDiscriminator: bool
         'model': json['model'] == null ? undefined : json['model'],
         'activeModel': json['active_model'] == null ? undefined : json['active_model'],
         'benchmarkModel': json['benchmark_model'] == null ? undefined : json['benchmark_model'],
-        'structureWeight': json['structure_weight'] == null ? undefined : json['structure_weight'],
-        'totalPoints': json['total_points'] == null ? undefined : json['total_points'],
-        'toolUsageWeight': json['tool_usage_weight'] == null ? undefined : json['tool_usage_weight'],
         'status': json['status'] == null ? undefined : CapabilityStatusEnumFromJSON(json['status']),
         'observed': json['observed'] == null ? undefined : json['observed'],
         'suggestedName': json['suggested_name'],
         'entrypointFn': json['entrypoint_fn'] == null ? undefined : json['entrypoint_fn'],
-        'analyzerModel': json['analyzer_model'] == null ? undefined : json['analyzer_model'],
         'datasetSize': json['dataset_size'],
         'datasetHasExpectedOutput': json['dataset_has_expected_output'],
         'datasetInputKeys': json['dataset_input_keys'],
@@ -272,13 +244,9 @@ export function CapabilityListToJSONTyped(value?: Omit<CapabilityList, 'id'|'sug
         'model': value['model'],
         'active_model': value['activeModel'],
         'benchmark_model': value['benchmarkModel'],
-        'structure_weight': value['structureWeight'],
-        'total_points': value['totalPoints'],
-        'tool_usage_weight': value['toolUsageWeight'],
         'status': CapabilityStatusEnumToJSON(value['status']),
         'observed': value['observed'],
         'entrypoint_fn': value['entrypointFn'],
-        'analyzer_model': value['analyzerModel'],
         'cli_version': value['cliVersion'],
         'last_activity_at': value['lastActivityAt'] == null ? value['lastActivityAt'] : value['lastActivityAt'].toISOString(),
     };

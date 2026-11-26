@@ -1,4 +1,4 @@
-"""Overmind CLI — optimise LLM agents and manage agent skills.
+"""Overmind CLI — connect an agent to Overmind and manage agent skills.
 
 Commands:
     init                      Install skills, slash commands, MCP; seed overmind.toml.
@@ -9,8 +9,6 @@ Commands:
     connector add TYPE        Add a tracing connector from env or a TTY prompt.
     model download-checkpoint DEPLOYMENT
                               Download a deployed model checkpoint locally.
-    optimise                  Client-driven optimiser loop (skill generates diffs; server scores).
-    backtest                  Score models on stored LLM calls.
     finetune                  Start fine-tunes from stored LLM calls.
     skills                    Manage Overmind agent skills.
 
@@ -29,11 +27,9 @@ try:
     from overmind.connection_cmd import connection_app
     from overmind.connector_cmd import connector_app
     from overmind.dataset_cmd import dataset_app
+    from overmind.finetune_cmd import finetune as finetune_cmd
     from overmind.init_cmd import init as init_cmd
-    from overmind.layer_cmd import backtest as backtest_cmd
-    from overmind.layer_cmd import finetune as finetune_cmd
     from overmind.model_cmd import model_app
-    from overmind.optimizer_cmd import OPTIMISE_HELP, optimise_app
     from overmind.skills import skills_app
     from overmind.sync import sync as sync_cmd
 except ImportError as exc:
@@ -42,8 +38,8 @@ except ImportError as exc:
 
 app = typer.Typer(
     name="overmind",
-    help="Overmind CLI — local skills, sync, tracing, optimiser client.",
-    epilog="Overmind https://overmindlab.ai is a tool for optimising LLM agents and managing agent skills.",
+    help="Overmind CLI — local skills, sync, tracing, datasets and training.",
+    epilog="Overmind https://overmindlab.ai observes, evaluates and trains LLM agents.",
     pretty_exceptions_enable=True,
     no_args_is_help=True,
 )
@@ -86,8 +82,6 @@ def common(
     ctx.call_on_close(on_command_complete)
 
 
-app.add_typer(optimise_app, name="optimise", help=OPTIMISE_HELP)
-
 app.add_typer(skills_app, name="skills")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(connection_app, name="connection")
@@ -96,7 +90,6 @@ app.add_typer(model_app, name="model")
 app.command("init")(init_cmd)
 app.command("sync")(sync_cmd)
 app.command("chassis")(chassis_cmd)
-app.command("backtest")(backtest_cmd)
 app.command("finetune")(finetune_cmd)
 
 

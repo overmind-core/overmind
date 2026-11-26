@@ -63,7 +63,6 @@ const DYNAMIC_PARENTS = new Set([
   "jobs",
   "observability",
   "datasets",
-  "optimiser",
   "inference",
 ]);
 
@@ -114,14 +113,6 @@ function useCachedName(
     select: (dataset) => dataset.name?.trim() || `Dataset ${dataset.id.slice(0, 8)}`,
   });
 
-  const experimentNameQuery = useQuery({
-    enabled: kind === "optimiser" && !!slug,
-    queryFn: () => apiClient.optimizerExperiments.optimizerExperimentsRetrieve({ id: slug ?? "" }),
-    // Same key as the run page so the label rides the existing cache.
-    queryKey: ["optimizer-experiment", slug],
-    select: (experiment) => `${experiment.capabilityName || "Run"} · ${experiment.id.slice(0, 8)}`,
-  });
-
   const deployedModelNameQuery = useQuery({
     enabled: kind === "inference" && !!slug,
     queryFn: () => apiClient.deployedModels.deployedModelsRetrieve({ id: slug ?? "" }),
@@ -153,7 +144,6 @@ function useCachedName(
   if (kind === "capabilities") return capabilityNameQuery.data;
   if (kind === "projects") return projectNameQuery.data;
   if (kind === "datasets") return datasetNameQuery.data;
-  if (kind === "optimiser") return experimentNameQuery.data;
   if (kind === "inference") return deployedModelNameQuery.data;
   return undefined;
 }

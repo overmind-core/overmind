@@ -88,7 +88,6 @@ const PATH_ACTIONS: ReadonlyArray<readonly [string, string]> = [
   ["/finetuning-jobs", "start this training run"],
   ["/deployed-models", "deploy this model"],
   ["/eval-runs", "run this evaluation"],
-  ["/optimizer-experiments", "start this optimisation"],
   ["/chat/completions", "run this model"],
   ["/jobs", "run this job"],
 ];

@@ -23,7 +23,6 @@ ObjectKind = Literal[
     "eval_set",
     "eval_row",
     "eval_run",
-    "optimizer",
     "data_exploration",
     "data_partition",
     "native_evaluation",

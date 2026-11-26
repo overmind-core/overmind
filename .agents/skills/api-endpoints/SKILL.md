@@ -9,7 +9,7 @@ The frontend consumes the backend exclusively through the generated typescript-f
 
 ## 1. Serializer and view go in the surface's own module
 
-`overbae/api/` is one module per surface — `eval_views.py`/`eval_serializers.py`, `datasets.py`/`dataset_serializers.py`, `optimizer.py`, `billing.py`, `otlp.py`, and so on. `views.py` and `serializers.py` are the legacy monoliths; a new surface gets its own module rather than growing them.
+`overbae/api/` is one module per surface — `eval_views.py`/`eval_serializers.py`, `datasets.py`/`dataset_serializers.py`, `billing.py`, `otlp.py`, and so on. `views.py` and `serializers.py` are the legacy monoliths; a new surface gets its own module rather than growing them.
 
 Never return a raw dict from a view — request and response shapes are serializers. Keep business logic in `services/` or on the model; annotate with `@extend_schema` where drf-spectacular needs help.
 

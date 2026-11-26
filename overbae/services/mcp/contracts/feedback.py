@@ -13,7 +13,6 @@ Area = Literal[
     "observability",
     "datasets",
     "evaluation",
-    "optimizer",
     "training",
     "serving",
     "billing",

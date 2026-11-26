@@ -167,7 +167,7 @@ export function EvalSetEmptyWizardState({
         </Button>
       }
       className="rounded-md border border-dashed border-border"
-      description="After code scan, create an eval set on the capability's Evaluations tab — the active set grades optimiser candidates."
+      description="After code scan, create an eval set on the capability's Evaluations tab."
       icon={Icon.listBox}
       size="section"
       title="No eval set yet"

@@ -20,11 +20,9 @@ import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
 import { Route as AuthObservabilityRouteImport } from './routes/_auth/observability'
 import { Route as AuthInferenceRouteImport } from './routes/_auth/inference'
 import { Route as AuthProjectsIndexRouteImport } from './routes/_auth/projects.index'
-import { Route as AuthOptimiserIndexRouteImport } from './routes/_auth/optimiser.index'
 import { Route as AuthEvaluationsIndexRouteImport } from './routes/_auth/evaluations.index'
 import { Route as AuthDatasetsIndexRouteImport } from './routes/_auth/datasets.index'
 import { Route as AuthCapabilitiesIndexRouteImport } from './routes/_auth/capabilities.index'
-import { Route as AuthOptimiserExperimentIdRouteImport } from './routes/_auth/optimiser.$experimentId'
 import { Route as AuthObservabilityIntegrationsRouteImport } from './routes/_auth/observability_.integrations'
 import { Route as AuthObservabilityTraceIdRouteImport } from './routes/_auth/observability.$traceId'
 import { Route as AuthInferenceModelIdRouteImport } from './routes/_auth/inference_.$modelId'
@@ -87,11 +85,6 @@ const AuthProjectsIndexRoute = AuthProjectsIndexRouteImport.update({
   path: '/projects/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthOptimiserIndexRoute = AuthOptimiserIndexRouteImport.update({
-  id: '/optimiser/',
-  path: '/optimiser/',
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthEvaluationsIndexRoute = AuthEvaluationsIndexRouteImport.update({
   id: '/evaluations/',
   path: '/evaluations/',
@@ -107,12 +100,6 @@ const AuthCapabilitiesIndexRoute = AuthCapabilitiesIndexRouteImport.update({
   path: '/capabilities/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthOptimiserExperimentIdRoute =
-  AuthOptimiserExperimentIdRouteImport.update({
-    id: '/optimiser/$experimentId',
-    path: '/optimiser/$experimentId',
-    getParentRoute: () => AuthRoute,
-  } as any)
 const AuthObservabilityIntegrationsRoute =
   AuthObservabilityIntegrationsRouteImport.update({
     id: '/observability_/integrations',
@@ -169,11 +156,9 @@ export interface FileRoutesByFullPath {
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
   '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
-  '/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
   '/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/datasets/': typeof AuthDatasetsIndexRoute
   '/evaluations/': typeof AuthEvaluationsIndexRoute
-  '/optimiser/': typeof AuthOptimiserIndexRoute
   '/projects/': typeof AuthProjectsIndexRoute
   '/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/datasets/$datasetId/': typeof AuthDatasetsDatasetIdIndexRoute
@@ -193,11 +178,9 @@ export interface FileRoutesByTo {
   '/inference/$modelId': typeof AuthInferenceModelIdRoute
   '/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/observability/integrations': typeof AuthObservabilityIntegrationsRoute
-  '/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
   '/capabilities': typeof AuthCapabilitiesIndexRoute
   '/datasets': typeof AuthDatasetsIndexRoute
   '/evaluations': typeof AuthEvaluationsIndexRoute
-  '/optimiser': typeof AuthOptimiserIndexRoute
   '/projects': typeof AuthProjectsIndexRoute
   '/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/datasets/$datasetId': typeof AuthDatasetsDatasetIdIndexRoute
@@ -219,11 +202,9 @@ export interface FileRoutesById {
   '/_auth/inference_/$modelId': typeof AuthInferenceModelIdRoute
   '/_auth/observability/$traceId': typeof AuthObservabilityTraceIdRoute
   '/_auth/observability_/integrations': typeof AuthObservabilityIntegrationsRoute
-  '/_auth/optimiser/$experimentId': typeof AuthOptimiserExperimentIdRoute
   '/_auth/capabilities/': typeof AuthCapabilitiesIndexRoute
   '/_auth/datasets/': typeof AuthDatasetsIndexRoute
   '/_auth/evaluations/': typeof AuthEvaluationsIndexRoute
-  '/_auth/optimiser/': typeof AuthOptimiserIndexRoute
   '/_auth/projects/': typeof AuthProjectsIndexRoute
   '/_auth/evaluations/runs/$runId': typeof AuthEvaluationsRunsRunIdRoute
   '/_auth/datasets/$datasetId/': typeof AuthDatasetsDatasetIdIndexRoute
@@ -245,11 +226,9 @@ export interface FileRouteTypes {
     | '/inference/$modelId'
     | '/observability/$traceId'
     | '/observability/integrations'
-    | '/optimiser/$experimentId'
     | '/capabilities/'
     | '/datasets/'
     | '/evaluations/'
-    | '/optimiser/'
     | '/projects/'
     | '/evaluations/runs/$runId'
     | '/datasets/$datasetId/'
@@ -269,11 +248,9 @@ export interface FileRouteTypes {
     | '/inference/$modelId'
     | '/observability/$traceId'
     | '/observability/integrations'
-    | '/optimiser/$experimentId'
     | '/capabilities'
     | '/datasets'
     | '/evaluations'
-    | '/optimiser'
     | '/projects'
     | '/evaluations/runs/$runId'
     | '/datasets/$datasetId'
@@ -294,11 +271,9 @@ export interface FileRouteTypes {
     | '/_auth/inference_/$modelId'
     | '/_auth/observability/$traceId'
     | '/_auth/observability_/integrations'
-    | '/_auth/optimiser/$experimentId'
     | '/_auth/capabilities/'
     | '/_auth/datasets/'
     | '/_auth/evaluations/'
-    | '/_auth/optimiser/'
     | '/_auth/projects/'
     | '/_auth/evaluations/runs/$runId'
     | '/_auth/datasets/$datasetId/'
@@ -392,13 +367,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthProjectsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/optimiser/': {
-      id: '/_auth/optimiser/'
-      path: '/optimiser'
-      fullPath: '/optimiser/'
-      preLoaderRoute: typeof AuthOptimiserIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/_auth/evaluations/': {
       id: '/_auth/evaluations/'
       path: '/evaluations'
@@ -418,13 +386,6 @@ declare module '@tanstack/react-router' {
       path: '/capabilities'
       fullPath: '/capabilities/'
       preLoaderRoute: typeof AuthCapabilitiesIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/optimiser/$experimentId': {
-      id: '/_auth/optimiser/$experimentId'
-      path: '/optimiser/$experimentId'
-      fullPath: '/optimiser/$experimentId'
-      preLoaderRoute: typeof AuthOptimiserExperimentIdRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/observability_/integrations': {
@@ -499,11 +460,9 @@ interface AuthRouteChildren {
   AuthCapabilitiesCapabilityIdRoute: typeof AuthCapabilitiesCapabilityIdRoute
   AuthInferenceModelIdRoute: typeof AuthInferenceModelIdRoute
   AuthObservabilityIntegrationsRoute: typeof AuthObservabilityIntegrationsRoute
-  AuthOptimiserExperimentIdRoute: typeof AuthOptimiserExperimentIdRoute
   AuthCapabilitiesIndexRoute: typeof AuthCapabilitiesIndexRoute
   AuthDatasetsIndexRoute: typeof AuthDatasetsIndexRoute
   AuthEvaluationsIndexRoute: typeof AuthEvaluationsIndexRoute
-  AuthOptimiserIndexRoute: typeof AuthOptimiserIndexRoute
   AuthProjectsIndexRoute: typeof AuthProjectsIndexRoute
   AuthEvaluationsRunsRunIdRoute: typeof AuthEvaluationsRunsRunIdRoute
   AuthDatasetsDatasetIdIndexRoute: typeof AuthDatasetsDatasetIdIndexRoute
@@ -519,11 +478,9 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthCapabilitiesCapabilityIdRoute: AuthCapabilitiesCapabilityIdRoute,
   AuthInferenceModelIdRoute: AuthInferenceModelIdRoute,
   AuthObservabilityIntegrationsRoute: AuthObservabilityIntegrationsRoute,
-  AuthOptimiserExperimentIdRoute: AuthOptimiserExperimentIdRoute,
   AuthCapabilitiesIndexRoute: AuthCapabilitiesIndexRoute,
   AuthDatasetsIndexRoute: AuthDatasetsIndexRoute,
   AuthEvaluationsIndexRoute: AuthEvaluationsIndexRoute,
-  AuthOptimiserIndexRoute: AuthOptimiserIndexRoute,
   AuthProjectsIndexRoute: AuthProjectsIndexRoute,
   AuthEvaluationsRunsRunIdRoute: AuthEvaluationsRunsRunIdRoute,
   AuthDatasetsDatasetIdIndexRoute: AuthDatasetsDatasetIdIndexRoute,

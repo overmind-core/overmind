@@ -140,7 +140,7 @@ describe("Inference search request scope", () => {
     expect(routeState.navigate).not.toHaveBeenCalled();
   });
 
-  // 400ms, matching the training, evaluations, optimiser and datasets lists.
+  // 400ms, matching the training, evaluations and datasets lists.
   it("publishes the settled term to the url, back on page 1", () => {
     vi.useFakeTimers();
     renderPage({ page: 3 });

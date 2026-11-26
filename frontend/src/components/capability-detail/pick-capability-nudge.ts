@@ -1,7 +1,7 @@
 /** Live serving statuses — anything still in the deploy pipeline or ready. */
 const LIVE_DEPLOY_STATUSES = new Set(["queued", "deploying", "warming", "ready"]);
 
-type CapabilityNudgeKind = "deploy" | "finetune" | "optimise" | "upload";
+type CapabilityNudgeKind = "deploy" | "finetune" | "upload";
 
 export type CapabilityNudge = {
   kind: CapabilityNudgeKind;
@@ -21,16 +21,13 @@ export function pickCapabilityNudge({
   datasets,
   finetuningJobs,
   deployedModels,
-  optimiserExperimentCount,
   flags,
 }: {
   datasets: DatasetLike[];
   finetuningJobs: JobLike[];
   deployedModels: ModelLike[];
-  optimiserExperimentCount: number;
   flags: {
     datasets: boolean;
-    evaluations: boolean;
     finetuning: boolean;
     inference: boolean;
   };
@@ -49,11 +46,6 @@ export function pickCapabilityNudge({
   const hasFtDataset = datasets.some((d) => d.contract === "train");
   if (flags.finetuning && hasFtDataset && finetuningJobs.length === 0) {
     return { kind: "finetune" };
-  }
-
-  const hasEvalDataset = datasets.some((d) => d.contract === "eval");
-  if (flags.evaluations && hasEvalDataset && optimiserExperimentCount === 0) {
-    return { kind: "optimise" };
   }
 
   if (flags.datasets && datasets.length === 0) {

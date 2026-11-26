@@ -31,12 +31,6 @@ export interface ModelDefaults {
      * @memberof ModelDefaults
      */
     judgeModels: Array<string>;
-    /**
-     *
-     * @type {Array<string>}
-     * @memberof ModelDefaults
-     */
-    backtestModels: Array<string>;
 }
 
 /**
@@ -45,7 +39,6 @@ export interface ModelDefaults {
 export function instanceOfModelDefaults(value: object): value is ModelDefaults {
     if (!('judgeModel' in value) || value['judgeModel'] === undefined) return false;
     if (!('judgeModels' in value) || value['judgeModels'] === undefined) return false;
-    if (!('backtestModels' in value) || value['backtestModels'] === undefined) return false;
     return true;
 }
 
@@ -61,7 +54,6 @@ export function ModelDefaultsFromJSONTyped(json: any, ignoreDiscriminator: boole
 
         'judgeModel': json['judge_model'],
         'judgeModels': json['judge_models'],
-        'backtestModels': json['backtest_models'],
     };
 }
 
@@ -78,6 +70,5 @@ export function ModelDefaultsToJSONTyped(value?: ModelDefaults | null, ignoreDis
 
         'judge_model': value['judgeModel'],
         'judge_models': value['judgeModels'],
-        'backtest_models': value['backtestModels'],
     };
 }

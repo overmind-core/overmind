@@ -31,7 +31,6 @@ import { useAuthContext } from "@/contexts/auth-context";
 import { useAllEvalRunsQuery } from "@/hooks/use-evaluations";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import { useGuestGate } from "@/hooks/use-guest-gate";
-import { useOptimizerExperimentsQuery } from "@/hooks/use-optimizer";
 import { useOnboardingStatus } from "@/hooks/use-query";
 import { useUnseenSignalCountQuery } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
@@ -70,14 +69,7 @@ const platformNavTree: NavEntry[] = [
   { flag: null, icon: Icon.agent, label: "Agent", to: "/" },
   { flag: null, icon: Icon.observability, label: "Observability", to: "/observability" },
   { flag: "datasets", icon: Icon.dataset, label: "Datasets", to: "/datasets" },
-  {
-    icon: Icon.agentTesting,
-    items: [
-      { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
-      { flag: "evaluations", icon: Icon.optimiser, label: "Optimiser", to: "/optimiser" },
-    ],
-    label: "Agent Testing",
-  },
+  { flag: "evaluations", icon: Icon.eval, label: "Evaluations", to: "/evaluations" },
   {
     icon: Icon.models,
     items: [
@@ -122,7 +114,6 @@ const isLeafActive = (pathname: string, to: string): boolean =>
 const JOB_KIND_ROUTE: Record<RunningJobKind, string> = {
   eval: "/evaluations",
   finetuning: "/training",
-  optimizer: "/optimiser",
 };
 
 type NavJobBadge = { count: number; tone: JobNotificationBadgeTone };
@@ -132,7 +123,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const { projectId } = useSearch({ from: "/_auth" });
   const ftQuery = useFinetuningJobsQuery(projectId);
   const evalQuery = useAllEvalRunsQuery(projectId);
-  const optimizerQuery = useOptimizerExperimentsQuery(projectId);
   const unseen = useUnseenCompletions();
   const unseenSignals =
     useUnseenSignalCountQuery(featureFlags.signals ? projectId : undefined).data ?? 0;
@@ -140,7 +130,6 @@ function useNavJobBadges(): Record<string, NavJobBadge> {
   const running = buildRunningJobs({
     evalRuns: evalQuery.data?.results,
     finetuning: ftQuery.data?.results,
-    optimizerExperiments: optimizerQuery.data?.results,
   });
 
   const runningByRoute: Record<string, number> = {};

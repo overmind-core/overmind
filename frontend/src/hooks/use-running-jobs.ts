@@ -5,7 +5,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { showJobCompletionToast } from "@/components/job-completion-toast";
 import { useAllEvalRunsQuery } from "@/hooks/use-evaluations";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
-import { useOptimizerExperimentsQuery } from "@/hooks/use-optimizer";
 import {
   buildRunningJobs,
   completionToastCopy,
@@ -37,14 +36,6 @@ export function navigateToJob(
     });
     return;
   }
-  if (job.kind === "optimizer") {
-    void navigate({
-      params: { experimentId: job.id },
-      search: (prev) => ({ ...prev, projectId }),
-      to: "/optimiser/$experimentId",
-    });
-    return;
-  }
   void navigate({
     params: { runId: job.id },
     search: (prev) => ({ ...prev, projectId }),
@@ -56,16 +47,13 @@ export function useRunningJobs(projectId: string | undefined) {
   const navigate = useNavigate();
   const ftQuery = useFinetuningJobsQuery(projectId);
   const evalQuery = useAllEvalRunsQuery(projectId);
-  const optimizerQuery = useOptimizerExperimentsQuery(projectId);
 
   const ftResults = ftQuery.data?.results;
   const evalResults = evalQuery.data?.results;
-  const optimizerResults = optimizerQuery.data?.results;
 
   const running = buildRunningJobs({
     evalRuns: evalResults,
     finetuning: ftResults,
-    optimizerExperiments: optimizerResults,
   });
 
   const unseenCompletions = useUnseenCompletions();
@@ -87,12 +75,10 @@ export function useRunningJobs(projectId: string | undefined) {
     const current = buildRunningJobs({
       evalRuns: evalResults,
       finetuning: ftResults,
-      optimizerExperiments: optimizerResults,
     });
     const latest = {
       evalRuns: evalResults,
       finetuning: ftResults,
-      optimizerExperiments: optimizerResults,
     };
 
     if (hydratedForProject.current !== projectId) {
@@ -116,15 +102,7 @@ export function useRunningJobs(projectId: string | undefined) {
         title: message,
       });
     }
-  }, [
-    projectId,
-    ftResults,
-    evalResults,
-    optimizerResults,
-    ftQuery.isFetched,
-    evalQuery.isFetched,
-    navigate,
-  ]);
+  }, [projectId, ftResults, evalResults, ftQuery.isFetched, evalQuery.isFetched, navigate]);
 
   return {
     clearUnseenCompletions,

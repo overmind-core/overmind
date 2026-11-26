@@ -51,7 +51,6 @@ import {
   McpOauthApi,
   ModelsApi,
   NativeEvaluationsApi,
-  OptimizerExperimentsApi,
   ProjectsApi,
   ResponseError,
   SessionsApi,
@@ -324,20 +323,13 @@ const PRESERVE_VALUE_KEYS = new Set([
   "outputData",
   "evaluationCriteria",
   "improvementMetadata",
-  "capabilityDescription",
-  "backtestModelSuggestions",
   "scores",
   "feedbackScores",
   "feedbackScore",
   "inputSchema",
   "outputFields",
   "toolConfig",
-  "dimensionScores",
-  "backtestResults",
   "settings",
-  "consistencyRules",
-  "optimizableElements",
-  "fixedElements",
   "input",
   "expectedOutput",
   "manifest",
@@ -461,7 +453,6 @@ export class API {
   decisionJobs: DecisionJobsApi;
   decisionModels: DecisionModelsApi;
   decisionPerformance: DecisionPerformanceApi;
-  optimizerExperiments: OptimizerExperimentsApi;
   /** OTLP trace ingestion (`POST /api/v1/traces`). */
   projects: ProjectsApi;
   /** Traces grouped by `conversation.id`. */
@@ -507,7 +498,6 @@ export class API {
     this.decisionJobs = new DecisionJobsApi(this.cfg);
     this.decisionModels = new DecisionModelsApi(this.cfg);
     this.decisionPerformance = new DecisionPerformanceApi(this.cfg);
-    this.optimizerExperiments = new OptimizerExperimentsApi(this.cfg);
     this.projects = new ProjectsApi(this.cfg);
     this.sessions = new SessionsApi(this.cfg);
     this.traces = new TracesApi(this.cfg);

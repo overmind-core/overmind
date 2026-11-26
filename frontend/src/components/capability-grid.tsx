@@ -113,15 +113,6 @@ function CapabilityCard({ capability }: { capability: CapabilityList }) {
             </span>
           </MetricRow>
         )}
-        {capability.analyzerModel && (
-          <MetricRow icon={<Icon.ai className="size-3" />} label="Analyser">
-            <ModelProviderChip
-              className="ml-auto min-w-0 text-xs"
-              compact
-              model={capability.analyzerModel}
-            />
-          </MetricRow>
-        )}
         {toolNames.length > 0 && (
           <MetricRow
             icon={<Icon.tool className="size-3" />}

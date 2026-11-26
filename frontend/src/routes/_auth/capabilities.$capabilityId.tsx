@@ -7,11 +7,11 @@ import z from "zod";
 import apiClient from "@/client";
 import { CapabilityNameEditor } from "@/components/capability-detail/CapabilityNameEditor";
 import { DatasetTab } from "@/components/capability-detail/DatasetTab";
-import { EvalMatrixTab } from "@/components/capability-detail/EvalMatrixTab";
 import { ModelsTab } from "@/components/capability-detail/ModelsTab";
 import { CapabilityNextStepNudge } from "@/components/capability-detail/next-step-nudge";
 import { CapabilityFactsBar } from "@/components/capability-overview/CapabilityFactsBar";
 import { CapabilityPromptCard } from "@/components/capability-overview/CapabilityPromptCard";
+import { EvalMatrixTable } from "@/components/evaluations/eval-matrix-table";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useCopy } from "@/components/ui/block-actions";
@@ -261,7 +261,7 @@ function CapabilityDetailPage() {
           <h2 className={TITLE.section} id="capability-evaluators-heading">
             Evaluations
           </h2>
-          <EvalMatrixTab
+          <EvalMatrixTable
             capability={capability}
             capabilityId={capabilityId}
             projectId={projectId}

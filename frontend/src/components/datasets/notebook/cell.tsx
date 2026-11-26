@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 import type { Cell } from "@/openapi";
 
 /** `train_eval`: the eval dataset that scores a training job. */
-export type UsePurpose = "train" | "train_eval" | "optimise";
+export type UsePurpose = "train" | "train_eval";
 
 export interface CellActions {
   onUse: (purpose: UsePurpose) => void;
@@ -485,28 +485,16 @@ export function NotebookCell({
                   </Button>
                 )}
                 {intent === "eval" && (
-                  <>
-                    <Button
-                      className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                      disabled={!fit.ok}
-                      onClick={() => actions.onUse("optimise")}
-                      size="xs"
-                      variant="outline"
-                    >
-                      <Icon.optimiser />
-                      Run the optimiser
-                    </Button>
-                    <Button
-                      className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                      disabled={!fit.ok}
-                      onClick={() => actions.onUse("train_eval")}
-                      size="xs"
-                      variant="outline"
-                    >
-                      <Icon.training />
-                      Use in a training job
-                    </Button>
-                  </>
+                  <Button
+                    className="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                    disabled={!fit.ok}
+                    onClick={() => actions.onUse("train_eval")}
+                    size="xs"
+                    variant="outline"
+                  >
+                    <Icon.training />
+                    Use in a training job
+                  </Button>
                 )}
               </footer>
             )}

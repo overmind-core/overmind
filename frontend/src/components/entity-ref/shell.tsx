@@ -8,7 +8,6 @@ export type EntityKind =
   | "capability"
   | "dataset"
   | "evalRun"
-  | "experiment"
   | "job"
   | "model"
   | "project"
@@ -23,7 +22,6 @@ export const ENTITY_META: Record<
   capability: { accent: "text-cat-3", icon: Icon.agent, label: "Capability" },
   dataset: { accent: "text-cat-2", icon: Icon.dataset, label: "Dataset" },
   evalRun: { accent: "text-cat-3", icon: Icon.eval, label: "Eval run" },
-  experiment: { accent: "text-cat-5", icon: Icon.optimiser, label: "Optimisation" },
   job: { accent: "text-cat-5", icon: Icon.training, label: "Training run" },
   model: { accent: "text-cat-4", icon: Icon.inference, label: "Model" },
   project: { accent: "text-cat-6", icon: Icon.project, label: "Project" },

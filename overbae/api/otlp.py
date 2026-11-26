@@ -25,7 +25,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from overbae.api import overmind_attrs as oc_attrs
 from overbae.api.scoping import project_ids_for
-from overbae.core.utils import safe_float, safe_int, safe_json, safe_json_or_default
+from overbae.core.utils import safe_float, safe_int, safe_json
 from overbae.innermind import evidence
 from overbae.models import (
     APIToken,
@@ -61,10 +61,6 @@ def _get_attr(mapping: dict[str, Any] | None, primary: str, *legacy: str) -> Any
 
 # OTel marks "no parent" with eight zero bytes.
 _EMPTY_PARENT_SPAN_ID = b"\x00" * 8
-
-
-# Recognises optimize spans that carry no ``overmind.command``; only the root
-# CLI span has that tag.
 
 
 def _any_value_to_python(value) -> Any:
@@ -344,14 +340,6 @@ def _overmind_tags_from_span(span: Span) -> dict[str, Any]:
     return tags
 
 
-def _first(tags: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        val = tags.get(key)
-        if val:
-            return val
-    return None
-
-
 def _find_existing_capability_for_trace(trace_id: str, project: Project) -> Capability | None:
     """Subprocess-spawned spans inherit W3C ``TRACEPARENT`` but not OTel baggage, so
     they carry no capability identity. Reuse is only safe when the trace maps to
@@ -425,148 +413,14 @@ def _resolve_conversation(
     return conversation
 
 
-def _assign(capability: Capability, field: str, value: Any, *, force: bool) -> bool:
-    """Sets *field* only when empty, unless *force*."""
-    if value is None or value == "":
+def _record_cli_version(capability: Capability, version: str) -> bool:
+    """The latest span wins, so the Console can flag a capability whose most recent run
+    used an outdated CLI."""
+    version = (version or "")[:20]
+    if not version or capability.cli_version == version:
         return False
-    cur = getattr(capability, field)
-    if (force or not cur) and cur != value:
-        setattr(capability, field, value)
-        return True
-    return False
-
-
-# ``cast`` applies to non-empty values only — an empty container must never
-# overwrite populated state.
-_EVAL_FIELD_TYPES: dict[str, tuple[type, Any]] = {
-    "input_schema": (dict, {}),
-    "output_fields": (dict, {}),
-    "structure_weight": (float, 20.0),
-    "total_points": (float, 100.0),
-    "tool_config": (dict, {}),
-    "tool_usage_weight": (float, 10.0),
-    "consistency_rules": (list, []),
-    "optimizable_elements": (list, []),
-    "fixed_elements": (list, []),
-}
-
-
-def _merge_eval_spec(capability: Capability, spec: dict[str, Any], *, force: bool) -> bool:
-    """Apply an ``eval_spec.json``-shaped dict onto Capability columns."""
-    dirty = False
-
-    for field, (cast, _default) in _EVAL_FIELD_TYPES.items():
-        new_val = spec.get(field)
-        if new_val is None:
-            continue
-        current = getattr(capability, field)
-
-        # Never wipe populated structured state with an empty container.
-        if cast in (dict, list) and current and not new_val:
-            continue
-        # Without ``force`` we only fill empty fields.
-        if not force and cast in (dict, list) and current:
-            continue
-
-        if cast is float:
-            new_val = safe_float(new_val, _default)
-        setattr(capability, field, new_val)
-        dirty = True
-
-    # The SDK's eval_spec.json key is frozen wire format: ``agent_description``.
-    desc = spec.get("agent_description") or spec.get("description")
-    if isinstance(desc, dict):
-        desc = desc.get("purpose") or desc.get("description") or ""
-    if isinstance(desc, str) and desc.strip():
-        dirty |= _assign(capability, "description", desc.strip(), force=force)
-
-    out_schema = spec.get("output_schema")
-    if isinstance(out_schema, dict) and out_schema and (force or not capability.output_schema):
-        capability.output_schema = out_schema
-        dirty = True
-
-    return dirty
-
-
-def _apply_overmind_fields(capability: Capability, overmind_tags: dict[str, Any]) -> bool:
-    command = overmind_tags.get(oc_attrs.COMMAND)
-    # setup/optimize spans carry authoritative spec data — overwrite freely.
-    force_eval = command in ("optimize", "setup")
-    force_path = force_eval
-
-    dirty = False
-
-    fn_name = _first(overmind_tags, oc_attrs.SETUP_ENTRYPOINT_FN, oc_attrs.OPTIMIZE_ENTRYPOINT_FN)
-
-    if fn_name:
-        dirty |= _assign(capability, "entrypoint_fn", fn_name, force=force_path)
-
-    # Always overwritten: the latest span wins, so the UI can flag a capability whose
-    # most recent run used an outdated CLI.
-    cli_version = overmind_tags.get(oc_attrs.CLI_VERSION)
-    if cli_version and isinstance(cli_version, str):
-        dirty |= _assign(capability, "cli_version", cli_version[:20], force=True)
-
-    dirty |= _assign(capability, "model", overmind_tags.get(oc_attrs.SETUP_MODEL), force=force_eval)
-    dirty |= _assign(
-        capability,
-        "analyzer_model",
-        _first(overmind_tags, oc_attrs.SETUP_ANALYZER_MODEL, oc_attrs.OPTIMIZE_ANALYZER_MODEL),
-        force=force_eval,
-    )
-
-    eval_raw = _first(overmind_tags, oc_attrs.OPTIMIZE_EVAL_SPEC, oc_attrs.SETUP_EVAL_SPEC)
-    if eval_raw:
-        spec = safe_json_or_default(eval_raw, {})
-        if spec:
-            dirty |= _merge_eval_spec(capability, spec, force=force_eval)
-
-    policy_md = _first(overmind_tags, oc_attrs.SETUP_POLICY_MARKDOWN)
-    if policy_md:
-        dirty |= _assign(capability, "policy_markdown", policy_md, force=force_eval)
-
-    out_schema = safe_json_or_default(overmind_tags.get(oc_attrs.SETUP_OUTPUT_SCHEMA), None)
-    if out_schema and (force_eval or out_schema != capability.output_schema):
-        capability.output_schema = out_schema
-        dirty = True
-
-    in_schema = safe_json_or_default(overmind_tags.get(oc_attrs.SETUP_INPUT_SCHEMA), None)
-    if isinstance(in_schema, dict) and in_schema and (force_eval or not capability.input_schema):
-        capability.input_schema = in_schema
-        dirty = True
-
-    consistency = safe_json_or_default(overmind_tags.get(oc_attrs.SETUP_CONSISTENCY_RULES), None)
-    if (
-        isinstance(consistency, list)
-        and consistency
-        and (force_eval or not capability.consistency_rules)
-    ):
-        capability.consistency_rules = consistency
-        dirty = True
-
-    optimizable = safe_json_or_default(overmind_tags.get(oc_attrs.SETUP_OPTIMIZABLE_ELEMENTS), None)
-    if (
-        isinstance(optimizable, list)
-        and optimizable
-        and (force_eval or not capability.optimizable_elements)
-    ):
-        capability.optimizable_elements = optimizable
-        dirty = True
-
-    fixed = safe_json_or_default(overmind_tags.get(oc_attrs.SETUP_FIXED_ELEMENTS), None)
-    if isinstance(fixed, list) and fixed and (force_eval or not capability.fixed_elements):
-        capability.fixed_elements = fixed
-        dirty = True
-
-    tools_summary = overmind_tags.get(oc_attrs.SETUP_TOOLS_SUMMARY)
-    if isinstance(tools_summary, str) and tools_summary.strip():
-        dirty |= _assign(capability, "tools_summary", tools_summary, force=force_eval)
-
-    decision_logic = overmind_tags.get(oc_attrs.SETUP_DECISION_LOGIC)
-    if isinstance(decision_logic, str) and decision_logic.strip():
-        dirty |= _assign(capability, "decision_logic", decision_logic, force=force_eval)
-
-    return dirty
+    capability.cli_version = version
+    return True
 
 
 _TOTAL_TOKEN_KEYS = (
@@ -685,8 +539,7 @@ def process_span(span_id: str, project_id: str | None = None):
         if capability is None:
             capability = _find_existing_capability_for_trace(span.trace_id, project)
         if capability is not None:
-            overmind_tags[oc_attrs.CLI_VERSION] = span.scope_version
-            dirty = _apply_overmind_fields(capability, overmind_tags)
+            dirty = _record_cli_version(capability, span.scope_version)
             dirty |= _apply_runtime_summaries(capability, span, overmind_tags)
             if dirty:
                 capability.save()

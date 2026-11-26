@@ -47,7 +47,7 @@ create (`create_dataset_from_traces` / `_failures`), or later with
 a train dataset and an eval dataset with disjoint rows. There is no reingest tool and
 no dual-intent dataset.
 
-Eval runs (`run_evaluation`) and optimizer experiments (`start_optimizer`) use an
+Eval runs (`run_evaluation`) use an
 **eval** version; `train` and `pending` are refused. Fine-tuning (`start_finetune`)
 needs a **train** version and, for a chat model, a user-confirmed eval set; a separate
 **eval** dataset is needed only when chat judge evaluations are requested. Native

@@ -25,13 +25,6 @@ describe("buildRunningJobs", () => {
           name: "Done",
           status: "completed",
         },
-        {
-          createdAt: new Date("2026-07-20T10:30:00.000Z"),
-          id: "e3",
-          name: "Optimizer · bot · candidate 1",
-          origin: "optimizer",
-          status: "running",
-        },
       ],
       finetuning: [
         {
@@ -109,44 +102,6 @@ describe("buildRunningJobs", () => {
       kind: "finetuning",
       status: "running",
       title: "swift fox · 4 models",
-    });
-  });
-
-  it("rolls optimizer eval runs into a single experiment row", () => {
-    const items = buildRunningJobs({
-      evalRuns: [
-        {
-          createdAt: new Date("2026-07-20T10:00:00.000Z"),
-          id: "e1",
-          name: "Optimizer · bot · baseline",
-          origin: "optimizer",
-          status: "running",
-        },
-        {
-          createdAt: new Date("2026-07-20T10:01:00.000Z"),
-          id: "e2",
-          name: "Optimizer · bot · candidate 1",
-          origin: "optimizer",
-          status: "pending",
-        },
-      ],
-      optimizerExperiments: [
-        {
-          capabilityName: "bot",
-          createdAt: new Date("2026-07-20T09:55:00.000Z"),
-          currentIteration: 2,
-          id: "x1",
-          numIterations: 5,
-          status: "iterating",
-        },
-      ],
-    });
-
-    expect(items.map((i) => i.key)).toEqual(["optimizer:x1"]);
-    expect(items[0]).toMatchObject({
-      kind: "optimizer",
-      status: "running",
-      title: "Optimizer · bot · iteration 2/5",
     });
   });
 
@@ -256,68 +211,10 @@ describe("detectCompletedJobs", () => {
 
     expect(completed).toHaveLength(0);
   });
-
-  it("emits optimizer experiment completions with dedicated toast copy", () => {
-    const prev = new Map<string, RunningJobItem>([
-      [
-        "optimizer:x1",
-        {
-          id: "x1",
-          key: "optimizer:x1",
-          kind: "optimizer",
-          startedAt: "2026-07-20T09:55:00.000Z",
-          status: "running",
-          title: "Optimizer · bot · iteration 2/5",
-        },
-      ],
-    ]);
-
-    const completed = detectCompletedJobs(prev, [], {
-      optimizerExperiments: [
-        {
-          capabilityName: "bot",
-          currentIteration: 5,
-          id: "x1",
-          numIterations: 5,
-          status: "completed",
-        },
-      ],
-    });
-
-    expect(completed).toHaveLength(1);
-    expect(completed[0]?.status).toBe("completed");
-    expect(completionToastCopy(completed[0]!)).toEqual({
-      description: "Optimizer · bot · iteration 5/5",
-      message: "Optimization finished",
-    });
-  });
-
-  it("ignores optimizer experiments that are paused rather than finished", () => {
-    const prev = new Map<string, RunningJobItem>([
-      [
-        "optimizer:x1",
-        {
-          id: "x1",
-          key: "optimizer:x1",
-          kind: "optimizer",
-          startedAt: "2026-07-20T09:55:00.000Z",
-          status: "running",
-          title: "Optimizer · bot · iteration 2/5",
-        },
-      ],
-    ]);
-
-    const completed = detectCompletedJobs(prev, [], {
-      optimizerExperiments: [{ id: "x1", status: "paused" }],
-    });
-
-    expect(completed).toHaveLength(0);
-  });
 });
 
 it.each([
   "finetuning",
-  "optimizer",
   "eval",
 ] as const)("does not infer %s completion from an absent list row", (kind) => {
   const previous: RunningJobItem = {

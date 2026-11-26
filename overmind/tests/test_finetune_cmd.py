@@ -8,12 +8,11 @@ from typer.testing import CliRunner
 
 from overmind.__main__ import app
 from overmind.config import Capability, Config
-from overmind.layer_cmd import (
+from overmind.finetune_cmd import (
     Client,
-    LayerError,
+    FinetuneError,
     parse_models,
     resolve_capability,
-    run_backtest,
     run_finetune,
 )
 
@@ -70,13 +69,13 @@ def _dataset(dataset_id, *, rows=4):
 
 
 def test_parse_models_rejects_duplicates_and_the_cap():
-    assert parse_models(["openai/a, anthropic/b"], cap=5) == ["openai/a", "anthropic/b"]
-    with pytest.raises(LayerError):
-        parse_models(["openai/a", "openai/a"], cap=5)
-    with pytest.raises(LayerError):
-        parse_models(["a,b,c,d,e,f"], cap=5)
-    with pytest.raises(LayerError):
-        parse_models(None, cap=4)
+    assert parse_models(["Qwen/a, meta/b"]) == ["Qwen/a", "meta/b"]
+    with pytest.raises(FinetuneError, match="Duplicate"):
+        parse_models(["Qwen/a", "Qwen/a"])
+    with pytest.raises(FinetuneError, match="between 1 and 4"):
+        parse_models(["a,b,c,d,e"])
+    with pytest.raises(FinetuneError, match="--models"):
+        parse_models(None)
 
 
 def test_capability_defaults_to_the_only_toml_entry():
@@ -85,114 +84,10 @@ def test_capability_defaults_to_the_only_toml_entry():
     assert resolve_capability(config, "")[0] == only.id
     other = Capability(slug="other", name="Other", id="22222222-2222-2222-2222-222222222222")
     crowded = Config(capabilities={"support": only, "other": other})
-    with pytest.raises(LayerError, match="Pass --capability"):
+    with pytest.raises(FinetuneError, match="Pass --capability"):
         resolve_capability(crowded, "")
     raw = "33333333-3333-3333-3333-333333333333"
     assert resolve_capability(Config(), raw)[0] == raw
-
-
-def _group(*labels: str) -> dict:
-    return {
-        "group": "group-1",
-        "runs": [
-            {"id": f"run-{index}", "label": label, "is_baseline": index == 0} for index, label in enumerate(labels)
-        ],
-    }
-
-
-def _finished(index: int, label: str, *, errors: int = 0) -> dict:
-    return {
-        "id": f"run-{index}",
-        "label": label,
-        "is_baseline": index == 0,
-        "status": "completed",
-        "summary": {"score": 0.5, "metrics": {"faithful": {"errors": errors}}},
-    }
-
-
-def _overall(status: str, candidate: float, delta: float) -> dict:
-    return {"overall": {"baseline": candidate - delta, "candidate": candidate, "delta": delta, "status": status}}
-
-
-def test_backtest_scores_each_model_and_exits_on_regression():
-    session_client = _client(
-        Response({
-            "upstream_available": True,
-            "models": [{"id": "openai/gpt-5-mini"}, {"id": "anthropic/claude-sonnet-4.5"}],
-        }),
-        Response({"active_eval_set": "set-1"}),
-        Response({"id": "ds-1"}),
-        Response(_dataset("ds-1")),
-        Response(_group("recorded", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.5")),
-        Response(_finished(0, "recorded")),
-        Response(_finished(1, "openai/gpt-5-mini")),
-        Response(_finished(2, "anthropic/claude-sonnet-4.5")),
-        Response(_overall("regressed", 0.4, -0.2)),
-        Response(_overall("improved", 0.9, 0.1)),
-    )
-    code = run_backtest(
-        session_client,
-        project_id="project",
-        capability_id="cap",
-        capability_slug="support",
-        models=["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"],
-        since=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        until=None,
-        limit=200,
-        from_model="",
-        timeout_s=30,
-    )
-    assert code == 1
-    created = next(body for _method, url, body in session_client.session.calls if url.endswith("/api/eval-runs/"))
-    labels = [target["label"] for target in created["targets"]]
-    assert labels == ["recorded", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]
-    assert created["targets"][1]["params"] == {"generation_strategy": "single_completion"}
-    assert created["targets"][0]["mode"] == "recorded"
-    assert created["targets"][0]["is_baseline"] is True
-
-
-def test_backtest_fails_when_a_metric_does_not_score():
-    session_client = _client(
-        Response({"upstream_available": True, "models": [{"id": "openai/gpt-5-mini"}]}),
-        Response({"active_eval_set": "set-1"}),
-        Response({"id": "ds-1"}),
-        Response(_dataset("ds-1")),
-        Response(_group("recorded", "openai/gpt-5-mini")),
-        Response(_finished(0, "recorded")),
-        Response(_finished(1, "openai/gpt-5-mini", errors=1)),
-        Response(_overall("unchanged", 1.0, 0.0)),
-    )
-    code = run_backtest(
-        session_client,
-        project_id="project",
-        capability_id="cap",
-        capability_slug="support",
-        models=["openai/gpt-5-mini"],
-        since=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        until=None,
-        limit=10,
-        from_model="",
-        timeout_s=30,
-    )
-    assert code == 1
-
-
-def test_unknown_model_does_not_create_a_dataset():
-    session_client = _client(Response({"upstream_available": False, "models": []}))
-    with pytest.raises(LayerError, match="catalog is unavailable"):
-        run_backtest(
-            session_client,
-            project_id="project",
-            capability_id="cap",
-            capability_slug="support",
-            models=["openai/gpt-5-mini"],
-            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            until=None,
-            limit=10,
-            from_model="",
-            timeout_s=30,
-        )
-    assert session_client.session.calls == [("GET", "https://api.example/api/models/catalog/", None)]
 
 
 def test_finetune_starts_one_job_per_model_in_one_group():
@@ -250,7 +145,7 @@ def test_a_later_finetune_failure_reports_the_jobs_already_queued():
         Response({"id": "job-1"}),
         Response({"detail": "rejected"}, status_code=400),
     )
-    with pytest.raises(LayerError, match="Queued: 1"):
+    with pytest.raises(FinetuneError, match="Queued: 1"):
         run_finetune(
             session_client,
             project_id="project",
@@ -266,18 +161,10 @@ def test_a_later_finetune_failure_reports_the_jobs_already_queued():
         )
 
 
-def test_backtest_times_out_while_the_run_is_still_going():
-    session_client = _client(
-        Response({"upstream_available": True, "models": [{"id": "openai/gpt-5-mini"}]}),
-        Response({"active_eval_set": "set-1"}),
-        Response({"id": "ds-1"}),
-        Response(_dataset("ds-1")),
-        Response(_group("recorded", "openai/gpt-5-mini")),
-        Response({"id": "run-0", "status": "running"}),
-        clock=lambda: 100.0,
-    )
-    with pytest.raises(LayerError, match="Timed out") as exc:
-        run_backtest(
+def test_unknown_model_does_not_create_a_dataset():
+    session_client = _client(Response({"models": {"small": [{"id": "Qwen/Qwen2.5-7B-Instruct"}]}}))
+    with pytest.raises(FinetuneError, match="Unknown model: openai/gpt-5-mini"):
+        run_finetune(
             session_client,
             project_id="project",
             capability_id="cap",
@@ -287,13 +174,39 @@ def test_backtest_times_out_while_the_run_is_still_going():
             until=None,
             limit=10,
             from_model="",
+            eval_percent=20,
+            timeout_s=30,
+        )
+    assert session_client.session.calls == [("GET", "https://api.example/api/finetuning-jobs/models/", None)]
+
+
+def test_finetune_times_out_while_the_dataset_is_still_landing():
+    session_client = _client(
+        Response({"models": {"small": [{"id": "Qwen/Qwen2.5-7B-Instruct"}]}}),
+        Response({"active_eval_set": "set-1"}),
+        Response({"train": {"id": "train-1"}, "eval": {"id": "eval-1"}}),
+        Response({"id": "train-1", "state": "landing"}),
+        clock=lambda: 100.0,
+    )
+    with pytest.raises(FinetuneError, match="Timed out") as exc:
+        run_finetune(
+            session_client,
+            project_id="project",
+            capability_id="cap",
+            capability_slug="support",
+            models=["Qwen/Qwen2.5-7B-Instruct"],
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            until=None,
+            limit=10,
+            from_model="",
+            eval_percent=20,
             timeout_s=0,
         )
     assert exc.value.code == 2
 
 
 def test_cli_requires_models():
-    result = CliRunner().invoke(app, ["backtest"])
+    result = CliRunner().invoke(app, ["finetune"])
     assert result.exit_code == 1
     assert "models" in result.output.lower()
 
@@ -305,7 +218,7 @@ def test_cli_reports_a_saved_key_meeting_another_endpoint(tmp_path, monkeypatch)
     dump(Config(api_key="saved-key", base_url="https://api.example", project_id="p"), tmp_path / "overmind.toml")
     monkeypatch.setenv("OVERMIND_API_URL", "https://other.example")
     monkeypatch.delenv("OVERMIND_API_KEY", raising=False)
-    result = CliRunner().invoke(app, ["backtest", "--models", "openai/gpt-5-mini", "--capability", "cap"])
+    result = CliRunner().invoke(app, ["finetune", "--models", "Qwen/Qwen2.5-7B-Instruct", "--capability", "cap"])
     assert result.exit_code == 1
     assert "different API" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)

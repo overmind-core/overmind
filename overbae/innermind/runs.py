@@ -283,15 +283,13 @@ def finish(run: EvalRun, *, where: Q = Q()) -> None:
 def on_terminal(run: EvalRun) -> None:
 
     update_task(run.project_id, "eval_run", run.pk, run.status)
-    # Both consumers import this module to create their runs.
-    from overbae.models.optimizer import on_candidate_eval_finished  # noqa: PLC0415
+    # finetuning_eval imports this module to create its runs.
     from overbae.services.finetuning_eval import sync_eval_scores  # noqa: PLC0415
 
     if run.status == EvalRun.Status.COMPLETED:
         comparison.baseline_comparison(run)
     for job in FinetuningJob.objects.filter(job_evals__eval_run_id=run.pk).distinct():
         sync_eval_scores(job)
-    on_candidate_eval_finished(run)
 
 
 def fail(run_id, reason: str, *, where: Q = Q()) -> bool:

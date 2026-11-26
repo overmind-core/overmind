@@ -76,21 +76,13 @@ export const tracesSearchSchema = z.object({
   view: z.enum(["roots", "sessions", "signals"]).optional().catch("roots").default("roots"),
 });
 
-/**
- * Shared by the Evaluations and Optimiser lists. "all" means no filter.
- * `run_status` stays free-form because each list has its own status vocabulary.
- */
-const runFilterShape = {
-  run_capability: z.string().optional().default("all"),
-  run_search: z.string().optional().default(""),
-  run_status: z.string().optional().default("all"),
-};
-
 export const evaluationsSearchSchema = projectIdSearchSchema.extend({
   page: z.coerce.number().min(1).optional().default(1),
   page_size: z.coerce.number().min(5).max(100).optional().default(25),
-  ...runFilterShape,
+  // "all" means no filter.
+  run_capability: z.string().optional().default("all"),
   run_dataset: z.string().optional().default("all"),
+  run_search: z.string().optional().default(""),
   run_status: z
     .enum(["all", ...Object.values(EvalRunsActivityListStatusEnum)])
     .optional()
@@ -100,19 +92,6 @@ export const evaluationsSearchSchema = projectIdSearchSchema.extend({
 });
 
 export type EvaluationsSearch = z.infer<typeof evaluationsSearchSchema>;
-
-/** `optimize` (and legacy `wizard`) open the run-locally instructions dialog;
- * `capabilityId` / `datasetId` prefill the example commands. */
-export const optimiserSearchSchema = projectIdSearchSchema.extend({
-  capabilityId: z.string().optional(),
-  datasetId: z.string().optional(),
-  optimize: z.boolean().optional(),
-  page: z.coerce.number().min(1).optional().default(1),
-  page_size: z.coerce.number().min(5).max(100).optional().default(25),
-  ...runFilterShape,
-});
-
-export type OptimiserSearch = z.infer<typeof optimiserSearchSchema>;
 
 // `ft_*` rather than the shared `run_*`: `ft_status` is a closed set, `run_status` is
 // free-form, and a `search: (prev) => …` navigation carries every route's params.

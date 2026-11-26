@@ -398,7 +398,6 @@ class EvalRunSerializer(serializers.ModelSerializer):
     cell_info = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
     origin = serializers.CharField(read_only=True, default="manual")
-    optimizer_experiment = serializers.UUIDField(read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = EvalRun
@@ -431,7 +430,6 @@ class EvalRunSerializer(serializers.ModelSerializer):
             "summary",
             "progress",
             "origin",
-            "optimizer_experiment",
             "triggered_by",
             "created_at",
             "updated_at",

@@ -69,12 +69,6 @@ from .innermind import (
 from .mcp_oauth import MCPOAuthClient, MCPOAuthGrant, MCPOAuthToken
 from .mcp_operations import EvalMatrixRevision, MCPMutation
 from .operations import InferenceRequest, OperationalEvent, OperationalRun
-from .optimizer import (
-    OptimizerCandidate,
-    OptimizerCommand,
-    OptimizerExperiment,
-    OptimizerIteration,
-)
 from .traces import Conversation, Span
 from .training_monitoring import TrainingCheckpoint, TrainingValidationRun
 from .training_plan import TrainingPlan
@@ -138,10 +132,6 @@ __all__ = [
     "DatasetContext",
     "Conversation",
     "Span",
-    "OptimizerExperiment",
-    "OptimizerIteration",
-    "OptimizerCandidate",
-    "OptimizerCommand",
     "Prompt",
     "Feedback",
     "FinetuningJob",

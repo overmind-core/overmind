@@ -2,7 +2,7 @@
 
 import { userFacingJobError } from "@/components/finetuning/train/model-config";
 
-export type RunningJobKind = "finetuning" | "eval" | "optimizer";
+export type RunningJobKind = "finetuning" | "eval";
 
 export interface RunningJobItem {
   /** Stable across polls. */
@@ -27,10 +27,6 @@ const FT_ACTIVE = new Set(["queued", "preparing", "running", "deploying", "valid
 const FT_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 const EVAL_ACTIVE = new Set(["pending", "running"]);
 const EVAL_TERMINAL = new Set(["completed", "failed", "cancelled"]);
-// overbae/models/optimizer.py OptimizerExperiment.Status — every non-terminal
-// status counts as in-flight.
-const OPTIMIZER_TERMINAL = new Set(["completed", "failed", "cancelled"]);
-
 function isActiveFinetuningStatus(status: string | undefined): boolean {
   return !!status && FT_ACTIVE.has(status);
 }
@@ -39,47 +35,12 @@ function isActiveEvalStatus(status: string | undefined): boolean {
   return !!status && EVAL_ACTIVE.has(status);
 }
 
-function isActiveOptimizerStatus(status: string | undefined): boolean {
-  return !!status && !OPTIMIZER_TERMINAL.has(status) && status !== "paused";
-}
-
 export function isTerminalFinetuningStatus(status: string | undefined): boolean {
   return !!status && FT_TERMINAL.has(status);
 }
 
 function isTerminalEvalStatus(status: string | undefined): boolean {
   return !!status && EVAL_TERMINAL.has(status);
-}
-
-function isTerminalOptimizerStatus(status: string | undefined): boolean {
-  return !!status && OPTIMIZER_TERMINAL.has(status);
-}
-
-function foldOptimizerStatus(status: string): string {
-  if (OPTIMIZER_TERMINAL.has(status) || status === "paused") return status;
-  if (status === "scheduled") return "pending";
-  return "running";
-}
-
-type OptimizerExperimentRow = {
-  id: string;
-  capability?: string | null;
-  dataset?: string | null;
-  datasetName?: string;
-  capabilityName?: string | null;
-  status: string;
-  failureReason?: string | null;
-  currentIteration?: number;
-  numIterations?: number;
-  createdAt?: Date | string;
-};
-
-function optimizerTitle(exp: OptimizerExperimentRow): string {
-  const capability = exp.capabilityName?.trim();
-  const base = capability ? `Optimizer · ${capability}` : "Optimizer experiment";
-  if (!exp.numIterations) return base;
-  const current = Math.min(exp.currentIteration ?? 0, exp.numIterations);
-  return `${base} · iteration ${current}/${exp.numIterations}`;
 }
 
 export function displayJobStatus(status: string): string {
@@ -151,10 +112,7 @@ export function buildRunningJobs(
       error?: string | null;
       status: string;
       createdAt: Date | string;
-      /** "manual" / "optimizer". */
-      origin?: string | null;
     }>;
-    optimizerExperiments?: OptimizerExperimentRow[];
   },
   opts?: { activeOnly?: boolean }
 ): RunningJobItem[] {
@@ -201,8 +159,6 @@ export function buildRunningJobs(
   }
 
   for (const run of input.evalRuns ?? []) {
-    // Candidate runs are internals; the experiment itself is the progress row.
-    if (run.origin === "optimizer") continue;
     if (activeOnly && !isActiveEvalStatus(run.status)) continue;
     const capability = run.capabilityName?.trim();
     items.push({
@@ -216,23 +172,6 @@ export function buildRunningJobs(
       ...(run.dataset ? { datasetId: run.dataset, datasetName: run.datasetName } : {}),
       ...(run.capabilityId
         ? { capabilityId: run.capabilityId, capabilityName: run.capabilityName ?? undefined }
-        : {}),
-    });
-  }
-
-  for (const exp of input.optimizerExperiments ?? []) {
-    if (activeOnly && !isActiveOptimizerStatus(exp.status)) continue;
-    items.push({
-      error: exp.failureReason?.trim() || undefined,
-      id: exp.id,
-      key: `optimizer:${exp.id}`,
-      kind: "optimizer",
-      startedAt: toIso(exp.createdAt),
-      status: foldOptimizerStatus(exp.status),
-      title: optimizerTitle(exp),
-      ...(exp.dataset ? { datasetId: exp.dataset, datasetName: exp.datasetName } : {}),
-      ...(exp.capability
-        ? { capabilityId: exp.capability, capabilityName: exp.capabilityName ?? undefined }
         : {}),
     });
   }
@@ -259,7 +198,6 @@ export function detectCompletedJobs(
       status: string;
       datasetName?: string | null;
     }>;
-    optimizerExperiments?: OptimizerExperimentRow[];
   }
 ): RunningJobItem[] {
   const activeKeys = new Set(currentlyActive.map((j) => j.key));
@@ -288,17 +226,6 @@ export function detectCompletedJobs(
       continue;
     }
 
-    if (prev.kind === "optimizer") {
-      const row = latest.optimizerExperiments?.find((e) => e.id === prev.id);
-      if (!row || !isTerminalOptimizerStatus(row.status)) continue;
-      completed.push({
-        ...prev,
-        status: foldOptimizerStatus(row.status),
-        title: optimizerTitle(row),
-      });
-      continue;
-    }
-
     if (prev.kind === "eval") {
       const row = latest.evalRuns?.find((j) => j.id === prev.id);
       if (!row || !isTerminalEvalStatus(row.status)) continue;
@@ -320,8 +247,7 @@ export function completionToastCopy(job: RunningJobItem): { message: string; des
       : job.status === "cancelled"
         ? "was cancelled"
         : "failed";
-  const kind =
-    job.kind === "finetuning" ? "Fine-tuning" : job.kind === "eval" ? "Eval run" : "Optimization";
+  const kind = job.kind === "finetuning" ? "Fine-tuning" : "Eval run";
   return {
     description: job.title,
     message: `${kind} ${ok}`,

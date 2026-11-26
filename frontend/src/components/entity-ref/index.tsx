@@ -6,7 +6,6 @@ import {
   CapabilityCard,
   DatasetCard,
   EvalRunCard,
-  ExperimentCard,
   JobCard,
   ModelCard,
   ProjectCard,
@@ -83,18 +82,6 @@ export function EntityLink({
           {children}
         </Link>
       );
-    case "experiment":
-      return (
-        <Link
-          className={className}
-          onClick={onClick}
-          params={{ experimentId: id }}
-          to="/optimiser/$experimentId"
-          {...rest}
-        >
-          {children}
-        </Link>
-      );
     case "model":
       return (
         <Link
@@ -159,7 +146,6 @@ const CARDS: Record<
   capability: CapabilityCard,
   dataset: DatasetCard,
   evalRun: EvalRunCard,
-  experiment: ExperimentCard,
   job: JobCard,
   model: ModelCard,
   project: ProjectCard,
