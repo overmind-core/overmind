@@ -40,7 +40,8 @@ def test_train(
     def served(prefix):
         return lambda r: "inference.test" in r.url and r.model.startswith(prefix)
 
-    fake_llm.on(lambda r: r.model == "qwen/qwen3-8b", BAD_REPLY)
+    fake_llm.extra_models.append("qwen/qwen3.5-9b")
+    fake_llm.on(lambda r: r.model == "qwen/qwen3.5-9b", BAD_REPLY)
     fake_llm.on(served("ft-"), trained_turn)
     fake_llm.on("You triage customer support tickets.", "refund")
     answer = workshop.capability("answer")
