@@ -2,9 +2,9 @@
 
 ## Runs
 
-An `EvalRun` scores one target (`mode` `recorded`, `generate` or `provided`) over one pinned dataset cell with a frozen `matrix` (`runs.freeze_matrix`: the eval set's rows, else every enabled row for the capability). Creating several `targets` makes one run per target under a shared `group`; REST creation allows at most one `is_baseline`. Training groups can mark several baselines, and `baseline_of` takes the newest completed one. Startup commits the running state and the complete row inventory atomically before admission; model warm-up stays outside that transaction.
+An `EvalRun` scores one target (`mode` `recorded` or `generate`) over one pinned dataset cell with a frozen `matrix` (`runs.freeze_matrix`: the eval set's rows, else every enabled row for the capability). Creating several `targets` makes one run per target under a shared `group`; REST creation allows at most one `is_baseline`. Training groups can mark several baselines, and `baseline_of` takes the newest completed one. Startup commits the running state and the complete row inventory atomically before admission; model warm-up stays outside that transaction.
 
-- `innermind/runs.py` owns the lifecycle (create, launch, generate, score, aggregate, finish, cancel, relaunch, reap). `generation.py` and `replay.py` produce outputs. A `provided` run cannot relaunch.
+- `innermind/runs.py` owns the lifecycle (create, launch, generate, score, aggregate, finish, cancel, relaunch, reap). `generation.py` and `replay.py` produce outputs.
 - `dataset.DatasetRowProcessor` scores rows with the live span evaluators and saves each `EvalScore(source_type=dataset_row)` as it is written, only while the run's `scoring_task_id` is the scorer's own. The scorer beats `updated_at` every 30 s; `runs.reap_stalled` hands a silent one to a new scorer that skips saved rows (up to `SCORING_ATTEMPTS`), sends a pending run's start again after 10 minutes and fails it after 60.
 - A row stands for the capability's answer: it takes every frozen row whose `span_type` is blank or `llm_call`, whatever its `span_name`. `tool_call`, `retrieval` and `workflow` rows stay live-only.
 - A training job reuses its first run's matrix for its later evaluations.

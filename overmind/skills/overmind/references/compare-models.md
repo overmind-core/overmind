@@ -16,13 +16,16 @@ agent.
    `create_dataset_from_llm_calls` and intent `eval`, then wait for its
    `dataset_run` job. Use `query_dataset` to confirm that rows carry the recorded
    output.
-1. **Choose the models.** Take candidate ids from `get_model_catalog`; do not
-   invent ids. Ask the user to confirm the list.
+1. **Choose the models.** Use the OpenRouter ids the user names, in
+   `provider/model` form (for example `openai/gpt-5-mini`). Do not invent ids;
+   the platform rejects an id that OpenRouter does not serve. Ask the user to
+   confirm the list.
 1. **Check readiness and cost.** Call `check_evaluation_readiness` with the
    dataset, its cell and these `targets`: one `recorded` target with
    `is_baseline: true`, and one `generate` target per candidate with its
    `model_name` and a `label`. Show `ready`, `estimated_cost_usd` and the context
-   warnings. Wait for the user to approve the spend.
+   warnings. `suggestions` lists models with room for longer rows; offer them, do
+   not add them yourself. Wait for the user to approve the spend.
 1. **Run.** Call `run_evaluation` with the same targets and a stable
    `request_key`. Poll each returned run with `get_job(kind="eval_run")` until it
    is terminal.

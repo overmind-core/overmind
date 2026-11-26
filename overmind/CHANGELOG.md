@@ -53,8 +53,8 @@ entries here cover the SDK surface.
 ### Added
 
 - `/overmind improve` and `/overmind compare-models`: helper workflows in the
-  `overmind` skill. A coding agent changes a prompt or code, or tries other models,
-  and measures the result with eval runs or live scoring.
+  `overmind` skill. A coding agent measures a prompt or code change with live
+  scoring, or scores other models on recorded calls with an eval run.
 - `overmind dataset attach FILE --json` uploads a table without creating a
   dataset and prints its `upload_id`, rows and sha256; a dataset script reads it
   as the frame `attachment` through `try_dataset_script` or `add_dataset_version`.
@@ -104,8 +104,12 @@ entries here cover the SDK surface.
   `/overmind optimise` and `/overmind backtest` routes. The platform no longer runs
   optimiser experiments or model comparisons. `overmind init` deletes the installed
   `overmind-optimiser` skill.
-- The `overmind.optimize.*`, `overmind.setup.*` and `overmind.init.*` span
-  attributes, and the `OVERMIND_TRACE_FILE` trace-file mode the optimiser used.
+- The `overmind.attrs` constants for the `overmind.command`, `overmind.optimize.*`,
+  `overmind.setup.*`, `overmind.init.*`, `overmind.run.*`, `overmind.run_state.*`,
+  `overmind.candidates.*`, `overmind.seed_validation.*`, `overmind.seed_coverage.*`
+  and `overmind.coding_agent.*` attributes, the evaluator's `overmind.eval.*`
+  batch attributes (`EVAL_BATCH_SIZE` to `EVAL_SOURCE_SUMMARY`), and the
+  `OVERMIND_TRACE_FILE` trace-file mode the optimiser used.
 - `layer_cmd` is now `finetune_cmd`.
 - `observe_safe` — use `observe(capture="none")` (or `init(redact_keys=...)`).
 - `function`, `conversation`, `get_tracer`, `set_agent_id`, `set_agent_name`,

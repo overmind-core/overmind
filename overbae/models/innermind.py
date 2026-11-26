@@ -200,8 +200,6 @@ class EvalRun(models.Model):
         RECORDED = "recorded"
         # A model generates each row's output.
         GENERATE = "generate"
-        # The caller posts each row's output before scoring.
-        PROVIDED = "provided"
 
     TERMINAL = (Status.COMPLETED, Status.FAILED, Status.CANCELLED)
 

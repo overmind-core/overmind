@@ -112,7 +112,7 @@ def test_init_deletes_retired_skills_and_keeps_others(tmp_path, monkeypatch, ide
     monkeypatch.chdir(tmp_path)
     retired = tmp_path / skill_dir / "skills" / "overmind-optimiser"
     retired.mkdir(parents=True)
-    (retired / "SKILL.md").write_text("Use start_optimizer\n")
+    (retired / "SKILL.md").write_text("Retired\n")
     own = tmp_path / skill_dir / "skills" / "team-release"
     own.mkdir(parents=True)
     (own / "SKILL.md").write_text("Ours\n")

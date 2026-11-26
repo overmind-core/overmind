@@ -46,7 +46,6 @@ export const Route = createFileRoute("/_auth/evaluations/runs/$runId")({
 
 const MODE_LABEL: Record<string, string> = {
   generate: "Generated",
-  provided: "Provided",
   recorded: "Recorded",
 };
 

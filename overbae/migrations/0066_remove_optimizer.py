@@ -6,6 +6,19 @@ def optimizer_feedback_to_other(apps, schema_editor):
     Feedback.objects.filter(area="optimizer").update(area="other")
 
 
+def delete_optimizer_eval_runs(apps, schema_editor):
+    # Baseline and candidate runs were optimiser internals; without their experiment
+    # they would read as manual runs. Only the optimiser posted "provided" outputs.
+    EvalRun = apps.get_model("overbae", "EvalRun")
+    Candidate = apps.get_model("overbae", "OptimizerCandidate")
+    Iteration = apps.get_model("overbae", "OptimizerIteration")
+    run_ids = {
+        *Candidate.objects.exclude(eval_run=None).values_list("eval_run_id", flat=True),
+        *Iteration.objects.exclude(eval_run=None).values_list("eval_run_id", flat=True),
+    }
+    EvalRun.objects.filter(models.Q(pk__in=run_ids) | models.Q(mode="provided")).delete()
+
+
 def retire_optimizer_reconciler(apps, schema_editor):
     # The database scheduler keeps a row for every entry it ever loaded from settings.
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
@@ -23,6 +36,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(optimizer_feedback_to_other, migrations.RunPython.noop),
         migrations.RunPython(retire_optimizer_reconciler, migrations.RunPython.noop),
+        migrations.RunPython(delete_optimizer_eval_runs, migrations.RunPython.noop),
         migrations.AlterField(
             model_name="feedback",
             name="area",
@@ -38,6 +52,15 @@ class Migration(migrations.Migration):
                     ("other", "Other"),
                 ],
                 default="other",
+                max_length=16,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="evalrun",
+            name="mode",
+            field=models.CharField(
+                choices=[("recorded", "Recorded"), ("generate", "Generate")],
+                default="recorded",
                 max_length=16,
             ),
         ),
