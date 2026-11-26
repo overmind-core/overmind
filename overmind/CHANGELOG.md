@@ -28,6 +28,7 @@ entries here cover the SDK surface.
 
 ### Changed
 
+- Provider spans include prompt and completion text by default. `init(trace_content=False)` or `OVERMIND_TRACE_CONTENT=false` omits it; `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` and `TRACELOOP_TRACE_CONTENT` still opt out when the Overmind setting is unset.
 - Every span started under a span that carries `overmind.intent` is stamped with the same
   intent unless it declares its own, and `overmind.intent(text)` sets the attribute on the
   current span as well as emitting its event. The platform scores a span from its own

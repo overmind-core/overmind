@@ -21,13 +21,25 @@ pytestmark = pytest.mark.covers("sdk-install")
 
 @pytest.fixture(autouse=True)
 def _reset_provider_state():
+    import os
+
     original = set(tracing._providers)
     tracing._providers.clear()
     original_strict = tracing._strict_mode
+    original_override = tracing._trace_content_override
+    content_env = (*tracing._INSTRUMENTOR_CONTENT_ENVS, *tracing._OPENINFERENCE_HIDE_ENVS)
+    saved_env = {key: os.environ.get(key) for key in content_env}
+    tracing._trace_content_override = None
     yield
     tracing._providers.clear()
     tracing._providers.update(original)
     tracing._strict_mode = original_strict
+    tracing._trace_content_override = original_override
+    for key, value in saved_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 class TestEnableProvider:

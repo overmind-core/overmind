@@ -146,7 +146,7 @@ def search(query: str, session) -> list[dict]: ...
 def call_model(messages: list[dict]) -> dict: ...
 ```
 
-That is the whole integration: no init guards (everything no-ops without a key), no hand-rolled scrubbing (captured payloads redact secret-named keys and base64 blobs automatically, text is kept in full), and no evidence bookkeeping (`deliver()` grounds itself in the environment-provenance spans of the run — pass `grounded_by=[...]` to override). On `KeyboardInterrupt`/cancellation the entry-point span flushes before re-raising, so interrupted runs still land.
+That is the whole integration: no init guards (everything no-ops without a key), no hand-rolled scrubbing (captured payloads redact secret-named keys and base64 blobs automatically, text is kept in full), and no evidence bookkeeping (`deliver()` grounds itself in the environment-provenance spans of the run — pass `grounded_by=[...]` to override). Provider spans include prompt and completion text; pass `init(trace_content=False)` (or set `OVERMIND_TRACE_CONTENT=false`) to omit it. On `KeyboardInterrupt`/cancellation the entry-point span flushes before re-raising, so interrupted runs still land.
 
 Decorators: `entry_point`, `workflow`, `tool`, `retrieval`, and the general `observe` (sync and async). All accept `capture=` (`"auto"` scrubbed args/result, `"none"`, `"messages"`), `ignore=` (argument names never captured), `self_attrs=` (instance attributes recorded as inputs), `format_input=` / `format_output=` hooks for custom payload shapes, `provenance=`, `unit=`, and `capability=`. `start_span(...)` is the context-manager companion; `set_tag`, `set_user`, `set_conversation_id`, and `capture_exception` annotate the current span Sentry-style.
 

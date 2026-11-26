@@ -20,11 +20,24 @@ def reset_sdk_state():
 
     saved_initialized = sdk._initialized
     saved_tracer = sdk._tracer
+    saved_override = sdk._trace_content_override
+    content_env = (
+        *sdk._INSTRUMENTOR_CONTENT_ENVS,
+        *sdk._OPENINFERENCE_HIDE_ENVS,
+    )
+    saved_env = {key: os.environ.get(key) for key in content_env}
     sdk._initialized = False
     sdk._tracer = None
+    sdk._trace_content_override = None
     yield
     sdk._initialized = saved_initialized
     sdk._tracer = saved_tracer
+    sdk._trace_content_override = saved_override
+    for key, value in saved_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 @pytest.fixture
@@ -143,6 +156,24 @@ def test_init_disables_tracing_when_the_saved_key_meets_another_endpoint(
     else:
         assert tracing.init() is False
     mock_opentelemetry["exporter"].assert_not_called()
+
+
+def test_init_trace_content_false_overrides_a_content_env(mock_opentelemetry, monkeypatch):
+    from overmind import tracing
+
+    monkeypatch.setenv("TRACELOOP_TRACE_CONTENT", "true")
+
+    assert (
+        tracing.init(
+            overmind_api_key="test_key",
+            overmind_base_url="http://localhost:4318",
+            trace_content=False,
+        )
+        is True
+    )
+
+    assert os.environ["TRACELOOP_TRACE_CONTENT"] == "false"
+    assert os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
 
 
 def test_observe_calls_through_when_uninitialised(no_api_key):
