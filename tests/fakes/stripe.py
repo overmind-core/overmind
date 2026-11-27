@@ -84,7 +84,7 @@ class StripeAPI:
             customer = self.customers.get(path.rsplit("/", 1)[-1])
             return _json(customer) if customer else _json({"error": {}}, 404)
         if method == "POST" and path == "/v1/checkout/sessions":
-            session_id = f"cs_fake{next(_ids)}"
+            session_id = f"cs_test_fake{next(_ids)}"
             session = {
                 "id": session_id,
                 "object": "checkout.session",

@@ -2592,7 +2592,7 @@ class CreditTopUpRequestSerializer(serializers.Serializer):
 
 
 class CreditTopUpConfirmRequestSerializer(serializers.Serializer):
-    session_id = serializers.CharField(max_length=255)
+    session_id = serializers.RegexField(r"^cs_(live|test)_[A-Za-z0-9]{1,240}$")
 
 
 class BillingAccountSerializer(serializers.Serializer):

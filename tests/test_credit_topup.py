@@ -188,7 +188,7 @@ def test_returning_before_payment_settles_grants_nothing(stripe):
     assert balance_usd(user) == SIGNUP_CREDITS_USD
 
 
-@pytest.mark.parametrize("session_id", ["theirs", "cs_missing"])
+@pytest.mark.parametrize("session_id", ["theirs", "cs_test_missing"])
 def test_confirming_a_session_the_caller_did_not_buy_is_not_found(stripe, session_id):
     buyer = _make_user("topup-buyer")
     other = _make_user("topup-other")
@@ -201,6 +201,26 @@ def test_confirming_a_session_the_caller_did_not_buy_is_not_found(stripe, sessio
 
     assert r.status_code == 404
     assert not BillingTelemetry.objects.filter(service=BillingService.PURCHASE).exists()
+
+
+@pytest.mark.parametrize("session_id", ["cs_test_a/../../v1/customers", "pi_123", ""])
+def test_confirming_a_malformed_session_id_never_reaches_stripe(stripe, session_id):
+    stripe.down = True
+    user = _make_user("topup-malformed")
+
+    r = auth_client(user).post(reverse("billing-topup-confirm"), {"session_id": session_id})
+
+    assert r.status_code == 400
+
+
+def test_a_stripe_failure_on_return_does_not_echo_stripe_text(stripe):
+    user = _make_user("topup-confirm-outage")
+    stripe.down = True
+
+    r = auth_client(user).post(reverse("billing-topup-confirm"), {"session_id": "cs_test_down"})
+
+    assert r.status_code == 502
+    assert "unavailable" not in r.data["detail"]
 
 
 def test_the_webhook_acknowledges_events_it_does_not_handle(stripe):

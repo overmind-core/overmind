@@ -37,9 +37,11 @@ from overbae.services.credit_purchases import (
 logger = logging.getLogger(__name__)
 
 
-def _stripe_failure(exc: stripe.StripeError) -> Response:
-    message = getattr(exc, "user_message", None) or str(exc) or "Stripe error."
-    return Response({"detail": message}, status=status.HTTP_502_BAD_GATEWAY)
+def _stripe_failure() -> Response:
+    # Stripe's error text names request ids and account settings; it stays in the log.
+    return Response(
+        {"detail": "Stripe did not answer. Try again."}, status=status.HTTP_502_BAD_GATEWAY
+    )
 
 
 class BillingAccountView(APIView):
@@ -101,11 +103,14 @@ class CreditTopUpView(APIView):
         payload.is_valid(raise_exception=True)
         try:
             url = create_topup_session(request.user, payload.validated_data["amount_usd"])
-        except PurchaseUnavailable as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        except stripe.StripeError as exc:
+        except PurchaseUnavailable:
+            return Response(
+                {"detail": "Credit purchases are not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except stripe.StripeError:
             logger.exception("Stripe top-up session create failed for user_id=%s", request.user.pk)
-            return _stripe_failure(exc)
+            return _stripe_failure()
         return Response(CheckoutSessionResponseSerializer({"checkout_url": url}).data)
 
 
@@ -126,9 +131,9 @@ class CreditTopUpConfirmView(APIView):
             paid = confirm_session(request.user, payload.validated_data["session_id"])
         except SessionNotFound:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        except stripe.StripeError as exc:
+        except stripe.StripeError:
             logger.exception("Stripe session confirm failed for user_id=%s", request.user.pk)
-            return _stripe_failure(exc)
+            return _stripe_failure()
         data = {"paid": paid, "account": account_payload(request.user)}
         return Response(CreditTopUpConfirmationSerializer(data).data)
 
