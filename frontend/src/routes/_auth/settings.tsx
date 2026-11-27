@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageShell } from "@/components/ui/page-shell";
 import { useCommercialBilling, useConfirmTopUp } from "@/hooks/use-billing-account";
-import { notify } from "@/lib/notify";
+import { errorMessage } from "@/lib/notify";
 import { PROSE, TITLE } from "@/lib/typography";
 
 const settingsSearchSchema = z.object({
@@ -32,6 +32,26 @@ function SettingsPage() {
   const { mutate: confirmTopUp } = useConfirmTopUp();
   const confirmed = useRef<string | null>(null);
 
+  // The webhook grants a payment whose return confirmation failed, so a retry is
+  // offered rather than required.
+  const confirm = useCallback(
+    (sessionId: string) =>
+      confirmTopUp(sessionId, {
+        onError: (err) =>
+          toast.error(errorMessage(err, "Could not confirm the payment"), {
+            action: { label: "Retry", onClick: () => confirm(sessionId) },
+            id: "topup-confirm",
+          }),
+        onSuccess: ({ paid }) => {
+          toast.success(
+            paid ? "Credits added." : "Payment pending. Credits follow when it clears.",
+            { id: "topup-confirm" }
+          );
+        },
+      }),
+    [confirmTopUp]
+  );
+
   useEffect(() => {
     const { billing, session_id: sessionId } = settingsSearch;
     if (!billing) return;
@@ -41,13 +61,8 @@ function SettingsPage() {
     });
     if (billing !== "topup" || !sessionId || confirmed.current === sessionId) return;
     confirmed.current = sessionId;
-    confirmTopUp(sessionId, {
-      onError: (err) => notify.error(err, "Could not confirm the payment"),
-      onSuccess: ({ paid }) => {
-        toast.success(paid ? "Credits added." : "Payment pending. Credits follow when it clears.");
-      },
-    });
-  }, [settingsSearch, navigate, confirmTopUp]);
+    confirm(sessionId);
+  }, [settingsSearch, navigate, confirm]);
 
   return (
     <PageShell
