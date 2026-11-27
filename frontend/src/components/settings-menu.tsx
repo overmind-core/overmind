@@ -26,7 +26,7 @@ export function SettingsMenuButton() {
     },
     {
       icon: Icon.credits,
-      label: "Plan & billing",
+      label: "Credits & usage",
       onSelect: () => void navigate({ search: (prev) => prev, to: "/settings" }),
     },
   ];

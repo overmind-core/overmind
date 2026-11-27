@@ -497,7 +497,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     value="resource:billing"
                   >
                     <Icon.credits className="size-[15px] shrink-0 text-muted-foreground" />
-                    <span className="flex-1">Plan & billing</span>
+                    <span className="flex-1">Credits & usage</span>
                   </CommandItem>
                 )}
                 {resources.map((r) => {
