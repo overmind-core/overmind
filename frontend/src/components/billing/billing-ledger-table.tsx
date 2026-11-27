@@ -7,7 +7,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { DateTime } from "@/components/ui/datetime";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
-import { useBillingLedgerQuery, useCommercialBilling } from "@/hooks/use-subscription";
+import { useBillingLedgerQuery, useCommercialBilling } from "@/hooks/use-billing-account";
 import { PROSE, TITLE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { BillingTelemetry } from "@/openapi";

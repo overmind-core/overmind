@@ -26,13 +26,13 @@ def test_demo_reset_preserves_real_owner_ledger():
         ).pk
         for project, service, amount in [
             (real, "evaluation", -2),
-            (None, "stripe-topup", 100),
-            (None, "free-credits", 10),
+            (None, "purchase", 100),
+            (None, "grant", 10),
         ]
     ]
     BillingTelemetry.objects.create(user=owner, project=demo, service="evaluation", amount=-5)
     BillingTelemetry.objects.create(
-        user=owner, service="stripe-topup", amount=50, idempotency_key="topup:cs_live_seed_a1B2c3"
+        user=owner, service="purchase", amount=50, idempotency_key="topup:cs_live_seed_a1B2c3"
     )
     reset_demo_billing(owner.email)
     assert set(BillingTelemetry.objects.values_list("pk", flat=True)) == set(keep) | initial

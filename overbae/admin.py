@@ -18,7 +18,6 @@ from overbae.models import (
     SignalEvent,
     SignalSubscription,
     Span,
-    Subscription,
     User,
     UserOnboarding,
 )
@@ -83,29 +82,6 @@ class APITokenAdmin(admin.ModelAdmin):
     list_filter = ["is_active", "created_at"]
     search_fields = ["name", "prefix", "user__email"]
     readonly_fields = ["id", "prefix", "token_hash", "created_at"]
-
-
-@admin.register(Subscription)
-class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = [
-        "user",
-        "status",
-        "cancel_at_period_end",
-        "start_date",
-        "end_date",
-        "stripe_subscription_id",
-        "updated_at",
-    ]
-    list_filter = ["status", "cancel_at_period_end"]
-    search_fields = [
-        "user__email",
-        "user__stripe_customer_id",
-        "stripe_subscription_id",
-        "stripe_price_id",
-        "last_stripe_invoice_id",
-    ]
-    readonly_fields = ["id", "created_at", "updated_at"]
-    raw_id_fields = ["user"]
 
 
 @admin.register(BillingTelemetry)

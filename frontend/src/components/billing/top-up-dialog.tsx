@@ -16,7 +16,7 @@ import { Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { useTopUpCredits } from "@/hooks/use-subscription";
+import { useTopUpCredits } from "@/hooks/use-billing-account";
 import { notify } from "@/lib/notify";
 import { TITLE } from "@/lib/typography";
 import { cn } from "@/lib/utils";

@@ -16,13 +16,11 @@ from overbae.api.auth_keys import APITokenCurrentView, APITokenDestroyView, APIT
 from overbae.api.auth_registration import LocalSessionView, OnboardingView, UserMeView
 from overbae.api.auth_token_views import PublicTokenObtainPairView, PublicTokenRefreshView
 from overbae.api.billing import (
+    BillingAccountView,
     BillingLedgerView,
-    CancelSubscriptionView,
-    CheckoutSessionView,
+    CreditTopUpConfirmView,
     CreditTopUpView,
-    RenewSubscriptionView,
     StripeWebhookView,
-    SubscriptionView,
 )
 from overbae.api.capabilities import AgentGraphView, CapabilityViewSet
 from overbae.api.completions import chat_completions, model_detail, models_list
@@ -256,12 +254,14 @@ urlpatterns += [
     path("api/auth/onboarding/", OnboardingView.as_view(), name="user-onboarding"),
     path("api/auth/token/", PublicTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", PublicTokenRefreshView.as_view(), name="token_refresh"),
-    path("api/billing/subscription/", SubscriptionView.as_view(), name="billing-subscription"),
+    path("api/billing/account/", BillingAccountView.as_view(), name="billing-account"),
     path("api/billing/ledger/", BillingLedgerView.as_view(), name="billing-ledger"),
-    path("api/billing/checkout/", CheckoutSessionView.as_view(), name="billing-checkout"),
     path("api/billing/topup/", CreditTopUpView.as_view(), name="billing-topup"),
-    path("api/billing/cancel/", CancelSubscriptionView.as_view(), name="billing-cancel"),
-    path("api/billing/renew/", RenewSubscriptionView.as_view(), name="billing-renew"),
+    path(
+        "api/billing/topup/confirm/",
+        CreditTopUpConfirmView.as_view(),
+        name="billing-topup-confirm",
+    ),
     path("api/billing/webhook/", StripeWebhookView.as_view(), name="billing-webhook"),
     path("api/schema/", SpectacularAPIView.as_view(permission_classes=[AllowAny]), name="schema"),
     path(

@@ -2,16 +2,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import api from "@/client";
 import { useOnboardingStatus } from "@/hooks/use-query";
-import type { Subscription } from "@/openapi";
 
-export const subscriptionQueryKey = ["billing-subscription"] as const;
+export const billingAccountQueryKey = ["billing-account"] as const;
 export const billingLedgerQueryKey = ["billing-ledger"] as const;
 
-export function useSubscriptionQuery(options?: { enabled?: boolean; refetchInterval?: number }) {
+export function useBillingAccount(options?: { enabled?: boolean; refetchInterval?: number }) {
   return useQuery({
     enabled: options?.enabled ?? true,
-    queryFn: () => api.billing.billingSubscriptionRetrieve(),
-    queryKey: subscriptionQueryKey,
+    queryFn: () => api.billing.billingAccountRetrieve(),
+    queryKey: billingAccountQueryKey,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -29,26 +28,6 @@ export function useBillingLedgerQuery(page = 1, pageSize = 25, ordering?: string
   });
 }
 
-export function useCancelSubscription() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.billing.billingCancelCreate(),
-    onSuccess: (data: Subscription) => {
-      queryClient.setQueryData(subscriptionQueryKey, data);
-    },
-  });
-}
-
-export function useRenewSubscription() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.billing.billingRenewCreate(),
-    onSuccess: (data: Subscription) => {
-      queryClient.setQueryData(subscriptionQueryKey, data);
-    },
-  });
-}
-
 /**
  * `hasCredits` mirrors the server gate exactly: `ensure_credits` rejects only a
  * non-positive balance, it does not price the job. An unresolved balance counts
@@ -56,7 +35,7 @@ export function useRenewSubscription() {
  */
 export function useCredits() {
   const { enabled } = useCommercialBilling();
-  const { data, isLoading } = useSubscriptionQuery();
+  const { data, isLoading } = useBillingAccount();
   const balanceUsd = data ? Math.max(0, Number(data.creditsUsd) || 0) : undefined;
   return {
     balanceUsd,
@@ -65,16 +44,27 @@ export function useCredits() {
   };
 }
 
-export function useBuyPlan() {
-  return useMutation({
-    mutationFn: () => api.billing.billingCheckoutCreate(),
-  });
-}
-
 /** Resolves to a Stripe Checkout URL to redirect to. */
 export function useTopUpCredits() {
   return useMutation({
     mutationFn: (amountUsd: number) =>
       api.billing.billingTopupCreate({ creditTopUpRequestRequest: { amountUsd } }),
+  });
+}
+
+/** Grants a paid Checkout session on return, so the balance does not wait for the webhook. */
+export function useConfirmTopUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      api.billing.billingTopupConfirmCreate({
+        creditTopUpConfirmRequestRequest: { sessionId },
+      }),
+    onSuccess: async (data) => {
+      // A mount-time account fetch can still be in flight with the pre-purchase balance.
+      await queryClient.cancelQueries({ queryKey: billingAccountQueryKey });
+      queryClient.setQueryData(billingAccountQueryKey, data.account);
+      void queryClient.invalidateQueries({ queryKey: billingLedgerQueryKey });
+    },
   });
 }

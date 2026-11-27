@@ -111,15 +111,10 @@ const NAV_KEYWORDS: Record<string, string[]> = {
   "/settings": [
     "settings",
     "billing",
-    "plan",
     "credits",
-    "upgrade",
     "top up",
     "ledger",
     "spend",
-    "subscription",
-    "cancel plan",
-    "renew",
     "buy credits",
     "invoice",
     "usage",
@@ -490,15 +485,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   <CommandItem
                     keywords={[
                       "billing",
-                      "plan",
                       "credits",
-                      "subscription",
                       "top up",
                       "topup",
                       "ledger",
-                      "upgrade",
-                      "cancel plan",
-                      "renew",
                       "buy credits",
                       "spend",
                       "invoice",
@@ -507,7 +497,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     value="resource:billing"
                   >
                     <Icon.credits className="size-[15px] shrink-0 text-muted-foreground" />
-                    <span className="flex-1">Plan & billing</span>
+                    <span className="flex-1">Credits & usage</span>
                   </CommandItem>
                 )}
                 {resources.map((r) => {

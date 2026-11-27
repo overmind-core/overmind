@@ -4,7 +4,6 @@ import * as z from "zod";
 import { ApiError, NETWORK_ERROR_MESSAGE } from "@/lib/api-error";
 import { isChunkLoadError } from "@/lib/chunk-error";
 import { isPaymentRequired } from "@/lib/credits";
-import { isPlanLimitError } from "@/lib/plan-limits";
 
 const DEFAULT_FALLBACK = "Something went wrong";
 
@@ -41,12 +40,10 @@ export function errorMessage(err: unknown, fallback = DEFAULT_FALLBACK): string 
 
 export const notify = {
   /**
-   * Silent for 402s (the out-of-credits dialog owns that moment) and for
-   * plan-limit 403s (the API middleware already toasts them once).
+   * Silent for 402s: the out-of-credits dialog owns that moment.
    */
   error(err: unknown, fallback = "Something went wrong") {
     if (isPaymentRequired(err)) return;
-    if (isPlanLimitError(err)) return;
     const message = errorMessage(err, fallback);
     // Keyed by message so a retry storm or batch loop stacks one toast, not N.
     toast.error(message, { id: `err:${message}` });

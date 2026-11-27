@@ -103,14 +103,14 @@ function OverviewBody({
     (total, count) => total + count,
     0
   );
-  const dailyTopups = fillDays(data.topups_usd, days, data.computed_at);
+  const dailyPurchases = fillDays(data.purchases_usd, days, data.computed_at);
   const dailySpend = new Map(
     fillDays(data.spend_usd, days, data.computed_at).map(({ day, value }) => [day, value])
   );
-  const financial = dailyTopups.map(({ day, value }) => ({
+  const financial = dailyPurchases.map(({ day, value }) => ({
     day,
     spend: dailySpend.get(day) ?? 0,
-    topups: value,
+    purchases: value,
   }));
   const totalSpend = Object.values(data.spend_by_service).reduce(
     (total, amount) => total + Number(amount),
@@ -151,23 +151,17 @@ function OverviewBody({
 
       <section aria-label="Spend and payments" className="space-y-4">
         <h2 className="text-sm font-medium text-muted-foreground">Spend and payments</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat
-            detail="Active subscriptions"
+            detail="Bought credits at least once"
             label="Paying users"
             value={formatInt(data.paying_users)}
           />
-          <Stat
-            detail="Cancel at period end"
-            label="Cancelling"
-            value={formatInt(data.cancelling_users)}
-          />
-          <Stat label="Free users" value={formatInt(data.free_users)} />
           <Stat detail={`Last ${days} days`} label="Product spend" value={formatUsd(totalSpend)} />
           <Stat
             detail={`Last ${days} days`}
-            label="Stripe top-ups"
-            value={formatUsd(sum(data.topups_usd))}
+            label="Credit purchases"
+            value={formatUsd(sum(data.purchases_usd))}
           />
           <Stat
             detail="Current balance below $5 after spend"
@@ -241,18 +235,17 @@ function OverviewBody({
           data={financial}
           format={formatUsd}
           series={[
-            { color: "var(--chart-2)", key: "topups", label: "Stripe top-ups" },
+            { color: "var(--chart-2)", key: "purchases", label: "Credit purchases" },
             { color: "var(--chart-4)", key: "spend", label: "Product spend" },
           ]}
           title="Spend and payments"
-          total={`${formatUsd(sum(data.topups_usd))} topped up`}
+          total={`${formatUsd(sum(data.purchases_usd))} purchased`}
         />
       </section>
 
       <section aria-label="Product breakdowns" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Breakdown format={formatInt} title="Training jobs" values={data.training_jobs} />
         <Breakdown format={formatUsd} title="Spend by service" values={data.spend_by_service} />
-        <Breakdown format={formatInt} title="Subscription status" values={data.subscriptions} />
         <Breakdown format={formatInt} title="Sign-in method" values={data.sign_on_methods} />
         {usage?.available ? (
           <SectionCard contentClassName="p-0" title="Most used CLI commands">

@@ -39,12 +39,9 @@ def _billing_summary(args: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "window_days": days,
-        "subscription_statuses": overview["subscriptions"],
         "paying_users": overview["paying_users"],
-        "cancelling_users": overview["cancelling_users"],
-        "free_users": overview["free_users"],
         "low_balance_users": overview["low_balance_users"],
-        "topups_usd": sum((point["value"] for point in overview["topups_usd"]), Decimal("0")),
+        "purchases_usd": sum((point["value"] for point in overview["purchases_usd"]), Decimal("0")),
         "spend_usd": sum((point["value"] for point in overview["spend_usd"]), Decimal("0")),
         "spend_by_service_usd": overview["spend_by_service"],
     }

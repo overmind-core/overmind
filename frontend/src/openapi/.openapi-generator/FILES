@@ -62,6 +62,7 @@ models/AssistantThreadStateEnum.ts
 models/AuthTokensResponse.ts
 models/BackendEnum.ts
 models/BeginUploadRequest.ts
+models/BillingAccount.ts
 models/BillingTelemetry.ts
 models/Binding.ts
 models/BindingStateRequest.ts
@@ -126,6 +127,8 @@ models/ConnectorVerifyResponse.ts
 models/ConsentDecisionRequest.ts
 models/ConsentDetails.ts
 models/ConsentRedirect.ts
+models/CreditTopUpConfirmRequestRequest.ts
+models/CreditTopUpConfirmation.ts
 models/CreditTopUpRequestRequest.ts
 models/Dataset.ts
 models/DatasetAnalytics.ts
@@ -341,9 +344,6 @@ models/PermissionEnum.ts
 models/PhaseEnum.ts
 models/Pipeline.ts
 models/PipelineRun.ts
-models/PlanEnum.ts
-models/PlanUsage.ts
-models/PlanUsageUnit.ts
 models/PositionEnum.ts
 models/PreparationEdge.ts
 models/PreparationEdgeKindEnum.ts
@@ -400,7 +400,6 @@ models/SplitPositionEnum.ts
 models/Status1b7Enum.ts
 models/StrataPage.ts
 models/Stratum.ts
-models/Subscription.ts
 models/SyncSnapshot.ts
 models/SyncSnapshotRequest.ts
 models/SyncStatusEnum.ts

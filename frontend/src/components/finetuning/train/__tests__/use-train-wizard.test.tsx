@@ -59,7 +59,6 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("@/components/finetuning/train/model-picker", () => ({ findCatalogModel: () => null }));
 vi.mock("@/hooks/use-capability-eval-preload", () => ({ useCapabilityEvalPreload: () => ({}) }));
-vi.mock("@/hooks/use-subscription", () => ({ useCredits: () => ({ hasCredits: true }) }));
 vi.mock("@/hooks/use-evaluations", () => ({
   useEvalSetsQuery: () => ({ data: mocks.sets }),
   useModelCatalogQuery: () => ({

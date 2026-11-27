@@ -55,7 +55,7 @@ class Command(BaseCommand):
         entry = append_entry(
             user=user,
             amount=amount_usd,
-            service=BillingService.STRIPE_TOPUP,
+            service=BillingService.GRANT,
             idempotency_key=options["key"],
             metadata={"granted_by": "grant_credits", "reason": options["reason"]},
         )

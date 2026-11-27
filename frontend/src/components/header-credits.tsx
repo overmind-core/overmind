@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 
 import { CreditsAmount } from "@/components/ui/credits";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCommercialBilling, useSubscriptionQuery } from "@/hooks/use-subscription";
+import { useBillingAccount, useCommercialBilling } from "@/hooks/use-billing-account";
 import { onCreditsDelta } from "@/lib/credits-delta";
 import { cn } from "@/lib/utils";
-import { PlanEnum } from "@/openapi";
 
 const LOW_BALANCE_USD = 5;
 /* Must match the credits-delta-bubble animation duration in styles.css. */
@@ -14,7 +13,7 @@ const DELTA_MS = 2500;
 export function HeaderCredits() {
   const { enabled: commercial, ready } = useCommercialBilling();
   // Always mounted, so focus-refetch alone goes stale.
-  const { data } = useSubscriptionQuery({ refetchInterval: 60_000 });
+  const { data } = useBillingAccount({ refetchInterval: 60_000 });
   // seq keys the bubble so a reward landing mid-animation restarts it.
   const [delta, setDelta] = useState<{ credits: number; seq: number } | null>(null);
 
@@ -56,17 +55,14 @@ export function HeaderCredits() {
   }
 
   const balance = Math.max(0, Number(data.creditsUsd) || 0);
-  const pastDue = data.status === "past_due";
   const out = balance <= 0;
   const low = !out && balance < LOW_BALANCE_USD;
 
   const detail = out
     ? "You're out of credits. Add credits in Settings."
-    : pastDue
-      ? "Payment past due. Check your plan in Settings."
-      : low
-        ? "Credits are low. Add credits in Settings."
-        : `${data.plan === PlanEnum.pro ? "Pro" : "Free"} plan. Credits pay for training, inference and analysis.`;
+    : low
+      ? "Credits are low. Add credits in Settings."
+      : "Credits pay for training, inference and analysis.";
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -79,7 +75,7 @@ export function HeaderCredits() {
             className={cn(
               "relative inline-flex h-8 cursor-help select-none items-center px-1 text-sm leading-none",
               "[&_svg]:text-muted-foreground",
-              out ? "text-destructive" : low || pastDue ? "text-warning" : "text-foreground"
+              out ? "text-destructive" : low ? "text-warning" : "text-foreground"
             )}
             role="status"
           >

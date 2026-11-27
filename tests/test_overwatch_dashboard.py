@@ -17,6 +17,8 @@ from factories import (
 from rest_framework.test import APIClient
 
 from overbae.models import (
+    BillingService,
+    BillingTelemetry,
     Dataset,
     DeployedModel,
     EvalRun,
@@ -90,6 +92,21 @@ def test_rejects_anything_but_the_configured_token(settings, path):
 
     settings.SALES_DASHBOARD_TOKEN = ""
     assert overwatch_client("").get(url).status_code == 403
+
+
+@pytest.mark.covers("ledger")
+def test_paying_users_and_purchases_count_only_bought_credits(accounts):
+    for user, service, amount in [
+        (accounts["paying"], BillingService.PURCHASE, 25),
+        (accounts["paying"], BillingService.PURCHASE, 10),
+        (accounts["active"], BillingService.GRANT, 200),
+    ]:
+        BillingTelemetry.objects.create(user=user, service=service, amount=amount)
+
+    data = overwatch_client().get("/api/internal/overwatch/overview/").data
+
+    assert data["paying_users"] == 1
+    assert sum(float(point["value"]) for point in data["purchases_usd"]) == 35
 
 
 def test_unicode_bearer_token_is_rejected_safely():

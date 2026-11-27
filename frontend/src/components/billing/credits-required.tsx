@@ -1,28 +1,16 @@
 import { useEffect } from "react";
 
+import { TopUpDialog } from "@/components/billing/top-up-dialog";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { CreditsAmount } from "@/components/ui/credits";
 import { Icon } from "@/components/ui/icons";
-import { useCredits } from "@/hooks/use-subscription";
+import { useCredits } from "@/hooks/use-billing-account";
 import { claimCreditsSurface } from "@/lib/credits";
-import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { cn } from "@/lib/utils";
 
 /** While one of these is on screen, the global dialog stays quiet. */
 function useCreditsSurfaceClaim(active: boolean) {
   useEffect(() => (active ? claimCreditsSurface() : undefined), [active]);
-}
-
-function ViewPlansButton({ size = "sm" }: { size?: "sm" | "default" }) {
-  return (
-    <Button asChild className="shrink-0" size={size} variant="secondary">
-      <a href={PUBLIC_PRICING_URL} rel="noreferrer" target="_blank">
-        <Icon.zap />
-        View plans
-      </a>
-    </Button>
-  );
 }
 
 export function CreditsRequiredAlert({
@@ -54,7 +42,7 @@ export function CreditsRequiredAlert({
         You need credits to {action}. Your balance is{" "}
         <CreditsAmount className="text-foreground" usd={balanceUsd ?? 0} />.
       </p>
-      <ViewPlansButton />
+      <TopUpDialog />
     </Alert>
   );
 }

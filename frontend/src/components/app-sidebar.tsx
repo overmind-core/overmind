@@ -27,10 +27,8 @@ import { useAuthContext } from "@/contexts/auth-context";
 import { useAllEvalRunsQuery } from "@/hooks/use-evaluations";
 import { useFinetuningJobsQuery } from "@/hooks/use-finetuning";
 import { useGuestGate } from "@/hooks/use-guest-gate";
-import { useOnboardingStatus } from "@/hooks/use-query";
 import { useUnseenSignalCountQuery } from "@/hooks/use-signals";
 import { featureFlags } from "@/lib/feature-flags";
-import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { isMac } from "@/lib/platform";
 import { buildRunningJobs, type RunningJobKind } from "@/lib/running-jobs";
 import {
@@ -199,9 +197,6 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
   const iconOnly = state === "collapsed" && !isMobile;
   const { isSignedIn, isGuest, requestUpgrade, user } = useAuthContext();
   const navJobBadges = useNavJobBadges();
-  const { data: me } = useOnboardingStatus(isSignedIn);
-  const planLabel = me?.plan === "pro" ? "Pro" : "Free";
-  const showPlan = me?.billingEnabled === true;
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const clerkUserId = user?.id ?? "";
   const userEmail = user?.email ?? "";
@@ -322,17 +317,6 @@ export function AppSidebar({ collapsible = "icon", onSearchOpen }: AppSidebarPro
                   pane's bottom-bar band. */}
               <div className="flex items-center gap-1 rounded-md transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent">
                 <AccountMenu />
-                {showPlan ? (
-                  <a
-                    className="chip-label mr-1 shrink-0 rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-sidebar-accent-foreground/30 hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden"
-                    href={PUBLIC_PRICING_URL}
-                    rel="noreferrer"
-                    target="_blank"
-                    title="View plans"
-                  >
-                    {planLabel}
-                  </a>
-                ) : null}
               </div>
             </SidebarMenuItem>
           ) : (

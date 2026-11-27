@@ -676,7 +676,7 @@ class Command(BaseCommand):
                     clerk_user_id=f"user_{hashlib.sha256(email.encode()).hexdigest()[:24]}",
                 )
                 User.objects.filter(pk=u.pk).update(date_joined=days_ago(joined_days_ago))
-                BillingTelemetry.objects.filter(user=u, service=BillingService.FREE_CREDITS).update(
+                BillingTelemetry.objects.filter(user=u, service=BillingService.GRANT).update(
                     timestamp=days_ago(joined_days_ago)
                 )
             return u
@@ -3948,7 +3948,7 @@ class Command(BaseCommand):
         row = BillingTelemetry.objects.create(
             user=owner,
             amount=Decimal("50.0000000"),
-            service=BillingService.STRIPE_TOPUP,
+            service=BillingService.PURCHASE,
             idempotency_key="topup:cs_live_seed_a1B2c3",
             metadata={"checkout_session_id": "cs_live_seed_a1B2c3"},
         )

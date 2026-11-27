@@ -15,10 +15,11 @@ from django.utils import timezone
 
 from overbae.models import BillingService, BillingTelemetry, FinetuningJob, User
 from overbae.services import model_catalog
+from overbae.services.billing_provider import get_billing
 
 logger = logging.getLogger(__name__)
 
-FREE_CREDITS_USD = Decimal("50")
+SIGNUP_CREDITS_USD = Decimal("50")
 
 # Display/purchase denomination: the ledger stores USD, users buy and see credits.
 CREDITS_PER_USD = 100
@@ -116,36 +117,30 @@ def append_entry(
         return None
 
 
-def grant_free_credits(user: User) -> BillingTelemetry | None:
-    from overbae.services.billing_provider import get_billing
-
-    return get_billing().grant_free_credits(user)
-
-
-def grant_stripe_topup(user: User, amount: Decimal, invoice_id: str) -> BillingTelemetry | None:
-    if amount <= 0:
-        return None
-    return append_entry(
-        user=user,
-        amount=amount,
-        service=BillingService.STRIPE_TOPUP,
-        idempotency_key=invoice_id,
-    )
+def grant_signup_credits(user: User) -> BillingTelemetry | None:
+    return get_billing().grant_signup_credits(user)
 
 
 def grant_credit_purchase(user: User, amount: Decimal, session_id: str) -> BillingTelemetry | None:
-    """One-time credit purchase. The ``topup:`` key namespace is distinct from
-    ``grant_stripe_topup``'s bare invoice id so the two Stripe paths cannot collide.
-    """
+    """Keyed on the Checkout Session, so the return confirmation and the webhook grant once."""
     if amount <= 0:
         return None
     return append_entry(
         user=user,
         amount=amount,
-        service=BillingService.STRIPE_TOPUP,
+        service=BillingService.PURCHASE,
         idempotency_key=f"topup:{session_id}",
         metadata={"checkout_session_id": session_id},
     )
+
+
+def account_payload(user: User) -> dict[str, Any]:
+    return {
+        "billing_enabled": get_billing().enabled,
+        "credits_usd": balance_usd(user),
+        "credits_granted_usd": granted_usd(user),
+        "credits_spent_usd": spent_usd(user),
+    }
 
 
 def charge_credits(
@@ -171,8 +166,6 @@ def charge_credits(
 
 
 def ensure_credits(user: User) -> None:
-    from overbae.services.billing_provider import get_billing
-
     get_billing().ensure_credits(user)
 
 

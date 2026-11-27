@@ -8,7 +8,7 @@ from django.urls import reverse
 from factories import auth_client
 
 from overbae.models import BillingService, BillingTelemetry
-from overbae.services.billing_ledger import charge_credits, grant_free_credits
+from overbae.services.billing_ledger import charge_credits, grant_signup_credits
 from overbae.services.billing_provider import get_billing
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("ledger")]
@@ -33,13 +33,8 @@ def uncapped(_commercial_billing, settings):
 def test_uncapped_skips_signup_grant(uncapped):
     user = _make_user("uncapped-grant")
     assert not get_billing().enabled
-    assert grant_free_credits(user) is None
+    assert grant_signup_credits(user) is None
     assert not BillingTelemetry.objects.filter(user=user).exists()
-
-
-def test_uncapped_seats_are_unlimited(uncapped):
-    user = _make_user("uncapped-seats")
-    assert get_billing().plan_usage_payload(user) == {"seats": {"limit": None}}
 
 
 def test_uncapped_me_and_spend_routes(uncapped):
@@ -56,21 +51,20 @@ def test_uncapped_me_and_spend_routes(uncapped):
     assert me.status_code == 200
     assert me.data["billing_enabled"] is False
 
-    sub = client.get(reverse("billing-subscription"))
-    assert sub.status_code == 200
-    assert sub.data["billing_enabled"] is False
-    assert sub.data["credits_spent_usd"] == "2.0000"
-    assert sub.data["usage"] == {"seats": {"limit": None}}
+    account = client.get(reverse("billing-account"))
+    assert account.status_code == 200
+    assert account.data["billing_enabled"] is False
+    assert account.data["credits_spent_usd"] == "2.0000"
 
     ledger = client.get(reverse("billing-ledger"))
     assert ledger.status_code == 200
     assert ledger.data["count"] == 1
 
-    checkout = client.post(reverse("billing-checkout"))
-    assert checkout.status_code == 404
-
     topup = client.post(reverse("billing-topup"), {"amount_usd": 10}, format="json")
     assert topup.status_code == 404
+
+    confirm = client.post(reverse("billing-topup-confirm"), {"session_id": "cs_any"})
+    assert confirm.status_code == 404
 
 
 def test_commercial_me_enables_billing():

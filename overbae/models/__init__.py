@@ -4,7 +4,7 @@ from .assistant import (
     AssistantInput,
     AssistantThread,
 )
-from .billing import BillingService, BillingTelemetry, Subscription, SubscriptionStatus
+from .billing import BillingService, BillingTelemetry
 from .capabilities import Capability, IdentityAlias, Prompt
 from .connectors import ConnectorCredential, ConnectorSyncConfig, ConnectorSyncRun
 from .dataset_admission import DatasetLandingWork
@@ -112,8 +112,6 @@ __all__ = [
     "IdentityAlias",
     "BillingService",
     "BillingTelemetry",
-    "Subscription",
-    "SubscriptionStatus",
     "ConnectorCredential",
     "ConnectorSyncConfig",
     "ConnectorSyncRun",

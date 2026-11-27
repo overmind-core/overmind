@@ -48,6 +48,7 @@ def top_up(live_api, user, usd) -> int:
                 "metadata": {"purpose": "credit-topup", "user_id": str(user.pk)},
                 "payment_status": "paid",
                 "amount_total": usd * 100,
+                "currency": "usd",
                 "customer": "cus_journey",
             }
         },

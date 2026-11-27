@@ -32,7 +32,6 @@ from overbae.models import (
     FinetuningJob,
     InferenceRequest,
     Span,
-    Subscription,
     TrainingPreparation,
 )
 from overbae.services.datasets import pipeline_runner
@@ -103,8 +102,6 @@ def test_mixed_large_payload_soak(live_api, settings, fake_llm, fake_modal, sft)
     capabilities = []
     for index in range(9):
         user = make_user()
-        if index == 0:
-            Subscription.objects.create(user=user, status="active")
         project = make_project(name=f"mixed-{index}", member=user)
         key, _ = APIToken.create_for_user(user, project=project)
         identities.append((project, user, key))

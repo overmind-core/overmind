@@ -30,17 +30,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useOnboardingStatus, useProjectQuery } from "@/hooks/use-query";
-import { useSubscriptionQuery } from "@/hooks/use-subscription";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { useDeleteToken, useTokensList } from "@/hooks/use-tokens";
 import { ApiError } from "@/lib/api-error";
 import { featureFlags } from "@/lib/feature-flags";
-import { PUBLIC_PRICING_URL } from "@/lib/marketing";
 import { notify } from "@/lib/notify";
 import { localStore } from "@/lib/storage";
 import { PROSE, TITLE } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { PlanEnum } from "@/openapi";
 
 export const Route = createFileRoute("/_auth/projects/$projectId/")({
   component: ProjectDetailPage,
@@ -516,10 +513,8 @@ function ProjectMembersCard({ projectId }: { projectId: string }) {
   const [emailInput, setEmailInput] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim());
-  const subscriptionQuery = useSubscriptionQuery();
   const meQuery = useOnboardingStatus();
   const myUserId = meQuery.data?.id;
-  const isPro = subscriptionQuery.data?.plan === PlanEnum.pro;
 
   const {
     data: membersData,
@@ -611,45 +606,36 @@ function ProjectMembersCard({ projectId }: { projectId: string }) {
           Members
         </h2>
         <p className={cn(PROSE, "mt-1 text-sm text-muted-foreground")}>
-          {isPro
-            ? "Add members by email. Emails without an account get a sign-up invitation. Every member can access everything in this project."
-            : "Free plan is one seat. Upgrade to Pro to invite teammates."}
+          Add members by email. Emails without an account get a sign-up invitation. Every member can
+          access everything in this project.
         </p>
       </div>
       <div className="space-y-4">
-        {isPro ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="add-user-email">Add by email</Label>
-              <Input
-                id="add-user-email"
-                inputMode="email"
-                onChange={(e) => {
-                  setEmailInput(e.target.value);
-                  setSentTo(null);
-                  if (inviteMember.isError) inviteMember.reset();
-                }}
-                placeholder="user@example.com"
-                type="email"
-                value={emailInput}
-              />
-            </div>
-            <Button
-              className="gap-2"
-              disabled={!isValidEmail || inviteMember.isPending}
-              onClick={() => inviteMember.mutate(emailInput.trim())}
-            >
-              <Icon.addUser />
-              Add member
-            </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-1.5">
+            <Label htmlFor="add-user-email">Add by email</Label>
+            <Input
+              id="add-user-email"
+              inputMode="email"
+              onChange={(e) => {
+                setEmailInput(e.target.value);
+                setSentTo(null);
+                if (inviteMember.isError) inviteMember.reset();
+              }}
+              placeholder="user@example.com"
+              type="email"
+              value={emailInput}
+            />
           </div>
-        ) : (
-          <Button asChild className="gap-2" variant="outline">
-            <a href={PUBLIC_PRICING_URL} rel="noreferrer" target="_blank">
-              Upgrade to Pro
-            </a>
+          <Button
+            className="gap-2"
+            disabled={!isValidEmail || inviteMember.isPending}
+            onClick={() => inviteMember.mutate(emailInput.trim())}
+          >
+            <Icon.addUser />
+            Add member
           </Button>
-        )}
+        </div>
 
         {inviteError?.code === "user_not_found" ? (
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border border-border bg-wash-raised px-4 py-3">

@@ -15,7 +15,6 @@ from overbae.models import (
     InferenceCall,
     ProjectMembership,
     Span,
-    Subscription,
     User,
 )
 from overbae.services.user_insights import window_start
@@ -185,19 +184,16 @@ def model_usage(arguments, user=None):
         ledger = BillingTelemetry.objects.filter(user=user, timestamp__lte=now).aggregate(
             balance=Sum("amount", default=0),
             lifetime_spend=Sum(-F("amount"), filter=Q(amount__lt=0), default=0),
-            lifetime_topups=Sum(
-                "amount", filter=Q(amount__gt=0, service=BillingService.STRIPE_TOPUP), default=0
+            lifetime_purchases=Sum(
+                "amount", filter=Q(amount__gt=0, service=BillingService.PURCHASE), default=0
             ),
             spend=Sum(-F("amount"), filter=Q(amount__lt=0, timestamp__gte=since), default=0),
-        )
-        subscription = (
-            Subscription.objects.filter(user=user).values_list("status", flat=True).first()
         )
         lines.extend(
             [
                 f"In this window: {traces:,} root traces, {jobs} training jobs started, {evaluations} evaluations started. Ready deployments now: {ready}.",
                 f"User billing: ${ledger['spend']:.2f} spent in window; ${ledger['balance']:.2f} current balance.",
-                f"${ledger['lifetime_spend']:.2f} lifetime spend; ${ledger['lifetime_topups']:.2f} lifetime top-ups. Subscription: {subscription or 'none'}.",
+                f"${ledger['lifetime_spend']:.2f} lifetime spend; ${ledger['lifetime_purchases']:.2f} lifetime purchases.",
             ]
         )
     lines.extend(

@@ -92,11 +92,7 @@ function AccountBody({ data, days }: { data: UserActivity; days: number }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <Stat
-          label="Subscription"
-          value={billing.subscription_status ? humanize(billing.subscription_status) : "Free"}
-        />
-        <Stat label="Stripe top-ups" value={formatUsd(billing.topups_usd)} />
+        <Stat label="Credit purchases" value={formatUsd(billing.purchases_usd)} />
         <Stat label="Product spend" value={formatUsd(billing.spend_usd)} />
         <Stat label="Credit balance" value={formatUsd(billing.balance_usd)} />
         <Stat
@@ -124,11 +120,11 @@ function AccountBody({ data, days }: { data: UserActivity; days: number }) {
           total={formatUsd(sum(billing.spend_daily))}
         />
         <DailyChart
-          data={fillDays(billing.topups_daily, days, data.computed_at)}
+          data={fillDays(billing.purchases_daily, days, data.computed_at)}
           format={formatUsd}
-          series={[{ color: "var(--chart-2)", key: "value", label: "Stripe top-ups" }]}
-          title="Payments and top-ups"
-          total={formatUsd(sum(billing.topups_daily))}
+          series={[{ color: "var(--chart-2)", key: "value", label: "Purchases" }]}
+          title="Credit purchases"
+          total={formatUsd(sum(billing.purchases_daily))}
         />
         <DailyChart
           data={trainingDaily}

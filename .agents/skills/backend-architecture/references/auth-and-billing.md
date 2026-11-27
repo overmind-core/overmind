@@ -15,7 +15,8 @@ Tenancy is project-scoped (`User` ↔ `Project` through `ProjectMembership`), wi
 
 ## Billing
 
-- Ledger charges always run. Remaining-credit 402s, the Free seat limit and Stripe Checkout apply only when `STRIPE_SECRET_KEY` is set (`services/billing_provider.py`); otherwise spend is recorded and shown, and gates and grants are no-ops.
+- Billing is credits only. Ledger charges always run. Remaining-credit 402s, the $50 signup `grant` and Stripe Checkout apply only when `STRIPE_SECRET_KEY` is set (`services/billing_provider.py`); otherwise spend is recorded and shown, and gates and grants are no-ops.
+- Money in is a `grant` (free: signup, promotions, `manage.py grant_credits`) or a `purchase` (a paid live Checkout session). A purchase is keyed `topup:<session id>` and lands from whichever comes first: `POST /api/billing/topup/confirm/` when the buyer returns from Checkout, or the webhook for payment methods that settle later (`services/credit_purchases.py`). The webhook endpoint's events live in `WEBHOOK_EVENTS`; `manage.py sync_stripe_webhook --url <endpoint>` applies them to Stripe.
 - Native-agent model choice and funding belong to the coding-agent environment. Training, evaluation and serving keep their own billing.
 - Compute estimates use live provider rates with fetch timestamps (`services/provider_pricing.py`: Modal workspace rates, cached 300 s when current and 30 s when unavailable, no static fallback; `compute_costs.py` and the forecasts call it). They never create ledger charges. One quote uses one rate snapshot. Chat-training cost estimates are the exception: they use the fixed `_MODAL_H100_USD_PER_SECOND` in `finetuning_pricing.py`.
 - Modal training charges use deduplicated worker usage receipts and recorded hardware, never the delay before the collector notices completion. Missing usage stays unmeasured; historical ledger entries are not rewritten.
