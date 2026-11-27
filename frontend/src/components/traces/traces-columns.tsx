@@ -4,7 +4,6 @@ import { EntityRef } from "@/components/entity-ref";
 import { FinetuningModelChip } from "@/components/finetuning/finetuning-model-chip";
 import { TraceExecutionScore } from "@/components/traces/trace-score-chips";
 import { TraceSourceChip } from "@/components/traces/trace-source-chip";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DateTime } from "@/components/ui/datetime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TraceRow } from "@/hooks/use-traces";
@@ -12,32 +11,6 @@ import { TONE_CHIP } from "@/lib/colors";
 import { formatCost, formatDuration, formatNumber } from "@/lib/formatters";
 
 export const tracesColumns: ColumnDef<TraceRow>[] = [
-  {
-    cell: ({ row }) => (
-      <Checkbox
-        aria-label="Select row"
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        onClick={(e) => e.stopPropagation()}
-      />
-    ),
-    enableResizing: false,
-    enableSorting: false,
-    header: ({ table }) => (
-      <Checkbox
-        aria-label="Select all rows on this page"
-        checked={
-          table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-      />
-    ),
-    id: "select",
-    maxSize: 48,
-    meta: { label: "Select" },
-    minSize: 40,
-    size: 40,
-  },
   {
     accessorFn: (row) => row.applicationName ?? row.traceGroup ?? row.traceId,
     cell: ({ row }) => (

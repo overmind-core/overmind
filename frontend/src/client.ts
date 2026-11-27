@@ -48,14 +48,13 @@ import {
   FeedbackApi,
   FinetuningJobsApi,
   InferenceRequestsApi,
+  IssuesApi,
   McpOauthApi,
   ModelsApi,
   NativeEvaluationsApi,
   ProjectsApi,
   ResponseError,
   SessionsApi,
-  SignalEventsApi,
-  SignalSubscriptionsApi,
   TracesApi,
   TrainingExperimentsApi,
   TrainingPlansApi,
@@ -466,8 +465,7 @@ export class API {
   evalRuns: EvalRunsApi;
   evalRunRows: EvalRunRowsApi;
   evalScores: EvalScoresApi;
-  signalEvents: SignalEventsApi;
-  signalSubscriptions: SignalSubscriptionsApi;
+  issues: IssuesApi;
   activity: ActivityApi;
   assistantThreads: AssistantThreadsApi;
 
@@ -507,8 +505,7 @@ export class API {
     this.evalRuns = new EvalRunsApi(this.cfg);
     this.evalRunRows = new EvalRunRowsApi(this.cfg);
     this.evalScores = new EvalScoresApi(this.cfg);
-    this.signalEvents = new SignalEventsApi(this.cfg);
-    this.signalSubscriptions = new SignalSubscriptionsApi(this.cfg);
+    this.issues = new IssuesApi(this.cfg);
   }
 }
 

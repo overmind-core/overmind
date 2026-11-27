@@ -11,8 +11,10 @@ from rest_framework.test import APIClient
 from overbae.innermind.signals import (
     LeakSignal,
     PlanDriftSignal,
+    ScoreDropSignal,
     SignalRunner,
-    projects_with_recent_spans,
+    UnscorableSignal,
+    projects_with_changes,
 )
 from overbae.models import (
     APIToken,
@@ -26,6 +28,7 @@ from overbae.models import (
     User,
 )
 from overbae.services.mcp.context import MCPContext
+from overbae.services.signal_insights import signal_insights
 
 pytestmark = [pytest.mark.django_db, pytest.mark.covers("metrics-math")]
 
@@ -66,10 +69,78 @@ def test_leak_signal_does_not_treat_timing_decimals_as_card_numbers():
     def output(value):
         return SimpleNamespace(name="run", attributes={"output": value})
 
-    assert async_to_sync(signal.check)([output('"step_interval": 3.8305869102478027')]) is None
-    assert async_to_sync(signal.check)([output("card 4242 4242 4242 4242")]) == (
-        "sensitive data in outputs: run (card number)"
+    assert async_to_sync(signal.evaluate)([output('"step_interval": 3.8305869102478027')]) is None
+    finding = async_to_sync(signal.evaluate)([output("card 4242 4242 4242 4242")])
+    assert finding.message == "sensitive data in outputs: run (card number)"
+
+
+def test_signal_details_carry_redacted_evidence_and_handoffs():
+    signal = LeakSignal("test")
+    clean = Span(span_id="a" * 16, trace_id="1" * 32, name="plan", attributes={"output": "ok"})
+    leaking = Span(
+        span_id="b" * 16,
+        trace_id="2" * 32,
+        name="run",
+        status_message="",
+        attributes={"output": "card 4242 4242 4242 4242"},
     )
+    group = [clean, leaking]
+    finding = async_to_sync(signal.evaluate)(group)
+    details = signal.details(finding, group, "conversation:1", capability_id=7)
+
+    assert details["trace_ids"] == [leaking.trace_id]
+    assert details["group_trace_ids"] == [clean.trace_id, leaking.trace_id]
+    assert details["span_ids"] == [leaking.span_id]
+    assert details["measurements"] == {"leaks": {"card number in output": 1}}
+    [item] = details["evidence"]
+    assert item["reason"] == "card number in output"
+    assert "4242" not in item["output"]
+    assert "[card number]" in item["output"]
+    assert details["recommended_actions"][0]["kind"] == "train_model"
+    assert {action["kind"] for action in details["recommended_actions"]} == {
+        "train_model",
+        "fix",
+        "inspect_traces",
+        "create_dataset",
+        "open_optimiser",
+    }
+
+
+def test_unscorable_counts_only_spans_whose_expectations_errored():
+    signal = UnscorableSignal("test")
+
+    def scored_span(span_id, metrics):
+        return Span(
+            span_id=span_id,
+            trace_id="1" * 32,
+            eval_attributes={"score": None, "metrics": metrics},
+        )
+
+    nothing_applied = scored_span("a" * 16, {})
+    abstained = scored_span("b" * 16, {"tool ran": {"score": None, "error": ""}})
+    assert async_to_sync(signal.evaluate)([nothing_applied, abstained]) is None
+
+    errored = scored_span("c" * 16, {"answers": {"score": None, "error": "judge timed out"}})
+    finding = async_to_sync(signal.evaluate)([nothing_applied, abstained, errored])
+    assert finding.message == "1 of 2 evaluated spans failed scoring"
+    assert finding.spans == [(errored, "judge timed out")]
+
+
+def test_score_drop_measures_both_windows():
+    signal = ScoreDropSignal("test")
+    spans = [
+        Span(span_id=f"{index:016x}", trace_id="1" * 32, eval_attributes={"score": score})
+        for index, score in enumerate([0.9] * 5 + [0.4] * 5)
+    ]
+    finding = async_to_sync(signal.evaluate)(spans)
+    assert finding.message == "mean score fell from 0.90 to 0.40 over the last 5 scored spans"
+    assert finding.measurements == {
+        "before_mean": 0.9,
+        "recent_mean": 0.4,
+        "drop": 0.5,
+        "before_count": 5,
+    }
+    assert [span for span, _ in finding.spans] == spans[5:]
 
 
 def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls(
@@ -80,9 +151,9 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     def unexpected_judge(*args, **kwargs):
         pytest.fail("Default checks must not call the plan-drift judge")
 
-    monkeypatch.setattr(PlanDriftSignal, "check", unexpected_judge)
+    monkeypatch.setattr(PlanDriftSignal, "evaluate", unexpected_judge)
     listed = call(ctx, "list_signals", {})
-    assert len([s for s in listed["signals"] if s["enabled"]]) == 24
+    assert len([s for s in listed["signals"] if s["enabled"]]) == 25
     assert (
         next(s for s in listed["signals"] if s["signal_type"] == "plan_drift")["enabled"] is False
     )
@@ -93,20 +164,19 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     unrelated = span(ctx.project)
     other_project = Project.objects.create(name="Other", slug=f"other-{uuid.uuid4()}")
     other = span(other_project)
-    assert ctx.project.id in projects_with_recent_spans()
+    assert ctx.project.id in projects_with_changes()
     async_to_sync(SignalRunner(ctx.project.id).run)()
     async_to_sync(SignalRunner(ctx.project.id).run)()
     event = SignalEvent.objects.get(project=ctx.project, conversation=session, signal_type="errors")
     assert set(event.details["trace_ids"]) == {first.trace_id, second.trace_id}
+    assert event.details["measurements"] == {"errored": 2, "spans": 2}
+    assert {item["span_id"] for item in event.details["evidence"]} == {
+        first.span_id,
+        second.span_id,
+    }
     assert event.subscription_id is None
     assert not SignalEvent.objects.filter(project=other_project).exists()
 
-    response = client.get(
-        "/api/signal-events/",
-        {"project": ctx.project.id, "conversation": session.id, "signal_type": "errors"},
-    )
-    assert response.status_code == 200
-    assert response.data["count"] == 1
     response = client.get("/api/traces/", {"project": ctx.project.id, "signal_event": event.id})
     assert response.status_code == 200
     assert {s["trace_id"] for s in response.data["results"]} == {first.trace_id, second.trace_id}
@@ -126,6 +196,59 @@ def test_defaults_generate_session_evidence_without_subscriptions_or_model_calls
     assert response.status_code == 200
     assert response.data["count"] == 0
     assert call(ctx, "query_traces", {"signal_event": str(foreign_event.id)})["page"]["total"] == 0
+
+
+def test_signal_insights_rank_new_and_rising_issues_with_their_causes(context):
+    ctx, _ = context
+    triage = Capability.objects.create(project=ctx.project, name="Triage", slug="triage")
+
+    def event(signal_type, days_ago, *, capability=None, reason="", trace_id=None):
+        created = SignalEvent.objects.create(
+            project=ctx.project,
+            capability=capability,
+            signal_type=signal_type,
+            message=f"{signal_type} message",
+            dedupe_key=uuid.uuid4().hex,
+            details={
+                "why": f"why {signal_type}",
+                "trace_ids": [trace_id or uuid.uuid4().hex],
+                "evidence": [{"name": "lookup_order", "reason": reason}] if reason else [],
+            },
+        )
+        SignalEvent.objects.filter(pk=created.pk).update(
+            occurred_at=timezone.now() - timedelta(days=days_ago)
+        )
+
+    for _ in range(4):
+        event("tool_failure", 0, capability=triage, reason="TimeoutError: upstream", trace_id="t1")
+    event("tool_failure", 1, capability=triage, reason="KeyError: order_id")
+    event("tool_failure", 9, capability=triage)
+    for days_ago in (1, 8, 9, 10):
+        event("slow_llm", days_ago)
+    event("errors", 20, capability=triage)
+    event("errors", 0, capability=triage)
+
+    insights = signal_insights(SignalEvent.objects.filter(project=ctx.project), 7)["insights"]
+    assert [(i["signal_type"], i["status"]) for i in insights] == [
+        ("tool_failure", "rising"),
+        ("errors", "ongoing"),
+        ("slow_llm", "falling"),
+    ]
+    rising = insights[0]
+    assert rising["capability_name"] == "Triage"
+    assert (rising["events"], rising["previous_events"]) == (5, 1)
+    assert rising["daily"][-2:] == [1, 4]
+    assert rising["causes"] == [
+        {"label": "lookup_order: TimeoutError: upstream", "count": 4},
+        {"label": "lookup_order: KeyError: order_id", "count": 1},
+    ]
+    assert rising["traces"] == 2
+    assert rising["remedy"] == "Fix or guard the failing tool"
+    assert rising["why"] == "why tool_failure"
+
+    event("leak", 0)
+    first = signal_insights(SignalEvent.objects.filter(project=ctx.project), 7)
+    assert (first["insights"][0]["signal_type"], first["insights"][0]["status"]) == ("leak", "new")
 
 
 def test_project_and_capability_mutes_override_defaults(context):
@@ -163,7 +286,7 @@ def test_project_and_capability_mutes_override_defaults(context):
     effective = call(ctx, "list_signals", {"capability": "answer"})
     assert not next(s for s in effective["signals"] if s["signal_type"] == "errors")["enabled"]
     Span.objects.filter(project=ctx.project).update(received_at=timezone.now() - timedelta(days=2))
-    assert ctx.project.id not in projects_with_recent_spans()
+    assert ctx.project.id not in projects_with_changes()
 
 
 def test_signal_scan_releases_payloads_between_complete_groups(context):
@@ -210,10 +333,13 @@ def test_signal_scan_reports_oversized_group_without_dropping_other_groups(conte
     for _ in range(2):
         item = span(ctx.project, conversation=session)
         Span.objects.filter(pk=item.pk).update(attributes={"padding": "x" * (5 * 1024 * 1024)})
+    too_large = span(ctx.project)
+    Span.objects.filter(pk=too_large.pk).update(attributes={"padding": "x" * (9 * 1024 * 1024)})
     small = span(ctx.project)
     with pytest.raises(SignalInputTooLargeError, match="1 signal groups exceed"):
         async_to_sync(SignalRunner(ctx.project.id).run)()
-    assert not SignalEvent.objects.filter(conversation=session).exists()
+    assert SignalEvent.objects.filter(conversation=session, signal_type="errors").count() == 2
+    assert not SignalEvent.objects.filter(trace_id=too_large.trace_id).exists()
     assert SignalEvent.objects.filter(trace_id=small.trace_id, signal_type="errors").exists()
 
 
@@ -234,7 +360,7 @@ def test_signal_batch_rechecks_bytes_before_materializing_payloads(context):
     try:
         with pytest.raises(SignalInputTooLargeError, match="changed or exceeded"):
             async_to_sync(SignalRunner(ctx.project.id).run_batch)(
-                {item.pk: f"trace:{item.trace_id}"}, [], [], "2026-10-17"
+                {item.pk: f"trace:{item.trace_id}"}, [], []
             )
     finally:
         post_init.disconnect(observe, sender=Span)
@@ -252,9 +378,9 @@ def test_signal_scan_continues_after_concurrent_payload_growth(context):
         )
 
     class ConcurrentGrowthRunner(SignalRunner):
-        async def batches(self):
+        async def batches(self, rows):
             first = True
-            async for ids in super().batches():
+            async for ids in super().batches(rows):
                 if first:
                     await Span.objects.filter(pk=items[0].pk).aupdate(
                         eval_attributes={"padding": "y" * (4 * 1024 * 1024)}

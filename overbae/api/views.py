@@ -34,6 +34,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 
+from overbae.api.config import TraceListPagination
 from overbae.api.filters import (
     DeployedModelFilter,
     FinetuningJobFilter,
@@ -399,6 +400,7 @@ class SpanViewSet(
     """The single trace-data viewset — one Span table, two read shapes."""
 
     filterset_class = SpanFilter
+    pagination_class = TraceListPagination
     search_fields = ["name", "service_name", "trace_id", "span_id"]
     ordering_fields = [
         "source",
@@ -580,18 +582,8 @@ class SpanViewSet(
         ),
         responses={200: SessionSerializer(many=True)},
     ),
-    retrieve=extend_schema(
-        summary="Get a session",
-        responses={200: SessionSerializer},
-    ),
 )
-class SessionViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Read-only sessions API — list with aggregates + detail."""
-
+class SessionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = SessionSerializer
     filterset_class = SessionFilter
     search_fields = ["external_id", "name"]
@@ -613,7 +605,6 @@ class SessionViewSet(
         "timespan",
     ]
     ordering = ["-created_at"]
-    lookup_field = "id"
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):

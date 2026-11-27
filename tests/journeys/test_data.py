@@ -41,7 +41,7 @@ def test_data(
     sample_agent.run(TICKET, api_url=live_api.url, llm_url=support_desk_llm)
     drain(worker)
     land_selected_traces_as_rows(workshop, fake_llm, worker)
-    open_traces_selected_in_the_console(console, workshop, project, live_api, worker)
+    prepare_a_trace_dataset_in_the_console(console, workshop, project, live_api, worker)
 
     read_a_scanned_document_once_per_page(workshop, cli, sample_agent, worker)
     publish_version_bound_analytics(workshop, cli, sample_agent, rest, worker, tmp_path)
@@ -346,29 +346,15 @@ def land_selected_traces_as_rows(workshop, fake_llm, worker):
     assert row["messages"][-1]["content"] == "refund"
 
 
-def open_traces_selected_in_the_console(console, workshop, project, live_api, worker):
-    console.goto(f"/observability?projectId={project}")
-    console.click("Traces")
-    console.sees("handle_ticket")
-    console._browser.call(
-        lambda: console._page.get_by_role("checkbox", name="Select row", exact=True).first.click()
+def prepare_a_trace_dataset_in_the_console(console, workshop, project, live_api, worker):
+    [execution] = workshop.call(
+        "query_traces",
+        {"capability": "triage", "all_spans": True, "span_type": "entry_point", "name": "triage"},
+    )["traces"]
+    workshop.call(
+        "create_dataset_from_traces",
+        {"name": "Selected trace source", "capability": None, "trace_ids": [execution["trace_id"]]},
     )
-    console.press("Add to dataset")
-    console.fill("#dataset-name", "Selected trace source")
-    console.sees("None")
-
-    def create():
-        with console._page.expect_response(
-            lambda response: (
-                response.request.method == "POST"
-                and response.url.rstrip("/").endswith("/api/datasets")
-            )
-        ) as response:
-            console._page.get_by_role("button", name="Create dataset", exact=True).click()
-        return response.value.status, response.value.json()
-
-    status, result = console._browser.call(create)
-    assert status == 201, result
 
     def landed():
         datasets = workshop.call("list_datasets", {"search": "Selected trace source"})["datasets"]
@@ -382,6 +368,7 @@ def open_traces_selected_in_the_console(console, workshop, project, live_api, wo
     assert dataset["source_kind"] == "traces"
     assert dataset["intent"] == "pending"
     assert dataset["capability"] is None
+    console.goto(f"/datasets/{dataset['id']}?projectId={project}")
     console.wait_until(
         f"() => location.pathname === '/datasets/{dataset['id']}' "
         "&& !!document.querySelector('article [data-cell-frame]')"

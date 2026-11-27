@@ -73,7 +73,7 @@ export type DatasetEvent =
   | { type: "dataset_changed" };
 
 /** The query that produced a traces selection, not the ids it matched. */
-export interface TraceSelectionSpec {
+interface TraceSelectionSpec {
   filters?: Record<string, string | undefined>;
   search?: string;
   ordering?: string;

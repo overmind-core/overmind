@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import apiClient from "@/client";
 import { backoffPolling } from "@/lib/poll";
-import type { Span, TraceDetail, TraceErrorDetails, TracesListRequest } from "@/openapi";
+import type { Span, TraceDetail, TraceErrorDetails } from "@/openapi";
 
 export function spanStatusLabel(statusCode: number): string {
   if (statusCode === 2) return "error";
@@ -257,74 +257,16 @@ interface TracesListResponse {
   results: TraceRow[];
 }
 
+/** Root traces of one project, newest first, started within the window. */
 export interface TracesListParams {
-  project_id: string;
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  ordering?: string;
-  filters?: Record<string, string | undefined>;
-  enabled?: boolean;
-}
-
-/** Filter value for spans ingest left unbound to any capability. */
-export const UNBOUND_CAPABILITY = "__unbound__";
-
-export type TraceRef = { id: string; capabilityId?: string | null };
-
-function cleanFilterMap(filters?: Record<string, string | undefined>): Record<string, string> {
-  const clean: Record<string, string> = {};
-  if (!filters) return clean;
-  for (const [k, v] of Object.entries(filters)) {
-    if (v !== undefined && v !== "") clean[k] = v;
-  }
-  return clean;
-}
-
-export function buildTracesListRequest(params: {
   projectId: string;
+  startTimeNsGte: number;
+  capability?: string;
+  issue?: string;
+  session?: string;
   page: number;
-  pageSize?: number;
-  search?: string;
-  ordering?: string;
-  filters: Record<string, string>;
-}): TracesListRequest {
-  const { projectId, page, pageSize, search, ordering, filters } = params;
-  const request: TracesListRequest = {
-    ordering,
-    page,
-    pageSize,
-    project: projectId,
-    search,
-  };
-  if (filters.all_spans) request.allSpans = filters.all_spans === "true";
-  if (filters.capability === UNBOUND_CAPABILITY) request.unbound = true;
-  else if (filters.capability) request.capability = filters.capability;
-  if (filters.trace_id) request.traceId = filters.trace_id;
-  if (filters.signal_event) request.signalEvent = filters.signal_event;
-  if (filters.session) request.session = filters.session;
-  if (filters.span_type) request.spanType = filters.span_type as TracesListRequest["spanType"];
-  if (filters.status_code) request.statusCode = Number(filters.status_code);
-  if (filters.name) request.name = filters.name;
-  if (filters.model) request.model = filters.model;
-  if (filters.has_model) request.hasModel = filters.has_model === "true";
-  // The bare backend params already match `icontains`; there is no `__icontains` param.
-  const operation = filters.operation__icontains ?? filters.operation;
-  if (operation) request.operation = operation;
-  const serviceName = filters.service_name__icontains ?? filters.service_name;
-  if (serviceName) request.serviceName = serviceName;
-  if (filters.min_duration_ms) request.minDurationMs = Number(filters.min_duration_ms);
-  if (filters.max_duration_ms) request.maxDurationMs = Number(filters.max_duration_ms);
-  if (filters.total_tokens__gte) request.totalTokensGte = Number(filters.total_tokens__gte);
-  if (filters.total_tokens__lte) request.totalTokensLte = Number(filters.total_tokens__lte);
-  if (filters.total_cost__gte) request.totalCostGte = Number(filters.total_cost__gte);
-  if (filters.total_cost__lte) request.totalCostLte = Number(filters.total_cost__lte);
-  if (filters.has_error) request.hasError = filters.has_error === "true";
-  if (filters.received_at__gte) request.receivedAtGte = new Date(filters.received_at__gte);
-  if (filters.received_at__lte) request.receivedAtLte = new Date(filters.received_at__lte);
-  if (filters.start_time_ns__gte) request.startTimeNsGte = Number(filters.start_time_ns__gte);
-  if (filters.start_time_ns__lte) request.startTimeNsLte = Number(filters.start_time_ns__lte);
-  return request;
+  pageSize: number;
+  enabled: boolean;
 }
 
 function mapTraceListRow(row: {
@@ -383,23 +325,21 @@ function mapTraceListRow(row: {
   };
 }
 
-export function useTracesList(params: TracesListParams) {
-  const { project_id, page = 1, pageSize, search, ordering, filters, enabled = true } = params;
-  const cleanFilters = cleanFilterMap(filters);
-
+export function useTracesList({ enabled, ...params }: TracesListParams) {
   return useQuery({
-    enabled: enabled && !!project_id,
+    enabled: enabled && !!params.projectId,
     queryFn: async (): Promise<TracesListResponse> => {
-      const raw = await apiClient.traces.tracesList(
-        buildTracesListRequest({
-          filters: cleanFilters,
-          ordering,
-          page,
-          pageSize,
-          projectId: project_id,
-          search,
-        })
-      );
+      const raw = await apiClient.traces.tracesList({
+        allSpans: false,
+        capability: params.capability,
+        issue: params.issue,
+        ordering: "-start_time_ns",
+        page: params.page,
+        pageSize: params.pageSize,
+        project: params.projectId,
+        session: params.session,
+        startTimeNsGte: params.startTimeNsGte,
+      });
       return {
         count: raw.count,
         next: raw.next,
@@ -407,7 +347,7 @@ export function useTracesList(params: TracesListParams) {
         results: (raw.results ?? []).map(mapTraceListRow),
       };
     },
-    queryKey: ["traces", project_id, page, search, ordering, cleanFilters, pageSize],
+    queryKey: ["traces", params],
     refetchInterval: (i) =>
       backoffPolling(i, !i.state.data?.count || i.state.data.count <= 0 ? 5_000 : 10_000),
   });

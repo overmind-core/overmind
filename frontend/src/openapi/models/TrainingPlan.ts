@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TraceSelection } from './TraceSelection';
+import {
+    TraceSelectionFromJSON,
+    TraceSelectionFromJSONTyped,
+    TraceSelectionToJSON,
+    TraceSelectionToJSONTyped,
+} from './TraceSelection';
+
 /**
  *
  * @export
@@ -24,49 +32,56 @@ export interface TrainingPlan {
      * @type {string}
      * @memberof TrainingPlan
      */
-    readonly id: string;
+    capability: string;
     /**
      *
-     * @type {string}
+     * @type {number}
      * @memberof TrainingPlan
      */
-    readonly project: string;
+    passingTraces: number;
     /**
      *
-     * @type {string}
+     * @type {number}
      * @memberof TrainingPlan
      */
-    readonly name: string;
+    failingTraces: number;
     /**
      *
-     * @type {string}
+     * @type {number}
      * @memberof TrainingPlan
      */
-    readonly state: string;
+    trainingRows: number;
     /**
      *
-     * @type {{ [key: string]: any; }}
+     * @type {number}
      * @memberof TrainingPlan
      */
-    readonly record: { [key: string]: any; };
+    evalRows: number;
     /**
      *
-     * @type {Date}
+     * @type {number}
      * @memberof TrainingPlan
      */
-    readonly createdAt: Date;
+    evalPercent: number;
+    /**
+     *
+     * @type {TraceSelection}
+     * @memberof TrainingPlan
+     */
+    selection: TraceSelection;
 }
 
 /**
  * Check if a given object implements the TrainingPlan interface.
  */
 export function instanceOfTrainingPlan(value: object): value is TrainingPlan {
-    if (!('id' in value) || value['id'] === undefined) return false;
-    if (!('project' in value) || value['project'] === undefined) return false;
-    if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('state' in value) || value['state'] === undefined) return false;
-    if (!('record' in value) || value['record'] === undefined) return false;
-    if (!('createdAt' in value) || value['createdAt'] === undefined) return false;
+    if (!('capability' in value) || value['capability'] === undefined) return false;
+    if (!('passingTraces' in value) || value['passingTraces'] === undefined) return false;
+    if (!('failingTraces' in value) || value['failingTraces'] === undefined) return false;
+    if (!('trainingRows' in value) || value['trainingRows'] === undefined) return false;
+    if (!('evalRows' in value) || value['evalRows'] === undefined) return false;
+    if (!('evalPercent' in value) || value['evalPercent'] === undefined) return false;
+    if (!('selection' in value) || value['selection'] === undefined) return false;
     return true;
 }
 
@@ -80,12 +95,13 @@ export function TrainingPlanFromJSONTyped(json: any, ignoreDiscriminator: boolea
     }
     return {
 
-        'id': json['id'],
-        'project': json['project'],
-        'name': json['name'],
-        'state': json['state'],
-        'record': json['record'],
-        'createdAt': (new Date(json['created_at'])),
+        'capability': json['capability'],
+        'passingTraces': json['passing_traces'],
+        'failingTraces': json['failing_traces'],
+        'trainingRows': json['training_rows'],
+        'evalRows': json['eval_rows'],
+        'evalPercent': json['eval_percent'],
+        'selection': TraceSelectionFromJSON(json['selection']),
     };
 }
 
@@ -93,12 +109,19 @@ export function TrainingPlanToJSON(json: any): TrainingPlan {
     return TrainingPlanToJSONTyped(json, false);
 }
 
-export function TrainingPlanToJSONTyped(value?: Omit<TrainingPlan, 'id'|'project'|'name'|'state'|'record'|'created_at'> | null, ignoreDiscriminator: boolean = false): any {
+export function TrainingPlanToJSONTyped(value?: TrainingPlan | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
 
+        'capability': value['capability'],
+        'passing_traces': value['passingTraces'],
+        'failing_traces': value['failingTraces'],
+        'training_rows': value['trainingRows'],
+        'eval_rows': value['evalRows'],
+        'eval_percent': value['evalPercent'],
+        'selection': TraceSelectionToJSON(value['selection']),
     };
 }
