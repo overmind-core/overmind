@@ -60,7 +60,9 @@ export function useConfirmTopUp() {
       api.billing.billingTopupConfirmCreate({
         creditTopUpConfirmRequestRequest: { sessionId },
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // A mount-time account fetch can still be in flight with the pre-purchase balance.
+      await queryClient.cancelQueries({ queryKey: billingAccountQueryKey });
       queryClient.setQueryData(billingAccountQueryKey, data.account);
       void queryClient.invalidateQueries({ queryKey: billingLedgerQueryKey });
     },
