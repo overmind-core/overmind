@@ -67,9 +67,9 @@ _WEIGHT_OPS_LOCAL = Path(__file__).parent / "weight_ops.py"
 # Modal secret at container runtime.
 S3_MOUNT = "/s3"
 _S3_BUCKETS = {
-    "overmind-dev": "overmind-finetuning-dev-62hdauj",
+    "overmind-dev": "overmind-finetuning-dev-pr4mg45t",
     "overmind-staging": "overmind-finetuning-staging-xmpmbnsw",
-    "overmind-prod": "overmind-finetuning-prod-cmuziwbk",
+    "overmind-prod": "overmind-finetuning-prod-9s6f1k6u",
 }
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "overmind-dev")
 S3_BUCKET_NAME = _S3_BUCKETS[MODAL_ENVIRONMENT]
