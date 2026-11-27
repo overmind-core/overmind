@@ -206,7 +206,7 @@ def _cached(request, compute, *, database: bool = True) -> Response:
     fingerprint = hashlib.sha256(
         f"{request.path}?{urlencode(sorted(request.query_params.items()))}".encode()
     ).hexdigest()
-    key = f"overwatch:v2:{fingerprint}"
+    key = f"overwatch:v3:{fingerprint}"
     payload = cache.get(key)
     if payload is None:
         computed_at = timezone.now()
