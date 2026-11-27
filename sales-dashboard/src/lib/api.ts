@@ -49,12 +49,9 @@ export type Overview = Cached & {
   top_base_models: { base_model: string; jobs: number }[];
   live_deployments: number;
   inference_calls: Daily[];
-  subscriptions: Record<string, number>;
   paying_users: number;
-  cancelling_users: number;
-  free_users: number;
   low_balance_users: number;
-  topups_usd: DailyUsd[];
+  purchases_usd: DailyUsd[];
   spend_usd: DailyUsd[];
   spend_by_service: Record<string, string>;
 };
@@ -96,15 +93,14 @@ export type User = {
   date_joined: string;
   sign_on_method: string;
   projects: number;
-  seats: number;
+  members: number;
   last_span_at: string | null;
   spans: number;
   training_jobs: number;
   live_deployments: number;
   stage: string;
-  subscription_status: string | null;
   spend_usd: string;
-  topups_usd: string;
+  purchases_usd: string;
   balance_usd: string;
 };
 
@@ -120,12 +116,11 @@ export type TrainingOutcome = "completed" | "failed" | "cancelled" | "in_progres
 export type UserActivity = Cached & {
   user: User;
   billing: {
-    subscription_status: string | null;
     spend_usd: string;
-    topups_usd: string;
+    purchases_usd: string;
     balance_usd: string;
     spend_daily: DailyUsd[];
-    topups_daily: DailyUsd[];
+    purchases_daily: DailyUsd[];
   };
   training: {
     totals: Record<"started" | TrainingOutcome, number>;

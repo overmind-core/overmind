@@ -15,6 +15,7 @@ import {
   TIER_ORDER,
 } from "@/components/finetuning/train/model-config";
 import { findCatalogModel } from "@/components/finetuning/train/model-picker";
+import { useCredits } from "@/hooks/use-billing-account";
 import { useCapabilityEvalPreload } from "@/hooks/use-capability-eval-preload";
 import {
   useEvalSetsQuery,
@@ -34,7 +35,6 @@ import {
   useTrainingBenchmarksQuery,
   useValidateDatasetMutation,
 } from "@/hooks/use-finetuning";
-import { useCredits } from "@/hooks/use-subscription";
 import { isPaymentRequired } from "@/lib/credits";
 import { errorMessage } from "@/lib/notify";
 import type {

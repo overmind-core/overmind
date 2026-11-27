@@ -66,19 +66,7 @@ export interface UserMe {
      * @type {string}
      * @memberof UserMe
      */
-    readonly plan: string;
-    /**
-     *
-     * @type {string}
-     * @memberof UserMe
-     */
     readonly creditsUsd: string;
-    /**
-     *
-     * @type {Date}
-     * @memberof UserMe
-     */
-    readonly subscriptionEnd: Date | null;
     /**
      *
      * @type {boolean}
@@ -97,9 +85,7 @@ export function instanceOfUserMe(value: object): value is UserMe {
     if (!('hasCompletedOnboarding' in value) || value['hasCompletedOnboarding'] === undefined) return false;
     if (!('isGuest' in value) || value['isGuest'] === undefined) return false;
     if (!('billingEnabled' in value) || value['billingEnabled'] === undefined) return false;
-    if (!('plan' in value) || value['plan'] === undefined) return false;
     if (!('creditsUsd' in value) || value['creditsUsd'] === undefined) return false;
-    if (!('subscriptionEnd' in value) || value['subscriptionEnd'] === undefined) return false;
     if (!('agentFeedback' in value) || value['agentFeedback'] === undefined) return false;
     return true;
 }
@@ -121,9 +107,7 @@ export function UserMeFromJSONTyped(json: any, ignoreDiscriminator: boolean): Us
         'hasCompletedOnboarding': json['has_completed_onboarding'],
         'isGuest': json['is_guest'],
         'billingEnabled': json['billing_enabled'],
-        'plan': json['plan'],
         'creditsUsd': json['credits_usd'],
-        'subscriptionEnd': (json['subscription_end'] == null ? null : new Date(json['subscription_end'])),
         'agentFeedback': json['agent_feedback'],
     };
 }
@@ -132,7 +116,7 @@ export function UserMeToJSON(json: any): UserMe {
     return UserMeToJSONTyped(json, false);
 }
 
-export function UserMeToJSONTyped(value?: Omit<UserMe, 'id'|'clerk_user_id'|'has_completed_onboarding'|'is_guest'|'billing_enabled'|'plan'|'credits_usd'|'subscription_end'|'agent_feedback'> | null, ignoreDiscriminator: boolean = false): any {
+export function UserMeToJSONTyped(value?: Omit<UserMe, 'id'|'clerk_user_id'|'has_completed_onboarding'|'is_guest'|'billing_enabled'|'credits_usd'|'agent_feedback'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

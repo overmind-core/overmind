@@ -12,7 +12,6 @@ from overbae.models import (
     DeployedModel,
     InferenceCall,
     ProjectMembership,
-    Subscription,
 )
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.covers("measured-facts")]
@@ -167,13 +166,10 @@ def test_customer_billing_remains_user_attributed_and_keeps_lifetime_totals(sett
     other = make_user()
     project = make_project(member=user)
     ProjectMembership.objects.create(project=project, user=other)
-    Subscription.objects.create(user=user, status="active")
     BillingTelemetry.objects.create(
         user=user, project=project, amount="-2.50", service="inference-ft-model"
     )
-    BillingTelemetry.objects.create(
-        user=user, project=project, amount="20.00", service="stripe-topup"
-    )
+    BillingTelemetry.objects.create(user=user, project=project, amount="20.00", service="purchase")
     old = BillingTelemetry.objects.create(
         user=user, project=project, amount="-5.00", service="inference-ft-model"
     )
@@ -186,9 +182,8 @@ def test_customer_billing_remains_user_attributed_and_keeps_lifetime_totals(sett
     text = response.data["content"]
     assert "$2.50 spent in window" in text
     assert "$7.50 lifetime spend" in text
-    assert "$20.00 lifetime top-ups" in text
+    assert "$20.00 lifetime purchases" in text
     assert "$12.50 current balance" in text
-    assert "Subscription: active" in text
     assert "$99" not in text
 
 

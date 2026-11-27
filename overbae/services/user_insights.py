@@ -41,8 +41,6 @@ from overbae.models import (
     Project,
     ProjectMembership,
     Span,
-    Subscription,
-    SubscriptionStatus,
     User,
 )
 
@@ -236,10 +234,9 @@ def overview(since: datetime, active_since: datetime) -> dict[str, Any]:
     project_ids = _user_project_ids()
     spans = Span.objects.filter(project_id__in=project_ids, received_at__gte=since)
     jobs = FinetuningJob.objects.filter(project_id__in=project_ids, created_at__gte=since)
-    subscriptions = Subscription.objects.filter(user__is_guest=False)
     ledger = BillingTelemetry.objects.filter(user__is_guest=False)
     window_ledger = ledger.filter(timestamp__gte=since)
-    subscription_counts = _counts(subscriptions, "status")
+    purchases = ledger.filter(service=BillingService.PURCHASE, amount__gt=0)
     ledger_balances = (
         ledger.order_by()
         .values("user")
@@ -273,20 +270,12 @@ def overview(since: datetime, active_since: datetime) -> dict[str, Any]:
             InferenceCall.objects.filter(project_id__in=project_ids, created_at__gte=since),
             "created_at",
         ),
-        "subscriptions": subscription_counts,
-        "paying_users": subscription_counts.get(SubscriptionStatus.ACTIVE, 0),
-        "cancelling_users": subscriptions.filter(
-            status=SubscriptionStatus.ACTIVE, cancel_at_period_end=True
-        ).count(),
-        "free_users": users.filter(project_memberships__isnull=False)
-        .exclude(pk__in=subscriptions.filter(status=SubscriptionStatus.ACTIVE).values("user_id"))
-        .distinct()
-        .count(),
+        "paying_users": purchases.order_by().values("user").distinct().count(),
         "low_balance_users": ledger_balances.filter(
             balance__lt=LOW_BALANCE_USD, spent__isnull=False
         ).count(),
-        "topups_usd": _daily(
-            window_ledger.filter(service=BillingService.STRIPE_TOPUP, amount__gt=0),
+        "purchases_usd": _daily(
+            purchases.filter(timestamp__gte=since),
             "timestamp",
             Sum("amount"),
         ),
@@ -389,7 +378,7 @@ def users(since: datetime) -> QuerySet[User]:
     return _users().annotate(
         **_reached(),
         projects=Coalesce(_scalar(ProjectMembership.objects.filter(user=member), Count("pk")), 0),
-        seats=Coalesce(
+        members=Coalesce(
             _scalar(
                 ProjectMembership.objects.filter(
                     project__memberships__user=member, user__is_guest=False
@@ -413,7 +402,6 @@ def users(since: datetime) -> QuerySet[User]:
             ),
             0,
         ),
-        subscription_status=F("subscription__status"),
         spend_usd=Coalesce(
             _scalar(
                 ledger.filter(amount__lt=0, timestamp__gte=since),
@@ -421,9 +409,9 @@ def users(since: datetime) -> QuerySet[User]:
             ),
             zero_usd,
         ),
-        topups_usd=Coalesce(
+        purchases_usd=Coalesce(
             _scalar(
-                ledger.filter(service=BillingService.STRIPE_TOPUP, amount__gt=0),
+                ledger.filter(service=BillingService.PURCHASE, amount__gt=0),
                 Sum("amount"),
             ),
             zero_usd,
@@ -446,29 +434,20 @@ def user_activity(user: User, since: datetime) -> dict[str, Any]:
     datasets = Dataset.objects.filter(project_id__in=project_ids)
     ledger = BillingTelemetry.objects.filter(user=user)
     spend = Sum(-F("amount"), output_field=USD)
-    topups = Sum("amount")
+    purchased = Sum("amount")
+    purchases = ledger.filter(service=BillingService.PURCHASE, amount__gt=0)
     return {
         "user": user,
         "billing": {
-            "subscription_status": getattr(user, "subscription_status", None),
             "spend_usd": ledger.filter(amount__lt=0).aggregate(value=spend)["value"]
             or Decimal("0"),
-            "topups_usd": ledger.filter(
-                service=BillingService.STRIPE_TOPUP, amount__gt=0
-            ).aggregate(value=topups)["value"]
-            or Decimal("0"),
+            "purchases_usd": purchases.aggregate(value=purchased)["value"] or Decimal("0"),
             "balance_usd": ledger.aggregate(value=Sum("amount"))["value"] or Decimal("0"),
             "spend_daily": _daily(
                 ledger.filter(amount__lt=0, timestamp__gte=since), "timestamp", spend
             ),
-            "topups_daily": _daily(
-                ledger.filter(
-                    service=BillingService.STRIPE_TOPUP,
-                    amount__gt=0,
-                    timestamp__gte=since,
-                ),
-                "timestamp",
-                topups,
+            "purchases_daily": _daily(
+                purchases.filter(timestamp__gte=since), "timestamp", purchased
             ),
         },
         "training": {

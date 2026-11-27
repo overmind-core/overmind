@@ -9,7 +9,6 @@ import {
   formatDate,
   formatInt,
   formatUsd,
-  humanize,
   milestoneLabel,
 } from "~/lib/format";
 
@@ -31,13 +30,13 @@ import { TablePagination } from "@/components/ui/table-pagination";
 const COLUMNS = [
   { key: "date_joined", label: "Joined" },
   { key: "projects", label: "Projects" },
-  { key: "seats", label: "Seats" },
+  { key: "members", label: "Members" },
   { key: "last_span_at", label: "Last activity" },
   { key: "spans", label: "Spans" },
   { key: "training_jobs", label: "Training runs" },
   { key: "live_deployments", label: "Live" },
   { key: "spend_usd", label: "Spend" },
-  { key: "topups_usd", label: "Top-ups" },
+  { key: "purchases_usd", label: "Purchases" },
   { key: "balance_usd", label: "Balance" },
 ] as const;
 
@@ -100,7 +99,6 @@ function AccountsPage() {
               <TableRow>
                 <SortableHeader label="User" onSort={onSort} sort={sort} sortKey="email" />
                 <TableHead>Milestone reached</TableHead>
-                <TableHead>Subscription</TableHead>
                 {COLUMNS.map((column) => (
                   <SortableHeader
                     key={column.key}
@@ -153,31 +151,15 @@ function UserRow({ user, days }: { user: User; days: number }) {
           {milestoneLabel(user.stage)}
         </Badge>
       </TableCell>
-      <TableCell>
-        <Badge
-          size="chip"
-          variant={
-            user.subscription_status === "active"
-              ? "success"
-              : user.subscription_status === "past_due" || user.subscription_status === "unpaid"
-                ? "error"
-                : user.subscription_status === "incomplete"
-                  ? "warning"
-                  : "neutral"
-          }
-        >
-          {user.subscription_status ? humanize(user.subscription_status) : "Free"}
-        </Badge>
-      </TableCell>
       <TableCell className="whitespace-nowrap">{formatDate(user.date_joined)}</TableCell>
       <TableCell className={number}>{formatInt(user.projects)}</TableCell>
-      <TableCell className={number}>{formatInt(user.seats)}</TableCell>
+      <TableCell className={number}>{formatInt(user.members)}</TableCell>
       <TableCell className="whitespace-nowrap">{formatAgo(user.last_span_at)}</TableCell>
       <TableCell className={number}>{formatInt(user.spans)}</TableCell>
       <TableCell className={number}>{formatInt(user.training_jobs)}</TableCell>
       <TableCell className={number}>{formatInt(user.live_deployments)}</TableCell>
       <TableCell className={number}>{formatUsd(user.spend_usd)}</TableCell>
-      <TableCell className={number}>{formatUsd(user.topups_usd)}</TableCell>
+      <TableCell className={number}>{formatUsd(user.purchases_usd)}</TableCell>
       <TableCell className={`${number} ${Number(user.balance_usd) < 5 ? "text-warning" : ""}`}>
         {formatUsd(user.balance_usd)}
       </TableCell>

@@ -6,7 +6,7 @@ import { TopUpDialog } from "@/components/billing/top-up-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CreditsAmount } from "@/components/ui/credits";
 import { useAuthContext } from "@/contexts/auth-context";
-import { subscriptionQueryKey, useSubscriptionQuery } from "@/hooks/use-subscription";
+import { billingAccountQueryKey, useBillingAccount } from "@/hooks/use-billing-account";
 import { hasCreditsSurface, onPaymentRequired, type PaymentRequiredContext } from "@/lib/credits";
 
 /**
@@ -17,7 +17,7 @@ export function OutOfCreditsDialog() {
   const [context, setContext] = useState<PaymentRequiredContext | null>(null);
   const [topUpOpen, setTopUpOpen] = useState(false);
   const { isSignedIn } = useAuthContext();
-  const { data: sub } = useSubscriptionQuery({ enabled: isSignedIn });
+  const { data: sub } = useBillingAccount({ enabled: isSignedIn });
   const queryClient = useQueryClient();
 
   useEffect(
@@ -29,7 +29,7 @@ export function OutOfCreditsDialog() {
         // so the copy doesn't swap under the user mid-read.
         setContext((current) => current ?? next);
         // The cached balance predates the spend that just failed.
-        queryClient.invalidateQueries({ queryKey: subscriptionQueryKey });
+        queryClient.invalidateQueries({ queryKey: billingAccountQueryKey });
       }),
     [queryClient]
   );

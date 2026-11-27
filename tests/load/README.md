@@ -95,6 +95,5 @@ windows. It requires a shared instant with training, imports, pipelines, trace
 scoring, inference and quiet reads all active. Reports retain individual pipeline
 queue and execution times. GPU execution is the external Modal fake; preparation, dispatch, progress
 collection and training completion are real platform services. Serving startup
-is excluded. Its synthetic training user has an active Pro subscription so the
-soak measures concurrency rather than the Free plan monthly training quota.
+is excluded.
 Training reconcilers run at the production 15-second cadence.

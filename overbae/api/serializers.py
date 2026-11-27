@@ -2585,34 +2585,28 @@ class CheckoutSessionResponseSerializer(serializers.Serializer):
     checkout_url = serializers.URLField()
 
 
-class PlanUsageUnitSerializer(serializers.Serializer):
-    limit = serializers.IntegerField(allow_null=True)
-
-
-class PlanUsageSerializer(serializers.Serializer):
-    seats = PlanUsageUnitSerializer()
-
-
 class CreditTopUpRequestSerializer(serializers.Serializer):
     """One-time credit purchase in whole dollars. 1 USD = 100 credits."""
 
     amount_usd = serializers.IntegerField(min_value=MIN_TOPUP_USD, max_value=MAX_TOPUP_USD)
 
 
-class SubscriptionSerializer(serializers.Serializer):
-    """Current plan / subscription state for the authenticated user."""
+class CreditTopUpConfirmRequestSerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255)
+
+
+class BillingAccountSerializer(serializers.Serializer):
+    """Credits balance for the authenticated user."""
 
     billing_enabled = serializers.BooleanField()
-    plan = serializers.ChoiceField(choices=["free", "pro"])
-    status = serializers.CharField(allow_null=True)
     credits_usd = serializers.DecimalField(max_digits=12, decimal_places=4)
     credits_granted_usd = serializers.DecimalField(max_digits=12, decimal_places=4)
     credits_spent_usd = serializers.DecimalField(max_digits=12, decimal_places=4)
-    start_date = serializers.DateTimeField(allow_null=True)
-    end_date = serializers.DateTimeField(allow_null=True)
-    cancel_at_period_end = serializers.BooleanField()
-    can_manage_renewal = serializers.BooleanField()
-    usage = PlanUsageSerializer()
+
+
+class CreditTopUpConfirmationSerializer(serializers.Serializer):
+    paid = serializers.BooleanField()
+    account = BillingAccountSerializer()
 
 
 class BillingTelemetrySerializer(serializers.ModelSerializer):

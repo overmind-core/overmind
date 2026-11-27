@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from overbae.api.serializers import UserOnboardingSerializer
 from overbae.auth import clerk_enabled
-from overbae.models import SignOnMethod, Subscription, User, UserOnboarding
+from overbae.models import SignOnMethod, User, UserOnboarding
 from overbae.services.feedback import set_agent_feedback
 
 
@@ -38,9 +38,7 @@ class LocalSessionSerializer(serializers.Serializer):
 class UserMeSerializer(serializers.ModelSerializer):
     has_completed_onboarding = serializers.SerializerMethodField()
     billing_enabled = serializers.SerializerMethodField()
-    plan = serializers.SerializerMethodField()
     credits_usd = serializers.SerializerMethodField()
-    subscription_end = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -52,9 +50,7 @@ class UserMeSerializer(serializers.ModelSerializer):
             "has_completed_onboarding",
             "is_guest",
             "billing_enabled",
-            "plan",
             "credits_usd",
-            "subscription_end",
             "agent_feedback",
         ]
         extra_kwargs = {
@@ -82,23 +78,11 @@ class UserMeSerializer(serializers.ModelSerializer):
 
         return get_billing().enabled
 
-    def get_plan(self, user: User) -> str:
-        from overbae.services.plan_limits import is_pro
-
-        return "pro" if is_pro(user) else "free"
-
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=4))
     def get_credits_usd(self, user: User):
         from overbae.services.billing_ledger import balance_usd
 
         return balance_usd(user)
-
-    @extend_schema_field(serializers.DateTimeField(allow_null=True))
-    def get_subscription_end(self, user: User):
-        try:
-            return user.subscription.end_date
-        except Subscription.DoesNotExist:
-            return None
 
 
 class AuthTokensResponseSerializer(serializers.Serializer):

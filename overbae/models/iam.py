@@ -21,10 +21,10 @@ class UserManager(BaseUserManager):
         user.set_password(password)
         user.save(using=self._db)
         # Lazy import: billing_ledger imports User.
-        from overbae.services.billing_ledger import grant_free_credits
+        from overbae.services.billing_ledger import grant_signup_credits
 
         if not user.is_guest:
-            grant_free_credits(user)
+            grant_signup_credits(user)
         return user
 
     def create_user(self, email, password=None, **extra_fields):

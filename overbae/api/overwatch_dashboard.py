@@ -70,12 +70,9 @@ class OverviewSerializer(serializers.Serializer):
     top_base_models = BaseModelUsageSerializer(many=True)
     live_deployments = serializers.IntegerField()
     inference_calls = DailyCountSerializer(many=True)
-    subscriptions = serializers.DictField(child=serializers.IntegerField())
     paying_users = serializers.IntegerField()
-    cancelling_users = serializers.IntegerField()
-    free_users = serializers.IntegerField()
     low_balance_users = serializers.IntegerField()
-    topups_usd = DailyUsdSerializer(many=True)
+    purchases_usd = DailyUsdSerializer(many=True)
     spend_usd = DailyUsdSerializer(many=True)
     spend_by_service = serializers.DictField(
         child=serializers.DecimalField(max_digits=14, decimal_places=7)
@@ -113,15 +110,14 @@ class UserSerializer(serializers.Serializer):
     date_joined = serializers.DateTimeField()
     sign_on_method = serializers.CharField()
     projects = serializers.IntegerField()
-    seats = serializers.IntegerField()
+    members = serializers.IntegerField()
     last_span_at = serializers.DateTimeField(allow_null=True)
     spans = serializers.IntegerField()
     training_jobs = serializers.IntegerField()
     live_deployments = serializers.IntegerField()
     stage = serializers.SerializerMethodField()
-    subscription_status = serializers.CharField(allow_null=True)
     spend_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
-    topups_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
+    purchases_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
     balance_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
 
     def get_stage(self, account) -> str:
@@ -181,12 +177,11 @@ class WorkflowActivitySerializer(serializers.Serializer):
 
 
 class BillingActivitySerializer(serializers.Serializer):
-    subscription_status = serializers.CharField(allow_null=True)
     spend_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
-    topups_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
+    purchases_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
     balance_usd = serializers.DecimalField(max_digits=14, decimal_places=7)
     spend_daily = DailyUsdSerializer(many=True)
-    topups_daily = DailyUsdSerializer(many=True)
+    purchases_daily = DailyUsdSerializer(many=True)
 
 
 class UserActivitySerializer(serializers.Serializer):
@@ -291,14 +286,13 @@ class UsersView(OverwatchView, generics.ListAPIView):
         "date_joined",
         "email",
         "projects",
-        "seats",
+        "members",
         "last_span_at",
         "spans",
         "training_jobs",
         "live_deployments",
-        "subscription_status",
         "spend_usd",
-        "topups_usd",
+        "purchases_usd",
         "balance_usd",
     ]
     ordering = ["-date_joined"]

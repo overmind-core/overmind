@@ -32,7 +32,7 @@ def test_credit_report_scopes_balance_usage_and_window(settings):
     other, _, _ = account()
     since = timezone.now() - timedelta(hours=1)
     for owner, project, amount, service in [
-        (user, None, "10", BillingService.STRIPE_TOPUP),
+        (user, None, "10", BillingService.PURCHASE),
         (user, projects[0], "-0.1234567", BillingService.EVALUATION),
         (user, projects[1], "-2", BillingService.FINETUNING_JOB),
         (other, projects[0], "-99", BillingService.EVALUATION),

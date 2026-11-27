@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useCommercialBilling, useCredits } from "@/hooks/use-billing-account";
 import {
   useDedicatedDeploymentQuery,
   useDedicatedGpusQuery,
@@ -36,7 +37,6 @@ import {
   useStopDedicatedMutation,
   useUpdateDedicatedMutation,
 } from "@/hooks/use-inference";
-import { useCommercialBilling, useCredits } from "@/hooks/use-subscription";
 import { notify } from "@/lib/notify";
 import { usdToOvermindCredits } from "@/lib/utils";
 import type { DedicatedDeployment, DedicatedGpu, DeployedModel } from "@/openapi";

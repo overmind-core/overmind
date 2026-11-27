@@ -60,7 +60,7 @@ COVERAGE_MAP: dict[str, Entry] = {
         S1,
         INVARIANT,
         "Each surface admits only its own credentials, with their permissions: API key "
-        "scopes, MCP OAuth, sessions, the guest gate, invites and seats, Overwatch tokens.",
+        "scopes, MCP OAuth, sessions, the guest gate, invites, Overwatch tokens.",
     ),
     "privacy": Entry(
         S1,
@@ -72,7 +72,7 @@ COVERAGE_MAP: dict[str, Entry] = {
         S1,
         INVARIANT,
         "Each charge is metered once from measured usage at the current price; the hosted "
-        "cap stops spend at zero; a top-up, renewal or webhook applies once.",
+        "cap stops spend at zero; a purchase applies once, from the return or the webhook.",
     ),
     "work-once": Entry(
         S1,

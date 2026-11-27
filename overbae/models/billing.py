@@ -7,8 +7,8 @@ from django.db import models
 
 
 class BillingService(models.TextChoices):
-    FREE_CREDITS = "free-credits", "Free credits"
-    STRIPE_TOPUP = "stripe-topup", "Stripe top-up"
+    GRANT = "grant", "Grant"
+    PURCHASE = "purchase", "Purchase"
     FINETUNING_JOB = "finetuning-job", "Finetuning job"
     INFERENCE = "inference", "Inference"
     INFERENCE_FT_MODEL = "inference-ft-model", "Fine-tuned inference"
@@ -47,44 +47,3 @@ class BillingTelemetry(models.Model):
 
     def __str__(self) -> str:
         return f"BillingTelemetry({self.user_id}, {self.service}, {self.amount})"
-
-
-class SubscriptionStatus(models.TextChoices):
-    INCOMPLETE = "incomplete", "Incomplete"
-    ACTIVE = "active", "Active"
-    PAST_DUE = "past_due", "Past due"
-    CANCELED = "canceled", "Canceled"
-    UNPAID = "unpaid", "Unpaid"
-
-
-class Subscription(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="subscription",
-    )
-    stripe_subscription_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
-    stripe_price_id = models.CharField(max_length=255, blank=True, default="")
-    status = models.CharField(
-        max_length=32,
-        choices=SubscriptionStatus.choices,
-        default=SubscriptionStatus.INCOMPLETE,
-    )
-    start_date = models.DateTimeField(null=True, blank=True)
-    end_date = models.DateTimeField(null=True, blank=True)
-    payload = models.JSONField(default=dict, blank=True)
-    last_stripe_invoice_id = models.CharField(max_length=255, blank=True, default="")
-    cancel_at_period_end = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    @property
-    def started_at(self):
-        return self.start_date
-
-    def __str__(self) -> str:
-        return f"Subscription({self.user_id}, {self.status})"

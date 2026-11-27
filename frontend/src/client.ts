@@ -17,7 +17,6 @@ import {
   GUEST_UPGRADE_CODE,
   GuestUpgradeError,
 } from "./lib/guest";
-import { emitPlanLimitToast, PlanLimitError, planLimitFromBody } from "./lib/plan-limits";
 import { dismissSessionRecovery, requireSessionRecovery } from "./lib/session-recovery";
 import { localStore } from "./lib/storage";
 import type { ModelSwapPrompt } from "./openapi";
@@ -253,8 +252,7 @@ async function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit):
 
 /**
  * Raising the dialog here rather than at call sites means a caller that only
- * logs errors still gets the right UI. Plan-limit 403s get a one-shot upgrade
- * toast instead of the credits dialog.
+ * logs errors still gets the right UI.
  */
 const paymentRequiredMiddleware: Middleware = {
   async post(context) {
@@ -269,11 +267,6 @@ const paymentRequiredMiddleware: Middleware = {
       if (extractErrorCode(body) === GUEST_UPGRADE_CODE) {
         emitGuestUpgrade();
         throw new GuestUpgradeError();
-      }
-      const plan = planLimitFromBody(body);
-      if (plan) {
-        emitPlanLimitToast(plan.message);
-        throw new PlanLimitError(plan.message, plan.code);
       }
     }
   },
@@ -409,11 +402,6 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (extractErrorCode(body) === GUEST_UPGRADE_CODE) {
         emitGuestUpgrade();
         throw new GuestUpgradeError();
-      }
-      const plan = planLimitFromBody(body);
-      if (plan) {
-        emitPlanLimitToast(plan.message);
-        throw new PlanLimitError(plan.message, plan.code);
       }
     }
     const detail = extractErrorDetail(body);

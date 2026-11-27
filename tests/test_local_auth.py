@@ -13,8 +13,6 @@ from overbae.models import (
     Project,
     ProjectInvite,
     ProjectMembership,
-    Subscription,
-    SubscriptionStatus,
     User,
 )
 
@@ -43,13 +41,6 @@ def _owner() -> tuple[User, Project]:
         email=f"owner-{uuid.uuid4().hex[:8]}@example.com",
         password="test-pass-123",
         clerk_user_id=f"local_{uuid.uuid4().hex}",
-    )
-    Subscription.objects.update_or_create(
-        user=user,
-        defaults={
-            "status": SubscriptionStatus.ACTIVE,
-            "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:8]}",
-        },
     )
     project = Project.objects.create(name="P", slug=f"p-{uuid.uuid4().hex[:8]}")
     ProjectMembership.objects.create(user=user, project=project)

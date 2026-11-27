@@ -14,8 +14,6 @@ from overbae.models import (
     Project,
     ProjectInvite,
     ProjectMembership,
-    Subscription,
-    SubscriptionStatus,
     User,
 )
 from overbae.services.project_invites import claim_pending_invites
@@ -26,17 +24,6 @@ pytestmark = [pytest.mark.django_db, pytest.mark.covers("authentication")]
 @pytest.fixture(autouse=True)
 def _clerk_on(clerk):
     return clerk
-
-
-def _pro(user: User) -> User:
-    Subscription.objects.update_or_create(
-        user=user,
-        defaults={
-            "status": SubscriptionStatus.ACTIVE,
-            "stripe_subscription_id": f"sub_{uuid.uuid4().hex[:8]}",
-        },
-    )
-    return user
 
 
 def _project_with(owner: User) -> Project:
@@ -50,7 +37,7 @@ def _invites_url(project: Project) -> str:
 
 
 def test_invite_unknown_email_creates_row_and_clerk_invitation(clerk):
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     project = _project_with(owner)
 
     r = auth_client(owner).post(_invites_url(project), {"email": "New@Person.ai"}, format="json")
@@ -67,7 +54,7 @@ def test_invite_unknown_email_creates_row_and_clerk_invitation(clerk):
 
 
 def test_invite_existing_user_email_is_rejected(clerk):
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     make_user("known@example.com")
     project = _project_with(owner)
 
@@ -82,7 +69,7 @@ def test_invite_existing_user_email_is_rejected(clerk):
 
 
 def test_repeat_invite_is_idempotent(clerk):
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     project = _project_with(owner)
     client = auth_client(owner)
 
@@ -97,7 +84,7 @@ def test_repeat_invite_is_idempotent(clerk):
 
 
 def test_invite_list_requires_membership():
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     outsider = make_user("outsider@example.com")
     project = _project_with(owner)
     ProjectInvite.objects.create(project=project, email="new@person.ai", invited_by=owner)
@@ -111,7 +98,7 @@ def test_invite_list_requires_membership():
 
 
 def test_revoke_invite_deletes_row_and_revokes_clerk(clerk):
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     project = _project_with(owner)
     sent = clerk.invite("new@person.ai")
     invite = ProjectInvite.objects.create(
@@ -127,33 +114,27 @@ def test_revoke_invite_deletes_row_and_revokes_clerk(clerk):
     assert not ProjectInvite.objects.exists()
 
 
-def test_free_actor_cannot_invite_past_seat_limit(clerk):
-    owner = make_user("free@example.com")
-    project = _project_with(owner)
-
-    r = auth_client(owner).post(_invites_url(project), {"email": "new@person.ai"}, format="json")
-
-    assert r.status_code == 403
-    assert clerk.invitations == {}
-    assert not ProjectInvite.objects.exists()
-
-
-def test_pending_invite_fills_a_free_seat():
-    owner = make_user("free@example.com")
+def test_a_project_takes_any_number_of_members_and_invites(clerk):
+    owner = make_user("lead@example.com")
     project = _project_with(owner)
     ProjectInvite.objects.create(project=project, email="pending@person.ai", invited_by=owner)
-    known = make_user("known@example.com")
+    client = auth_client(owner)
 
-    r = auth_client(owner).post(
+    added = client.post(
         reverse("project-membership-list", kwargs={"project_id": project.id}),
-        {"email": known.email},
+        {"email": make_user("known@example.com").email},
         format="json",
     )
-    assert r.status_code == 403
+    invited = client.post(_invites_url(project), {"email": "new@person.ai"}, format="json")
+
+    assert added.status_code == 201
+    assert invited.status_code == 201
+    assert ProjectMembership.objects.filter(project=project).count() == 2
+    assert ProjectInvite.objects.filter(project=project).count() == 2
 
 
 def test_claim_converts_invites_to_memberships():
-    owner = _pro(make_user("lead@example.com"))
+    owner = make_user("lead@example.com")
     p1 = _project_with(owner)
     p2 = _project_with(owner)
     ProjectInvite.objects.create(project=p1, email="new@person.ai", invited_by=owner)

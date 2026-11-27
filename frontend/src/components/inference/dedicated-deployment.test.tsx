@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   auth: { authMeRetrieve: vi.fn() },
-  billing: { billingSubscriptionRetrieve: vi.fn() },
+  billing: { billingAccountRetrieve: vi.fn() },
   deployedModels: {
     deployedModelsDedicatedCreate: vi.fn(),
     deployedModelsDedicatedGpusList: vi.fn(),
@@ -41,7 +41,7 @@ const LIVE = {
 
 beforeEach(() => {
   api.auth.authMeRetrieve.mockResolvedValue({ billingEnabled: false });
-  api.billing.billingSubscriptionRetrieve.mockResolvedValue({ creditsUsd: "1000" });
+  api.billing.billingAccountRetrieve.mockResolvedValue({ creditsUsd: "1000" });
   api.deployedModels.deployedModelsDedicatedGpusList.mockResolvedValue([
     { creditsPerGpuHour: "100", gpuType: "L4" },
   ]);

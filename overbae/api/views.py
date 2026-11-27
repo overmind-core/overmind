@@ -254,10 +254,6 @@ class ProjectMembershipViewSet(
         serializer = ProjectMembershipCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.get_user()
-        if not ProjectMembership.objects.filter(project=project, user=user).exists():
-            from overbae.services.plan_limits import require_seat_for_invite
-
-            require_seat_for_invite(request.user, project)
         membership, _ = ProjectMembership.objects.get_or_create(project=project, user=user)
         return Response(
             ProjectMemberSerializer(membership).data,
@@ -319,7 +315,6 @@ class ProjectInviteViewSet(
 
     def create(self, request, *args, **kwargs):
         from overbae.auth import clerk_enabled
-        from overbae.services.plan_limits import require_seat_for_invite
         from overbae.services.project_invites import create_clerk_invitation
 
         project = self._project()
@@ -339,7 +334,6 @@ class ProjectInviteViewSet(
         if existing:
             return Response(ProjectInviteSerializer(existing).data, status=status.HTTP_201_CREATED)
 
-        require_seat_for_invite(request.user, project)
         clerk_invitation_id = ""
         if clerk_enabled():
             try:

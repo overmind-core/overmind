@@ -293,7 +293,6 @@ TRACE_SETTLE_SECONDS = int(os.environ.get("TRACE_SETTLE_SECONDS", "600"))
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID")
 # One-time price of a single Overmind Credit ($0.01); top-up quantity = credits bought.
 STRIPE_CREDIT_PRICE_ID = os.environ.get("STRIPE_CREDIT_PRICE_ID")
 

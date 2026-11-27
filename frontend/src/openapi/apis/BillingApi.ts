@@ -15,26 +15,36 @@
 
 import * as runtime from '../runtime';
 import type {
+  BillingAccount,
   CheckoutSessionResponse,
+  CreditTopUpConfirmRequestRequest,
+  CreditTopUpConfirmation,
   CreditTopUpRequestRequest,
   PaginatedBillingTelemetryList,
-  Subscription,
 } from '../models/index';
 import {
+    BillingAccountFromJSON,
+    BillingAccountToJSON,
     CheckoutSessionResponseFromJSON,
     CheckoutSessionResponseToJSON,
+    CreditTopUpConfirmRequestRequestFromJSON,
+    CreditTopUpConfirmRequestRequestToJSON,
+    CreditTopUpConfirmationFromJSON,
+    CreditTopUpConfirmationToJSON,
     CreditTopUpRequestRequestFromJSON,
     CreditTopUpRequestRequestToJSON,
     PaginatedBillingTelemetryListFromJSON,
     PaginatedBillingTelemetryListToJSON,
-    SubscriptionFromJSON,
-    SubscriptionToJSON,
 } from '../models/index';
 
 export interface BillingLedgerListRequest {
     ordering?: string;
     page?: number;
     pageSize?: number;
+}
+
+export interface BillingTopupConfirmCreateRequest {
+    creditTopUpConfirmRequestRequest: CreditTopUpConfirmRequestRequest;
 }
 
 export interface BillingTopupCreateRequest {
@@ -47,9 +57,9 @@ export interface BillingTopupCreateRequest {
 export class BillingApi extends runtime.BaseAPI {
 
     /**
-     * Cancel subscription at period end
+     * Get the credits account
      */
-    async billingCancelCreateRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Subscription>> {
+    async billingAccountRetrieveRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BillingAccount>> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -75,72 +85,23 @@ export class BillingApi extends runtime.BaseAPI {
             }
         }
 
-        let urlPath = `/api/billing/cancel/`;
+        let urlPath = `/api/billing/account/`;
 
         const response = await this.request({
             path: urlPath,
-            method: 'POST',
+            method: 'GET',
             headers: headerParameters,
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => SubscriptionFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => BillingAccountFromJSON(jsonValue));
     }
 
     /**
-     * Cancel subscription at period end
+     * Get the credits account
      */
-    async billingCancelCreate(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Subscription> {
-        const response = await this.billingCancelCreateRaw(initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Create Stripe Checkout Session
-     */
-    async billingCheckoutCreateRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CheckoutSessionResponse>> {
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/billing/checkout/`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => CheckoutSessionResponseFromJSON(jsonValue));
-    }
-
-    /**
-     * Create Stripe Checkout Session
-     */
-    async billingCheckoutCreate(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CheckoutSessionResponse> {
-        const response = await this.billingCheckoutCreateRaw(initOverrides);
+    async billingAccountRetrieve(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BillingAccount> {
+        const response = await this.billingAccountRetrieveRaw(initOverrides);
         return await response.value();
     }
 
@@ -206,12 +167,21 @@ export class BillingApi extends runtime.BaseAPI {
     }
 
     /**
-     * Resume subscription auto-renewal
+     * Confirm a credit purchase after Stripe Checkout
      */
-    async billingRenewCreateRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Subscription>> {
+    async billingTopupConfirmCreateRaw(requestParameters: BillingTopupConfirmCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CreditTopUpConfirmation>> {
+        if (requestParameters['creditTopUpConfirmRequestRequest'] == null) {
+            throw new runtime.RequiredError(
+                'creditTopUpConfirmRequestRequest',
+                'Required parameter "creditTopUpConfirmRequestRequest" was null or undefined when calling billingTopupConfirmCreate().'
+            );
+        }
+
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
 
         if (this.configuration && this.configuration.accessToken) {
             const token = this.configuration.accessToken;
@@ -234,77 +204,28 @@ export class BillingApi extends runtime.BaseAPI {
             }
         }
 
-        let urlPath = `/api/billing/renew/`;
+        let urlPath = `/api/billing/topup/confirm/`;
 
         const response = await this.request({
             path: urlPath,
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
+            body: CreditTopUpConfirmRequestRequestToJSON(requestParameters['creditTopUpConfirmRequestRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => SubscriptionFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => CreditTopUpConfirmationFromJSON(jsonValue));
     }
 
     /**
-     * Resume subscription auto-renewal
+     * Confirm a credit purchase after Stripe Checkout
      */
-    async billingRenewCreate(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Subscription> {
-        const response = await this.billingRenewCreateRaw(initOverrides);
+    async billingTopupConfirmCreate(requestParameters: BillingTopupConfirmCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CreditTopUpConfirmation> {
+        const response = await this.billingTopupConfirmCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
     /**
-     * Get subscription
-     */
-    async billingSubscriptionRetrieveRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Subscription>> {
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("ClerkBearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Api-Key"] = await this.configuration.apiKey("X-Api-Key"); // ApiKeyAuth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("BearerAuth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/api/billing/subscription/`;
-
-        const response = await this.request({
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => SubscriptionFromJSON(jsonValue));
-    }
-
-    /**
-     * Get subscription
-     */
-    async billingSubscriptionRetrieve(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Subscription> {
-        const response = await this.billingSubscriptionRetrieveRaw(initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Open on every plan, unlike the Pro checkout — running out of credits is orthogonal to which plan you are on.
      * Buy credits (one-time Stripe Checkout)
      */
     async billingTopupCreateRaw(requestParameters: BillingTopupCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CheckoutSessionResponse>> {
@@ -356,7 +277,6 @@ export class BillingApi extends runtime.BaseAPI {
     }
 
     /**
-     * Open on every plan, unlike the Pro checkout — running out of credits is orthogonal to which plan you are on.
      * Buy credits (one-time Stripe Checkout)
      */
     async billingTopupCreate(requestParameters: BillingTopupCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CheckoutSessionResponse> {
