@@ -34,12 +34,12 @@ function SettingsPage() {
 
   // The webhook grants a payment whose return confirmation failed, so a retry is
   // offered rather than required.
-  const confirm = useCallback(
+  const confirmReturn = useCallback(
     (sessionId: string) =>
       confirmTopUp(sessionId, {
         onError: (err) =>
           toast.error(errorMessage(err, "Could not confirm the payment"), {
-            action: { label: "Retry", onClick: () => confirm(sessionId) },
+            action: { label: "Retry", onClick: () => confirmReturn(sessionId) },
             id: "topup-confirm",
           }),
         onSuccess: ({ paid }) => {
@@ -61,8 +61,8 @@ function SettingsPage() {
     });
     if (billing !== "topup" || !sessionId || confirmed.current === sessionId) return;
     confirmed.current = sessionId;
-    confirm(sessionId);
-  }, [settingsSearch, navigate, confirm]);
+    confirmReturn(sessionId);
+  }, [settingsSearch, navigate, confirmReturn]);
 
   return (
     <PageShell
