@@ -133,15 +133,33 @@ def _is_topup(session: dict[str, Any]) -> bool:
     return _as_dict(session.get("metadata")).get("purpose") == CREDIT_TOPUP_PURPOSE
 
 
+def _usd_cents(session: dict[str, Any]) -> Any:
+    """What Stripe charged, in US cents, or None when the session settled in another currency.
+
+    With Adaptive Pricing the buyer pays in a local currency: ``amount_total`` is
+    then in that currency and the USD amount is under ``currency_conversion``.
+    """
+    if session.get("currency") == "usd":
+        return session.get("amount_total")
+    conversion = _as_dict(session.get("currency_conversion"))
+    if conversion.get("source_currency") == "usd":
+        return conversion.get("amount_total")
+    return None
+
+
 def _grant(user: User, session: dict[str, Any]) -> BillingTelemetry | None:
     session_id = _stripe_id(session.get("id"))
     # Async payment methods complete the session before the money lands.
     if session.get("payment_status") != "paid":
         return None
-    # amount_total is what Stripe charged; request metadata is only what we asked for.
-    amount = _cents_to_usd(session.get("amount_total"))
+    # The charged amount, not request metadata: metadata is only what we asked for.
+    amount = _cents_to_usd(_usd_cents(session))
     if amount <= 0:
-        logger.error("Checkout session=%s has no amount_total", session_id)
+        logger.error(
+            "Checkout session=%s has no USD total (currency=%s)",
+            session_id,
+            session.get("currency"),
+        )
         return None
     _remember_customer(user, _stripe_id(session.get("customer")))
     entry = grant_credit_purchase(user, amount, session_id)

@@ -56,6 +56,7 @@ def _session(
     purpose: str | None = CREDIT_TOPUP_PURPOSE,
     payment_status: str = "paid",
     customer: str = "cus_test",
+    **extra,
 ) -> dict:
     metadata = {k: v for k, v in (("purpose", purpose), ("user_id", user_id)) if v is not None}
     return {
@@ -66,6 +67,8 @@ def _session(
         "payment_status": payment_status,
         "client_reference_id": user_id,
         "metadata": metadata,
+        "currency": "usd",
+        **extra,
     }
 
 
@@ -125,6 +128,28 @@ def test_a_paid_topup_grants_its_amount_once(stripe):
     )
     assert rows.get().amount == Decimal("25")
     assert balance_usd(user) == SIGNUP_CREDITS_USD + Decimal("25")
+
+
+@pytest.mark.parametrize(
+    ("currency", "conversion", "granted"),
+    [
+        ("inr", {"source_currency": "usd", "amount_total": 1000}, Decimal("10")),
+        ("eur", None, Decimal("0")),
+    ],
+    ids=["adaptive pricing", "no usd total"],
+)
+def test_a_local_currency_payment_grants_its_usd_amount(stripe, currency, conversion, granted):
+    user = _make_user(f"topup-{currency}", stripe_customer_id="cus_test")
+    session = _session(
+        session_id=f"cs_{currency}",
+        amount_total=85000,
+        user_id=str(user.pk),
+        currency=currency,
+        currency_conversion=conversion,
+    )
+
+    assert _deliver(stripe, "checkout.session.completed", session) < 300
+    assert balance_usd(user) == SIGNUP_CREDITS_USD + granted
 
 
 @pytest.mark.parametrize(

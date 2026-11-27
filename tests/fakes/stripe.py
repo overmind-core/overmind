@@ -47,7 +47,7 @@ class StripeAPI:
     down: bool = False
 
     def pay(self, session: dict[str, Any], amount_total: int) -> dict[str, Any]:
-        session.update(payment_status="paid", amount_total=amount_total)
+        session.update(payment_status="paid", amount_total=amount_total, currency="usd")
         return session
 
     def webhook_endpoint(self, url: str, events: list[str]) -> dict[str, Any]:
